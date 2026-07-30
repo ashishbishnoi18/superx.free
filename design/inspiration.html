@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inspiration · SuperX</title>
+  <link rel="stylesheet" href="app.css" />
+  <script>
+    (() => {
+      const stored = localStorage.getItem("superx:theme");
+      const dark = stored ? stored === "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (dark) document.documentElement.classList.add("dark");
+    })();
+  </script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="side">
+      <div class="side__brand">
+        <span class="wordmark">superx</span><span class="tick">·</span>
+      </div>
+
+      <nav class="side__nav">
+        <div class="nav-section">
+          <div class="nb-eyebrow">Today</div>
+          <div class="nav-section__items">
+            <a class="nav-link" href="index.html">Ready to Post <span class="count">5</span></a>
+            <a class="nav-link" href="queue.html">Queue <span class="count">8</span></a>
+          </div>
+        </div>
+
+        <div class="nav-section">
+          <div class="nb-eyebrow">Research</div>
+          <div class="nav-section__items">
+            <a class="nav-link" href="inspiration.html" aria-current="page">Inspiration</a>
+            <a class="nav-link" href="analytics.html">Analytics</a>
+          </div>
+        </div>
+
+        <div class="nav-section">
+          <div class="nb-eyebrow">Settings</div>
+          <div class="nav-section__items">
+            <a class="nav-link" href="#">Voice</a>
+            <a class="nav-link" href="#">Accounts</a>
+            <a class="nav-link" href="#">Plan</a>
+          </div>
+        </div>
+      </nav>
+
+      <div class="side__foot">
+        <div>
+          <div class="credits">
+            <span class="credits__label">Credits</span>
+            <span class="credits__value">31 / 50</span>
+          </div>
+          <div class="meter" style="margin-top:.5rem"><i style="width:62%"></i></div>
+        </div>
+        <div class="who">
+          <span class="avatar"></span>
+          <span>
+            <span class="who__name">Demo User</span><br />
+            <span class="who__handle">@demo_user</span>
+          </span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="crumbs">Research <b>/ Inspiration</b></div>
+        <div class="toolbar">
+          <button class="act" data-theme-toggle>Dark</button>
+        </div>
+      </div>
+
+      <div class="page measure">
+        <header class="page__head">
+          <h1 class="page__title">Inspiration</h1>
+          <p class="page__sub">
+            2.4 million posts that outperformed their author's baseline. Search for
+            structure worth borrowing, not subjects worth copying.
+          </p>
+        </header>
+
+        <div class="searchrow">
+          <input class="input" type="search" placeholder="Search the library…"
+                 value="engineering" aria-label="Search the library" />
+        </div>
+
+        <div class="filters">
+          <span class="on">Past week</span>
+          <span>Past month</span>
+          <span>All time</span>
+          <span style="color:var(--border)">·</span>
+          <span class="on">500+ likes</span>
+          <span>5K+</span>
+          <span>20K+</span>
+        </div>
+
+        <div class="finds">
+          <article class="find">
+            <div>
+              <p class="find__who"><b>Gergely Orosz</b> <span>@gergelyorosz</span></p>
+              <p class="find__text">
+                Most "we rewrote it in X and it's 10x faster" posts are really "we finally
+                understood the problem and rewrote it." The language rarely mattered.
+              </p>
+            </div>
+            <div class="find__nums">
+              <span><b>18.6K</b> likes</span>
+              <span>4.1K reposts</span>
+              <span>2d ago</span>
+            </div>
+          </article>
+
+          <article class="find">
+            <div>
+              <p class="find__who"><b>Pieter Levels</b> <span>@levelsio</span></p>
+              <p class="find__text">
+                Made $0 for 3 years. Then $100/mo. Then $1000/mo. The compounding is real
+                but the first part is brutal and nobody posts about it.
+              </p>
+            </div>
+            <div class="find__nums">
+              <span><b>22.0K</b> likes</span>
+              <span>3.9K reposts</span>
+              <span>3d ago</span>
+            </div>
+          </article>
+
+          <article class="find">
+            <div>
+              <p class="find__who"><b>Shreyas Doshi</b> <span>@shreyas</span></p>
+              <p class="find__text">
+                Strategy is a set of choices. If your strategy doesn't rule anything out,
+                it isn't strategy, it's a list of things you like.
+              </p>
+            </div>
+            <div class="find__nums">
+              <span><b>15.2K</b> likes</span>
+              <span>3.4K reposts</span>
+              <span>4d ago</span>
+            </div>
+          </article>
+
+          <article class="find">
+            <div>
+              <p class="find__who"><b>Amjad Masad</b> <span>@amasad</span></p>
+              <p class="find__text">
+                Hired for pedigree twice. Both times it went badly. Now I hire for whether
+                someone has finished something hard on their own.
+              </p>
+            </div>
+            <div class="find__nums">
+              <span><b>14.1K</b> likes</span>
+              <span>2.8K reposts</span>
+              <span>5d ago</span>
+            </div>
+          </article>
+
+          <article class="find">
+            <div>
+              <p class="find__who"><b>DHH</b> <span>@dhh</span></p>
+              <p class="find__text">
+                Every abstraction you add is a bet that the thing underneath won't change.
+                Most of those bets lose, and you pay the interest forever.
+              </p>
+            </div>
+            <div class="find__nums">
+              <span><b>9.3K</b> likes</span>
+              <span>1.6K reposts</span>
+              <span>6d ago</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="theme.js"></script>
+</body>
+</html>

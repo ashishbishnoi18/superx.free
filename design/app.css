@@ -1,0 +1,663 @@
+/* ===========================================================================
+   SuperX — rendered in the upboost editorial system.
+
+   Tokens, type baseline, hover ritual, and component language are ported
+   from /var/www/upboost/assets/css/app.css so this is the real system, not
+   an impression of it. Tailwind is stripped out; the constitution is not.
+
+   EDITORIAL · the design constitution
+   ---------------------------------------------------------------------------
+   Text-first, chrome-less. Hierarchy comes from type weight and whitespace,
+   not borders and fills. The box disappears; the affordance stays — every
+   actionable string shares one hover ritual (quiet ink → it lifts, the
+   accent arrives). Color is an event, never decoration: the single ember
+   accent is spent only on hover + active. Two first-class themes.
+
+   Surfaces are near-flat: page and "card" are one breath apart. Containers
+   are made of hairlines and air, not frames. Ink & Paper (warm) in light;
+   warm graphite in dark.
+   ======================================================================== */
+
+/* Inter — the UI voice: small, crisp, optically sized. */
+@font-face {
+  font-family: "InterVariable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("fonts/InterVariable.woff2") format("woff2");
+}
+@font-face {
+  font-family: "InterVariable";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("fonts/InterVariable-Italic.woff2") format("woff2");
+}
+
+/* Space Grotesk = the display voice (big numerals, page titles).
+   JetBrains Mono = the data voice (timestamps, scores, keyboard hints). */
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("fonts/SpaceGrotesk.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("fonts/JetBrainsMono.woff2") format("woff2");
+}
+
+:root {
+  --font-sans: "InterVariable", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", "InterVariable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", "Menlo", monospace;
+
+  /* — Ink & Paper (light) — warm bone page, warm near-black ink — */
+  --background: oklch(0.984 0.0035 83);
+  --foreground: oklch(0.245 0.008 67);
+  --card: oklch(0.997 0.0015 83);
+  --popover: oklch(0.997 0.0015 83);
+
+  /* The one accent — ember. Spent on hover + active only. */
+  --primary: oklch(0.555 0.165 47);
+  --primary-foreground: oklch(0.99 0.004 83);
+
+  --muted: oklch(0.955 0.005 83);
+  --muted-foreground: oklch(0.515 0.012 67);
+  --faint: oklch(0.63 0.01 67);
+
+  --accent: oklch(0.955 0.008 80);
+  --accent-foreground: oklch(0.30 0.01 67);
+
+  --border: oklch(0.915 0.006 80);
+  --line-strong: oklch(0.86 0.008 78);
+  --input: oklch(0.9 0.006 80);
+  --ring: oklch(0.555 0.165 47);
+  --destructive: oklch(0.52 0.18 27);
+  --success: oklch(0.52 0.13 155);
+
+  --accent-soft: oklch(0.555 0.165 47 / 0.08);
+  --accent-line: oklch(0.555 0.165 47 / 0.45);
+
+  --radius: 0.375rem;
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-lg: calc(var(--radius) + 2px);
+
+  --shadow-lg: 0 12px 32px -8px oklch(0.25 0.02 67 / 0.16),
+    0 6px 14px -6px oklch(0.25 0.02 67 / 0.08);
+}
+
+.dark {
+  /* — Warm graphite (dark) — not blue-black; ink-on-charcoal — */
+  --background: oklch(0.185 0.004 70);
+  --foreground: oklch(0.945 0.004 83);
+  --card: oklch(0.212 0.005 70);
+  --popover: oklch(0.225 0.006 70);
+
+  --primary: oklch(0.72 0.145 58);
+  --primary-foreground: oklch(0.19 0.01 70);
+
+  --muted: oklch(0.255 0.006 70);
+  --muted-foreground: oklch(0.66 0.01 75);
+  --faint: oklch(0.54 0.01 75);
+
+  --accent: oklch(0.28 0.008 72);
+  --accent-foreground: oklch(0.93 0.005 83);
+
+  --border: oklch(1 0 0 / 0.085);
+  --line-strong: oklch(1 0 0 / 0.16);
+  --input: oklch(1 0 0 / 0.12);
+  --ring: oklch(0.72 0.145 58);
+  --destructive: oklch(0.66 0.17 28);
+  --success: oklch(0.72 0.15 155);
+
+  --accent-soft: oklch(0.72 0.145 58 / 0.14);
+  --accent-line: oklch(0.72 0.145 58 / 0.5);
+
+  --shadow-lg: 0 14px 36px -8px oklch(0 0 0 / 0.6), 0 6px 14px -6px oklch(0 0 0 / 0.4);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* ── Type baseline ──────────────────────────────────────────────────────
+   Premium-small: small sizes, generous leading, optical sizing on, real
+   tabular figures for data. */
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;            /* 14px base — small, deliberate */
+  line-height: 1.55;
+  letter-spacing: -0.006em;
+  color: var(--foreground);
+  background-color: var(--background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss03";
+  font-optical-sizing: auto;
+}
+
+h1, h2, h3, .nb-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  margin: 0;
+}
+
+.nb-mono, .tabular-nums { font-family: var(--font-mono); font-feature-settings: "tnum"; }
+
+/* Small-caps section label — the quiet wayfinder. */
+.nb-eyebrow {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-weight: 500;
+  font-size: 0.6875rem;
+  color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+}
+
+a { color: inherit; text-decoration: none; }
+button { font: inherit; }
+
+/* ── The hover ritual ───────────────────────────────────────────────────
+   Every actionable string shares this. Quiet at rest, lifts to ink on hover;
+   the *key* action lifts to ember. Same timing everywhere so hovering becomes
+   the user's "what's live" probe. */
+.act {
+  color: var(--muted-foreground);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  transition: color 0.12s ease, opacity 0.12s ease;
+}
+.act:hover, .act:focus-visible { color: var(--foreground); outline: none; }
+
+.act-key {
+  color: var(--foreground);
+  font-weight: 500;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  transition: color 0.12s ease;
+}
+.act-key:hover, .act-key:focus-visible { color: var(--primary); outline: none; }
+
+.act-danger {
+  color: var(--muted-foreground);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  transition: color 0.12s ease;
+}
+.act-danger:hover, .act-danger:focus-visible { color: var(--destructive); outline: none; }
+
+.hover-ember { transition: color 0.12s ease; }
+.hover-ember:hover { color: var(--primary); }
+
+/* Icon buttons: a frameless glyph that warms on hover. Generous invisible
+   hit area so they stay finger-sized while looking weightless. */
+.icon-act {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--faint);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem;
+  margin: -0.3rem;
+  cursor: pointer;
+  display: inline-flex;
+  transition: color 0.12s ease, background-color 0.12s ease;
+}
+.icon-act:hover { color: var(--foreground); background: var(--accent); }
+
+/* ── Form controls: underline fields, no boxes ──────────────────────────
+   A field is a line you write on, not a box you fill. */
+.input, .select {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--input);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0.45rem 0.1rem;
+  color: var(--foreground);
+  font: inherit;
+  transition: border-color 0.14s ease;
+}
+.textarea {
+  width: 100%;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.7rem;
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  line-height: 1.6;
+  resize: vertical;
+}
+.input:focus, .select:focus, .textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: none;
+}
+.input::placeholder, .textarea::placeholder { color: var(--faint); }
+
+/* Editorial measure — content sits in a calm column with real side air. */
+.measure { max-width: 60rem; margin-inline: auto; }
+.measure-wide { max-width: 76rem; margin-inline: auto; }
+
+::selection { background: var(--accent-soft); }
+
+a:focus-visible, button:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+table { font-variant-numeric: tabular-nums; }
+
+/* Quiet, premium scrollbars. */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+
+.divide-line > * + * { border-top: 1px solid var(--border); }
+
+/* ===========================================================================
+   SHELL
+   ======================================================================== */
+
+.shell { display: flex; height: 100vh; overflow: hidden; }
+
+.side {
+  width: 14rem;
+  flex-shrink: 0;
+  background: var(--background);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.side__brand {
+  padding: 1rem 1.125rem 0.875rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+}
+
+.side__brand .wordmark {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.side__brand .tick { color: var(--primary); font-size: 15px; line-height: 1; }
+
+.side__nav {
+  flex: 1;
+  padding: 0.25rem 0.75rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.nav-section > .nb-eyebrow { padding: 0 0.625rem 0.5rem; font-size: 10px; }
+.nav-section__items { display: flex; flex-direction: column; gap: 1px; }
+
+/* The active marker is a 2px ember tick, not a filled pill — colour as
+   event, not decoration. */
+.nav-link {
+  position: relative;
+  display: block;
+  border-radius: var(--radius);
+  padding: 0.25rem 0.625rem;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  transition: color 0.12s ease;
+}
+.nav-link:hover { color: var(--foreground); }
+.nav-link[aria-current="page"] { color: var(--foreground); font-weight: 500; }
+.nav-link[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 0.875rem;
+  width: 2px;
+  transform: translateY(-50%);
+  border-radius: 9999px;
+  background: var(--primary);
+}
+
+.nav-link .count {
+  float: right;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+  font-feature-settings: "tnum";
+}
+
+.side__foot {
+  padding: 0.875rem 1.125rem 1rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.credits { display: flex; justify-content: space-between; align-items: baseline; }
+.credits__label { font-size: 11px; color: var(--faint); }
+.credits__value { font-family: var(--font-mono); font-size: 11px; font-feature-settings: "tnum"; }
+
+/* Meter is a hairline that fills — no track chrome. */
+.meter { height: 2px; background: var(--border); border-radius: 9999px; overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--primary); }
+
+.who { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.who__name { font-size: 12px; font-weight: 500; }
+.who__handle { font-size: 11px; color: var(--faint); }
+
+.avatar {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  flex: none;
+  background: linear-gradient(135deg, oklch(0.66 0.13 47), oklch(0.42 0.11 350));
+}
+.avatar--lg { width: 2rem; height: 2rem; }
+
+/* ── Main column ─────────────────────────────────────────────────────── */
+
+.main { flex: 1; overflow-y: auto; }
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 2rem;
+  background: color-mix(in oklab, var(--background) 86%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+.crumbs { font-size: 12px; color: var(--faint); margin-right: auto; }
+.crumbs b { color: var(--muted-foreground); font-weight: 500; }
+
+.page { padding: 2.25rem 2rem 4rem; }
+
+.page__head { margin-bottom: 2rem; }
+
+.page__title {
+  font-size: 1.75rem;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  font-weight: 600;
+}
+
+.page__sub {
+  margin: 0.5rem 0 0;
+  color: var(--muted-foreground);
+  max-width: 56ch;
+}
+
+.page__headrow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+/* ── Tabs — text with a hairline underline, no pills ──────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.5rem;
+}
+
+.tab {
+  position: relative;
+  padding: 0 0 0.625rem;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.tab:hover { color: var(--foreground); }
+.tab[aria-selected="true"] { color: var(--foreground); font-weight: 500; }
+.tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--primary);
+}
+.tab .count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+  margin-left: 0.25rem;
+  font-feature-settings: "tnum";
+}
+
+/* ── Draft list — hairlines and air, no cards ─────────────────────────── */
+
+.drafts { display: flex; flex-direction: column; }
+
+.draft {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 1.75rem;
+  padding: 1.5rem 0;
+  border-top: 1px solid var(--border);
+}
+.draft:last-child { border-bottom: 1px solid var(--border); }
+
+.draft__meta {
+  font-size: 11px;
+  color: var(--faint);
+  line-height: 1.9;
+}
+.draft__meta .n {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+  color: var(--muted-foreground);
+}
+.draft__meta .src { display: block; color: var(--muted-foreground); }
+
+.draft__body p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  max-width: 62ch;
+  letter-spacing: -0.008em;
+}
+
+.draft__acts {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-top: 0.875rem;
+  font-size: 12px;
+}
+
+/* Actions stay present but quiet, then lift on hover — the box disappears,
+   the affordance stays. Hiding them outright would make the row unusable
+   until you happened to hover it, and would break keyboard traversal. */
+
+/* ── Queue rows ───────────────────────────────────────────────────────── */
+
+.queue { display: flex; flex-direction: column; }
+
+.qrow {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr) auto;
+  gap: 1.75rem;
+  align-items: baseline;
+  padding: 1rem 0;
+  border-top: 1px solid var(--border);
+}
+.qrow:last-child { border-bottom: 1px solid var(--border); }
+
+.qrow__when {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-feature-settings: "tnum";
+  color: var(--muted-foreground);
+}
+
+.qrow__text {
+  font-size: 14px;
+  line-height: 1.55;
+  max-width: 58ch;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.state {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+.state--live { color: var(--success); }
+.state--fail { color: var(--destructive); }
+
+/* Day divider inside the queue — an eyebrow on a rule. */
+.qday {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 1.75rem 0 0.25rem;
+}
+.qday .nb-eyebrow { font-size: 10px; }
+.qday .rule { flex: 1; height: 1px; background: var(--border); }
+
+/* ── Stat row ─────────────────────────────────────────────────────────── */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border-block: 1px solid var(--border);
+  margin-bottom: 2.25rem;
+}
+
+.stat { background: var(--background); padding: 1.125rem 1.25rem 1.25rem; }
+.stat__label { font-size: 11px; color: var(--faint); }
+
+.stat__value {
+  font-family: var(--font-display);
+  font-size: 1.875rem;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  margin-top: 0.25rem;
+  font-feature-settings: "tnum";
+}
+
+.stat__delta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+  margin-top: 0.125rem;
+  font-feature-settings: "tnum";
+}
+.stat__delta--up { color: var(--success); }
+
+/* ── Inspiration ──────────────────────────────────────────────────────── */
+
+.finds { display: flex; flex-direction: column; }
+
+.find {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 8rem;
+  gap: 2rem;
+  padding: 1.375rem 0;
+  border-top: 1px solid var(--border);
+}
+.find:last-child { border-bottom: 1px solid var(--border); }
+
+.find__who { font-size: 12px; margin-bottom: 0.375rem; }
+.find__who b { font-weight: 500; }
+.find__who span { color: var(--faint); }
+
+.find__text { margin: 0; font-size: 14px; line-height: 1.6; max-width: 60ch; }
+
+.find__nums {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+  font-feature-settings: "tnum";
+  text-align: right;
+}
+.find__nums b { color: var(--muted-foreground); font-weight: 500; }
+
+/* ── Search field ─────────────────────────────────────────────────────── */
+
+.searchrow { display: flex; align-items: baseline; gap: 1.5rem; margin-bottom: 0.5rem; }
+.searchrow .input { flex: 1; font-size: 15px; }
+
+.filters {
+  display: flex;
+  gap: 1.25rem;
+  padding: 0.75rem 0 1.5rem;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.filters .on { color: var(--foreground); font-weight: 500; }
+
+/* ── Sparkline ────────────────────────────────────────────────────────── */
+
+.chart { padding: 1.5rem 0 0; border-top: 1px solid var(--border); }
+.chart__head { display: flex; align-items: baseline; justify-content: space-between; }
+.chart svg { display: block; width: 100%; height: 8rem; margin-top: 1rem; }
+
+/* ── Misc ─────────────────────────────────────────────────────────────── */
+
+.empty { padding: 4rem 0; text-align: center; color: var(--muted-foreground); }
+
+.toolbar { display: flex; align-items: center; gap: 1.25rem; font-size: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+@media (max-width: 900px) {
+  .side { display: none; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .draft, .qrow, .find { grid-template-columns: 1fr; gap: 0.75rem; }
+  .find__nums { flex-direction: row; gap: 1rem; text-align: left; }
+  .page, .topbar { padding-inline: 1.25rem; }
+}

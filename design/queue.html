@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Queue · SuperX</title>
+  <link rel="stylesheet" href="app.css" />
+  <script>
+    (() => {
+      const stored = localStorage.getItem("superx:theme");
+      const dark = stored ? stored === "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (dark) document.documentElement.classList.add("dark");
+    })();
+  </script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="side">
+      <div class="side__brand">
+        <span class="wordmark">superx</span><span class="tick">·</span>
+      </div>
+
+      <nav class="side__nav">
+        <div class="nav-section">
+          <div class="nb-eyebrow">Today</div>
+          <div class="nav-section__items">
+            <a class="nav-link" href="index.html">Ready to Post <span class="count">5</span></a>
+            <a class="nav-link" href="queue.html" aria-current="page">Queue <span class="count">8</span></a>
+          </div>
+        </div>
+
+        <div class="nav-section">
+          <div class="nb-eyebrow">Research</div>
+          <div class="nav-section__items">
+            <a class="nav-link" href="inspiration.html">Inspiration</a>
+            <a class="nav-link" href="analytics.html">Analytics</a>
+          </div>
+        </div>
+
+        <div class="nav-section">
+          <div class="nb-eyebrow">Settings</div>
+          <div class="nav-section__items">
+            <a class="nav-link" href="#">Voice</a>
+            <a class="nav-link" href="#">Accounts</a>
+            <a class="nav-link" href="#">Plan</a>
+          </div>
+        </div>
+      </nav>
+
+      <div class="side__foot">
+        <div>
+          <div class="credits">
+            <span class="credits__label">Credits</span>
+            <span class="credits__value">31 / 50</span>
+          </div>
+          <div class="meter" style="margin-top:.5rem"><i style="width:62%"></i></div>
+        </div>
+        <div class="who">
+          <span class="avatar"></span>
+          <span>
+            <span class="who__name">Demo User</span><br />
+            <span class="who__handle">@demo_user</span>
+          </span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="crumbs">Today <b>/ Queue</b></div>
+        <div class="toolbar">
+          <button class="act" data-theme-toggle>Dark</button>
+        </div>
+      </div>
+
+      <div class="page measure">
+        <header class="page__head">
+          <div class="page__headrow">
+            <div>
+              <h1 class="page__title">Queue</h1>
+              <p class="page__sub">
+                Next slot is Monday at 10:00. Approved drafts fill the next opening
+                on their own — you set the times once.
+              </p>
+            </div>
+            <button class="act-key" style="white-space:nowrap">Edit times</button>
+          </div>
+        </header>
+
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" aria-selected="true">Scheduled <span class="count">8</span></button>
+          <button class="tab" role="tab" aria-selected="false">Drafts <span class="count">3</span></button>
+          <button class="tab" role="tab" aria-selected="false">Published <span class="count">126</span></button>
+          <button class="tab" role="tab" aria-selected="false">Failed <span class="count">1</span></button>
+        </div>
+
+        <div class="qday">
+          <span class="nb-eyebrow">Monday · 3 Aug</span>
+          <span class="rule"></span>
+        </div>
+
+        <div class="queue">
+          <div class="qrow">
+            <span class="qrow__when">10:00</span>
+            <span class="qrow__text">
+              Spent the afternoon deleting code I wrote in March. Every line of it was
+              reasonable at the time and none of it was load-bearing by June.
+            </span>
+            <span class="state">scheduled</span>
+          </div>
+
+          <div class="qrow">
+            <span class="qrow__when">13:00</span>
+            <span class="qrow__text">
+              The tooling question that actually matters isn't which framework. It's how
+              long it takes a new person to get a failing test to pass.
+            </span>
+            <span class="state">scheduled</span>
+          </div>
+        </div>
+
+        <div class="qday">
+          <span class="nb-eyebrow">Tuesday · 4 Aug</span>
+          <span class="rule"></span>
+        </div>
+
+        <div class="queue">
+          <div class="qrow">
+            <span class="qrow__when">09:00</span>
+            <span class="qrow__text">
+              Most performance work is archaeology. You're not making it fast, you're
+              finding the decision from two years ago that made it slow.
+            </span>
+            <span class="state">scheduled</span>
+          </div>
+
+          <div class="qrow">
+            <span class="qrow__when">11:00</span>
+            <span class="qrow__text">
+              Shipped something small today instead of planning something large. Third week
+              running. The backlog looks worse and the product looks better.
+            </span>
+            <span class="state">scheduled</span>
+          </div>
+        </div>
+
+        <div class="qday">
+          <span class="nb-eyebrow">Yesterday</span>
+          <span class="rule"></span>
+        </div>
+
+        <div class="queue">
+          <div class="qrow">
+            <span class="qrow__when">10:00</span>
+            <span class="qrow__text">
+              Hired for pedigree twice. Both times it went badly. Now I look for whether
+              someone has finished something hard on their own.
+            </span>
+            <span class="state state--live">published</span>
+          </div>
+
+          <div class="qrow">
+            <span class="qrow__when">13:00</span>
+            <span class="qrow__text">
+              Latency is a feature. Every 100ms you shave is a decision someone doesn't
+              have to reconsider.
+            </span>
+            <span class="state state--fail">rate limited</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="theme.js"></script>
+</body>
+</html>

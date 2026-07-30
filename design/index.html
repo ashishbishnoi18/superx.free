@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ready to Post · SuperX</title>
+  <link rel="stylesheet" href="app.css" />
+  <script>
+    // Applied before first paint so the page never flashes the wrong theme.
+    (() => {
+      const stored = localStorage.getItem("superx:theme");
+      const dark = stored ? stored === "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (dark) document.documentElement.classList.add("dark");
+    })();
+  </script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="side">
+      <div class="side__brand">
+        <span class="wordmark">superx</span><span class="tick">·</span>
+      </div>
+
+      <nav class="side__nav">
+        <div class="nav-section">
+          <div class="nb-eyebrow">Today</div>
+          <div class="nav-section__items">
+            <a class="nav-link" href="index.html" aria-current="page">Ready to Post <span class="count">5</span></a>
+            <a class="nav-link" href="queue.html">Queue <span class="count">8</span></a>
+          </div>
+        </div>
+
+        <div class="nav-section">
+          <div class="nb-eyebrow">Research</div>
+          <div class="nav-section__items">
+            <a class="nav-link" href="inspiration.html">Inspiration</a>
+            <a class="nav-link" href="analytics.html">Analytics</a>
+          </div>
+        </div>
+
+        <div class="nav-section">
+          <div class="nb-eyebrow">Settings</div>
+          <div class="nav-section__items">
+            <a class="nav-link" href="#">Voice</a>
+            <a class="nav-link" href="#">Accounts</a>
+            <a class="nav-link" href="#">Plan</a>
+          </div>
+        </div>
+      </nav>
+
+      <div class="side__foot">
+        <div>
+          <div class="credits">
+            <span class="credits__label">Credits</span>
+            <span class="credits__value">31 / 50</span>
+          </div>
+          <div class="meter" style="margin-top:.5rem"><i style="width:62%"></i></div>
+        </div>
+        <div class="who">
+          <span class="avatar"></span>
+          <span>
+            <span class="who__name">Demo User</span><br />
+            <span class="who__handle">@demo_user</span>
+          </span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="crumbs">Today <b>/ Ready to Post</b></div>
+        <div class="toolbar">
+          <button class="act" data-theme-toggle>Dark</button>
+        </div>
+      </div>
+
+      <div class="page measure">
+        <header class="page__head">
+          <div class="page__headrow">
+            <div>
+              <h1 class="page__title">Ready to Post</h1>
+              <p class="page__sub">
+                Five drafts written in your voice, each built on the shape of a post
+                that already worked. Nothing goes out until you say so.
+              </p>
+            </div>
+            <button class="act-key" style="white-space:nowrap">Write another</button>
+          </div>
+        </header>
+
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" aria-selected="true">All <span class="count">5</span></button>
+          <button class="tab" role="tab" aria-selected="false">For you <span class="count">5</span></button>
+          <button class="tab" role="tab" aria-selected="false">Trending <span class="count">0</span></button>
+          <button class="tab" role="tab" aria-selected="false">Viral <span class="count">0</span></button>
+        </div>
+
+        <div class="drafts">
+          <article class="draft">
+            <div class="draft__meta">
+              <span class="n">01</span>
+              <span class="src">22K likes</span>
+              <span>4h ago</span>
+            </div>
+            <div class="draft__body">
+              <p>
+                Spent the afternoon deleting code I wrote in March. Every line of it was
+                reasonable at the time and none of it was load-bearing by June.
+              </p>
+              <div class="draft__acts">
+                <button class="act-key">Add to queue</button>
+                <button class="act">Edit</button>
+                <button class="act">See the source</button>
+                <button class="act-danger">Discard</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="draft">
+            <div class="draft__meta">
+              <span class="n">02</span>
+              <span class="src">19K likes</span>
+              <span>4h ago</span>
+            </div>
+            <div class="draft__body">
+              <p>
+                The tooling question that actually matters isn't which framework. It's how
+                long it takes a new person to get a failing test to pass.
+              </p>
+              <div class="draft__acts">
+                <button class="act-key">Add to queue</button>
+                <button class="act">Edit</button>
+                <button class="act">See the source</button>
+                <button class="act-danger">Discard</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="draft">
+            <div class="draft__meta">
+              <span class="n">03</span>
+              <span class="src">14K likes</span>
+              <span>9h ago</span>
+            </div>
+            <div class="draft__body">
+              <p>
+                Shipped something small today instead of planning something large. Third
+                week running. The backlog looks worse and the product looks better.
+              </p>
+              <div class="draft__acts">
+                <button class="act-key">Add to queue</button>
+                <button class="act">Edit</button>
+                <button class="act">See the source</button>
+                <button class="act-danger">Discard</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="draft">
+            <div class="draft__meta">
+              <span class="n">04</span>
+              <span class="src">31K likes</span>
+              <span>9h ago</span>
+            </div>
+            <div class="draft__body">
+              <p>
+                Most performance work is archaeology. You're not making it fast, you're
+                finding the decision from two years ago that made it slow.
+              </p>
+              <div class="draft__acts">
+                <button class="act-key">Add to queue</button>
+                <button class="act">Edit</button>
+                <button class="act">See the source</button>
+                <button class="act-danger">Discard</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="draft">
+            <div class="draft__meta">
+              <span class="n">05</span>
+              <span class="src">8K likes</span>
+              <span>yesterday</span>
+            </div>
+            <div class="draft__body">
+              <p>
+                Nobody warns you that the hardest part of a rewrite is that the old thing
+                keeps working well enough to make you doubt the whole project.
+              </p>
+              <div class="draft__acts">
+                <button class="act-key">Add to queue</button>
+                <button class="act">Edit</button>
+                <button class="act">See the source</button>
+                <button class="act-danger">Discard</button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="theme.js"></script>
+</body>
+</html>
