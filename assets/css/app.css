@@ -1,0 +1,326 @@
+/* SuperX design system.
+   Tailwind v4, no component framework — the surface is small enough that
+   hand-rolled primitives beat fighting a library's opinions. */
+
+@import "tailwindcss" source(none);
+@source "../css";
+@source "../js";
+@source "../../lib/superx_web";
+
+@plugin "../vendor/heroicons";
+
+/* Add variants based on LiveView classes */
+@custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
+@custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
+@custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
+
+/* Dark mode is driven by an explicit attribute, set before first paint in
+   root.html.heex so there is no flash of the wrong theme. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@theme {
+  /* Ember — the single accent. Used for primary actions and the mark,
+     never for large fills, which is what keeps the UI calm. */
+  --color-ember-50: oklch(97.2% 0.014 28);
+  --color-ember-100: oklch(93.8% 0.033 28);
+  --color-ember-200: oklch(88.5% 0.062 29);
+  --color-ember-300: oklch(80.6% 0.104 30);
+  --color-ember-400: oklch(71.2% 0.158 31);
+  --color-ember-500: oklch(63.4% 0.196 32);
+  --color-ember-600: oklch(57.1% 0.198 31);
+  --color-ember-700: oklch(48.3% 0.172 30);
+  --color-ember-800: oklch(41.2% 0.142 29);
+  --color-ember-900: oklch(35.6% 0.114 29);
+
+  --font-sans: "Inter var", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  /* Cards read as raised paper rather than outlined boxes. */
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+  --shadow-card-hover: 0 2px 4px -1px rgb(0 0 0 / 0.06), 0 4px 12px -2px rgb(0 0 0 / 0.08);
+  --shadow-drawer: -8px 0 24px -12px rgb(0 0 0 / 0.18);
+}
+
+/* Semantic surface tokens. Every component reads these instead of naming
+   stone-N directly, so the dark theme is one override block rather than a
+   `dark:` class on every element. */
+@layer base {
+  :root {
+    --surface-page: var(--color-stone-100);
+    --surface-raised: #ffffff;
+    --surface-sunken: var(--color-stone-200);
+    --surface-hover: var(--color-stone-100);
+    --border-subtle: var(--color-stone-200);
+    --border-strong: var(--color-stone-300);
+    --text-primary: var(--color-stone-950);
+    --text-secondary: var(--color-stone-600);
+    --text-muted: var(--color-stone-500);
+  }
+
+  [data-theme="dark"] {
+    --surface-page: var(--color-stone-950);
+    --surface-raised: var(--color-stone-900);
+    --surface-sunken: var(--color-stone-800);
+    --surface-hover: var(--color-stone-800);
+    --border-subtle: var(--color-stone-800);
+    --border-strong: var(--color-stone-700);
+    --text-primary: var(--color-stone-100);
+    --text-secondary: var(--color-stone-400);
+    --text-muted: var(--color-stone-500);
+  }
+
+  html {
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    background-color: var(--surface-page);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Focus rings only for keyboard users, but never suppressed entirely. */
+  :focus-visible {
+    outline: 2px solid var(--color-ember-500);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* --- Surfaces --- */
+  .card {
+    background-color: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 0.875rem;
+    box-shadow: var(--shadow-card);
+  }
+
+  .card-interactive {
+    transition: box-shadow 150ms ease, border-color 150ms ease, transform 150ms ease;
+  }
+
+  .card-interactive:hover {
+    box-shadow: var(--shadow-card-hover);
+    border-color: var(--border-strong);
+  }
+
+  /* --- Buttons --- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.625rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    padding: 0.5rem 0.875rem;
+    transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background-color: var(--color-ember-600);
+    color: #fff;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--color-ember-700);
+  }
+
+  .btn-secondary {
+    background-color: var(--surface-raised);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background-color: var(--surface-hover);
+  }
+
+  .btn-ghost {
+    color: var(--text-secondary);
+    background-color: transparent;
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background-color: var(--surface-hover);
+    color: var(--text-primary);
+  }
+
+  .btn-soft {
+    background-color: var(--color-ember-50);
+    color: var(--color-ember-700);
+  }
+
+  .btn-soft:hover:not(:disabled) {
+    background-color: var(--color-ember-100);
+  }
+
+  [data-theme="dark"] .btn-soft {
+    background-color: color-mix(in oklab, var(--color-ember-500) 16%, transparent);
+    color: var(--color-ember-300);
+  }
+
+  .btn-sm {
+    padding: 0.3125rem 0.625rem;
+    font-size: 0.8125rem;
+  }
+
+  .btn-lg {
+    padding: 0.6875rem 1.125rem;
+    font-size: 0.9375rem;
+  }
+
+  /* --- Forms --- */
+  .input,
+  .textarea,
+  .select {
+    width: 100%;
+    background-color: var(--surface-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: 0.625rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+
+  .input::placeholder,
+  .textarea::placeholder {
+    color: var(--text-muted);
+  }
+
+  .input:focus,
+  .textarea:focus,
+  .select:focus {
+    outline: none;
+    border-color: var(--color-ember-500);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-ember-500) 18%, transparent);
+  }
+
+  .textarea {
+    resize: vertical;
+    min-height: 6rem;
+    line-height: 1.6;
+  }
+
+  .label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 0.375rem;
+  }
+
+  /* --- Navigation --- */
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.625rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    transition: background-color 120ms ease;
+  }
+
+  .nav-item:hover {
+    background-color: var(--surface-hover);
+  }
+
+  .nav-item[aria-current="page"] {
+    background-color: var(--surface-sunken);
+    font-weight: 600;
+  }
+
+  .nav-section {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 0 0.75rem;
+    margin-bottom: 0.375rem;
+  }
+
+  /* --- Tabs --- */
+  .tab {
+    position: relative;
+    padding: 0.5rem 0.125rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .tab:hover {
+    color: var(--text-primary);
+  }
+
+  .tab[aria-selected="true"] {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 1px;
+    background-color: var(--color-ember-600);
+  }
+
+  /* --- Badges --- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background-color: var(--surface-sunken);
+    color: var(--text-secondary);
+  }
+
+  .badge-ember {
+    background-color: var(--color-ember-50);
+    color: var(--color-ember-700);
+  }
+
+  [data-theme="dark"] .badge-ember {
+    background-color: color-mix(in oklab, var(--color-ember-500) 18%, transparent);
+    color: var(--color-ember-300);
+  }
+
+  /* --- Misc --- */
+  .divider {
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .skeleton {
+    background-color: var(--surface-sunken);
+    border-radius: 0.5rem;
+    animation: pulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+  }
+}
+
+/* Make LiveView wrapper divs transparent for layout */
+[data-phx-session], [data-phx-teleported-src] { display: contents }

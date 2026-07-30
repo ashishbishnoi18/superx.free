@@ -1,0 +1,78 @@
+# Self-hosted SuperX: app + Postgres on one box.
+#
+# The app container runs the web server, the Oban workers, and the Go
+# scraper as one supervised OS process — there is no separate worker or
+# scheduler service to keep alive.
+
+services:
+  db:
+    # pgvector's image is plain Postgres with the extension available.
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-superx}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-superx}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-superx} -d ${POSTGRES_DB:-superx}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Not published: only the app needs to reach it.
+    expose:
+      - "5432"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ecto://${POSTGRES_USER:-superx}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB:-superx}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?generate with mix phx.gen.secret}
+      SUPERX_VAULT_KEY: ${SUPERX_VAULT_KEY:?generate with mix superx.gen.vault_key}
+      PHX_HOST: ${PHX_HOST:-localhost}
+      PORT: "4000"
+
+      # X OAuth — required for sign-in and publishing.
+      X_CLIENT_ID: ${X_CLIENT_ID}
+      X_CLIENT_SECRET: ${X_CLIENT_SECRET}
+      X_REDIRECT_URI: ${X_REDIRECT_URI:-https://${PHX_HOST}/auth/x/callback}
+
+      # LLM — required for voice profiles and drafting.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # Optional: without it, corpus search falls back to full text.
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+
+      # Billing — optional. Unset means every account keeps free limits.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_PRICE_PRO_MONTH: ${STRIPE_PRICE_PRO_MONTH}
+      STRIPE_PRICE_PRO_YEAR: ${STRIPE_PRICE_PRO_YEAR}
+      STRIPE_PRICE_ADVANCED_MONTH: ${STRIPE_PRICE_ADVANCED_MONTH}
+      STRIPE_PRICE_ADVANCED_YEAR: ${STRIPE_PRICE_ADVANCED_YEAR}
+      STRIPE_PRICE_ULTRA_MONTH: ${STRIPE_PRICE_ULTRA_MONTH}
+      STRIPE_PRICE_ULTRA_YEAR: ${STRIPE_PRICE_ULTRA_YEAR}
+
+      # Scraper — optional. Unset means the corpus stays empty.
+      X_WEB_BEARER: ${X_WEB_BEARER}
+      X_SEARCH_PATH: ${X_SEARCH_PATH}
+      X_SEARCH_FEATURES: ${X_SEARCH_FEATURES}
+      X_MIN_REQUEST_INTERVAL: ${X_MIN_REQUEST_INTERVAL:-2000}
+      HTTPS_PROXY: ${HTTPS_PROXY}
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "/app/bin/superx rpc 'IO.puts(:ok)' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  pgdata:

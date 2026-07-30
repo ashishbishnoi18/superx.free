@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <.live_title default="SuperX" suffix=" · SuperX" phx-no-format>
+      {assigns[:page_title]}
+    </.live_title>
+    <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
+    </script>
+    <script>
+      // Applied before first paint so the page never flashes the wrong theme.
+      (() => {
+        const apply = (theme) => {
+          const resolved =
+            theme === "system"
+              ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+              : theme;
+          document.documentElement.setAttribute("data-theme", resolved);
+          document.documentElement.style.colorScheme = resolved;
+        };
+        const setTheme = (theme) => {
+          if (theme === "system") localStorage.removeItem("phx:theme");
+          else localStorage.setItem("phx:theme", theme);
+          apply(theme);
+        };
+        apply(localStorage.getItem("phx:theme") || "system");
+        window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+          if (!localStorage.getItem("phx:theme")) apply("system");
+        });
+        window.addEventListener("storage", (e) => e.key === "phx:theme" && apply(e.newValue || "system"));
+        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
+      })();
+    </script>
+  </head>
+  <body class="h-full">
+    {@inner_content}
+  </body>
+</html>

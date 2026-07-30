@@ -1,0 +1,68 @@
+<div class="min-h-full">
+  <header class="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+    <div class="flex items-center gap-2">
+      <Layouts.logo class="size-7" />
+      <span class="text-lg font-bold tracking-tight">SuperX</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <Layouts.theme_toggle />
+      <.link :if={@x_configured} href={~p"/auth/x"} class="btn btn-primary">
+        Sign in with <span class="font-bold">𝕏</span>
+      </.link>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-6">
+    <section class="py-16 text-center sm:py-24">
+      <p class="badge badge-ember mb-5">Self-hosted · Your data stays yours</p>
+
+      <h1 class="mx-auto max-w-3xl text-4xl font-bold tracking-tight sm:text-6xl">
+        Grow on 𝕏 without
+        <span class="bg-gradient-to-r from-ember-500 to-ember-700 bg-clip-text text-transparent">
+          living on 𝕏
+        </span>
+      </h1>
+
+      <p class="mx-auto mt-6 max-w-2xl text-lg" style="color: var(--text-secondary)">
+        SuperX learns how you write, finds the posts worth learning from, and keeps
+        your queue full — so posting consistently stops depending on your mood.
+      </p>
+
+      <div class="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <.link :if={@x_configured} href={~p"/auth/x"} class="btn btn-primary btn-lg">
+          Sign in with <span class="font-bold">𝕏</span>
+        </.link>
+        <div :if={!@x_configured} class="card max-w-md p-4 text-left text-sm">
+          <p class="font-semibold">X sign-in isn't configured yet</p>
+          <p class="mt-1" style="color: var(--text-secondary)">
+            Set <code class="font-mono text-xs">X_CLIENT_ID</code>
+            and <code class="font-mono text-xs">X_CLIENT_SECRET</code>, then restart.
+            The README lists every variable.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid gap-5 pb-20 sm:grid-cols-3">
+      <div :for={feature <- @features} class="card p-6">
+        <div class="flex size-10 items-center justify-center rounded-xl bg-ember-50 text-ember-600">
+          <.icon name={feature.icon} class="size-5" />
+        </div>
+        <h3 class="mt-4 font-semibold">{feature.title}</h3>
+        <p class="mt-1.5 text-sm leading-relaxed" style="color: var(--text-secondary)">
+          {feature.body}
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t py-8" style="border-color: var(--border-subtle)">
+    <div
+      class="mx-auto flex max-w-6xl flex-col gap-2 px-6 text-sm sm:flex-row sm:items-center sm:justify-between"
+      style="color: var(--text-muted)"
+    >
+      <p>SuperX — self-hosted 𝕏 growth workstation</p>
+      <p>Runs on your own box. No third-party analytics.</p>
+    </div>
+  </footer>
+</div>
