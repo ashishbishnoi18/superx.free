@@ -19,15 +19,29 @@ defmodule SuperXWeb.PageControllerTest do
     refute html =~ ~s(href="/auth/x")
   end
 
-  test "sends a signed-in user into the app", %{conn: conn} do
-    %{user: user} = user_fixture()
-    {:ok, token} = SuperX.Accounts.create_session(user)
+  describe "where a signed-in user lands" do
+    test "a connected but unconfigured account goes to setup", %{conn: conn} do
+      %{user: user} = user_fixture()
+      {:ok, token} = SuperX.Accounts.create_session(user)
 
-    conn =
-      conn
-      |> init_test_session(%{user_token: token})
-      |> get(~p"/")
+      conn = conn |> init_test_session(%{user_token: token}) |> get(~p"/")
 
-    assert redirected_to(conn) == ~p"/home"
+      assert redirected_to(conn) == ~p"/welcome"
+    end
+
+    test "a set-up account goes to Home", %{conn: conn} do
+      %{user: user} = user_fixture()
+
+      {:ok, user} =
+        SuperX.Accounts.update_user(user, %{
+          onboarding_completed_at: DateTime.utc_now() |> DateTime.truncate(:second)
+        })
+
+      {:ok, token} = SuperX.Accounts.create_session(user)
+
+      conn = conn |> init_test_session(%{user_token: token}) |> get(~p"/")
+
+      assert redirected_to(conn) == ~p"/home"
+    end
   end
 end

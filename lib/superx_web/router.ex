@@ -55,6 +55,7 @@ defmodule SuperXWeb.Router do
     live_session :app,
       on_mount: [{SuperXWeb.UserAuth, :ensure_onboarded}, SuperXWeb.ShellHook],
       layout: {SuperXWeb.Layouts, :app} do
+      live "/welcome", WelcomeLive, :index
       live "/home", HomeLive, :index
       live "/ask", AskLive, :index
       live "/ask/:id", AskLive, :show

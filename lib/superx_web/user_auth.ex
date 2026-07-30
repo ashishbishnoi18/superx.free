@@ -167,9 +167,15 @@ defmodule SuperXWeb.UserAuth do
 
   defp maybe_store_return_to(conn), do: conn
 
-  # New users land on the connect screen; everyone else on Home.
+  # Where someone lands depends on how far through setup they are: no
+  # account means connect, connected but not set up means the guided flow,
+  # otherwise Home.
   defp signed_in_path(user) do
-    if Accounts.current_x_account(user), do: ~p"/home", else: ~p"/connect"
+    cond do
+      is_nil(Accounts.current_x_account(user)) -> ~p"/connect"
+      is_nil(user.onboarding_completed_at) -> ~p"/welcome"
+      true -> ~p"/home"
+    end
   end
 
   defp get_user_agent(conn) do
