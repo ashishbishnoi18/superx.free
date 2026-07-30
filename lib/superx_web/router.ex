@@ -63,6 +63,8 @@ defmodule SuperXWeb.Router do
       live "/ready-to-post", ReadyToPostLive, :index
       live "/engage", EngageLive, :index
       live "/inspiration", InspirationLive, :index
+      live "/signals", SignalsLive, :index
+      live "/contacts", ContactsLive, :index
       live "/analytics", AnalyticsLive, :index
 
       live "/voice", VoiceLive, :index

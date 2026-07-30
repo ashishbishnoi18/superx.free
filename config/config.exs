@@ -67,6 +67,8 @@ config :superx, Oban,
        {"30 2 * * *", SuperX.Workers.ShelfTopUp},
        # Poll mentions so the Engage inbox is current each morning.
        {"*/20 * * * *", SuperX.Workers.MentionSync},
+       # Run the Signals watches that are due.
+       {"15 */2 * * *", SuperX.Workers.SignalSweep},
        # Roll monthly/daily quota windows.
        {"0 0 * * *", SuperX.Workers.QuotaRoller}
      ]}
