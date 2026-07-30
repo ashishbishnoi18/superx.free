@@ -110,6 +110,21 @@ defmodule SuperX.Analytics do
     end)
   end
 
+  @doc """
+  The account's own published posts, most recent first.
+
+  Per-post engagement needs X's paid analytics tier, so ordering is by
+  recency rather than performance until those figures exist — claiming to
+  rank by engagement while sorting by date would be a lie the UI tells.
+  """
+  def recent_posts(%XAccount{} = account, limit \\ 5) do
+    Post
+    |> where([p], p.x_account_id == ^account.id and p.status == "posted")
+    |> order_by(desc: :published_at)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
   defp sum(snapshots, key), do: Enum.reduce(snapshots, 0, &(Map.fetch!(&1, key) + &2))
 
   defp delta(nil, _last, _key), do: 0

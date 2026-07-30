@@ -191,42 +191,41 @@ defmodule SuperXWeb.ReadyToPostLive do
       </.link>
     </div>
 
-    <div class="flex flex-col">
-      <article
-        :for={{generation, index} <- Enum.with_index(@shelf, 1)}
-        class="grid grid-cols-1 gap-7 border-b border-border py-6 sm:grid-cols-[7.5rem_minmax(0,1fr)]"
+    <%!-- Drafts are shown as the post they'd become, under the account
+          that would publish it — approving is a judgement about how it
+          will read on X, not about a row in our database. --%>
+    <div class="columns-1 gap-4 lg:columns-2 [&>*]:mb-4">
+      <.post
+        :for={generation <- @shelf}
+        author={author(@current_x_account)}
+        segments={segments(generation)}
+        class="break-inside-avoid"
       >
-        <div class="text-[11px] leading-[1.9] text-faint">
-          <span class="nb-mono text-muted-foreground">{pad(index)}</span>
-          <span :if={generation.source_likes} class="block text-muted-foreground">
-            {format_count(generation.source_likes)} likes
-          </span>
-          <span>{relative(generation.inserted_at)}</span>
-        </div>
+        <%!-- The attribution is itself the reference to the source, so it
+              carries the link rather than duplicating it as an action. --%>
+        <:meta>
+          <a
+            :if={generation.source_corpus_post}
+            href={corpus_url(generation.source_corpus_post)}
+            target="_blank"
+            rel="noopener"
+            class="hover-ember"
+          >
+            {Generation.attribution(generation)}
+          </a>
+          <span :if={!generation.source_corpus_post}>{ago(generation.inserted_at)}</span>
+        </:meta>
 
-        <div>
-          <p class="max-w-[62ch] whitespace-pre-wrap text-[15px] leading-[1.6] tracking-[-0.008em]"><%= Generation.text(generation) %></p>
-
-          <div class="mt-3.5 flex flex-wrap items-center gap-5 text-xs">
-            <button phx-click="accept" phx-value-id={generation.id} class="act-key">
-              Add to queue
-            </button>
-            <button phx-click="edit" phx-value-id={generation.id} class="act">Edit</button>
-            <a
-              :if={generation.source_corpus_post}
-              href={source_url(generation.source_corpus_post)}
-              target="_blank"
-              rel="noopener"
-              class="act"
-            >
-              See the source
-            </a>
-            <button phx-click="dismiss" phx-value-id={generation.id} class="act-danger">
-              Discard
-            </button>
-          </div>
-        </div>
-      </article>
+        <:actions>
+          <button phx-click="accept" phx-value-id={generation.id} class="act-key">
+            Add to queue
+          </button>
+          <button phx-click="edit" phx-value-id={generation.id} class="act">Edit</button>
+          <button phx-click="dismiss" phx-value-id={generation.id} class="act-danger">
+            Discard
+          </button>
+        </:actions>
+      </.post>
     </div>
     """
   end
@@ -235,26 +234,6 @@ defmodule SuperXWeb.ReadyToPostLive do
   defp label_for("trending"), do: "Trending"
   defp label_for("viral"), do: "Viral"
   defp label_for(other), do: String.capitalize(other)
-
-  defp pad(n), do: n |> to_string() |> String.pad_leading(2, "0")
-
-  defp source_url(%{author_handle: handle, x_post_id: id}),
-    do: "https://x.com/#{handle}/status/#{id}"
-
-  defp format_count(n) when n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"
-  defp format_count(n) when n >= 10_000, do: "#{round(n / 1_000)}K"
-  defp format_count(n) when n >= 1_000, do: "#{Float.round(n / 1_000, 1)}K"
-  defp format_count(n), do: to_string(n)
-
-  # Coarse relative time — the exact minute never matters on this screen.
-  defp relative(datetime) do
-    case DateTime.diff(DateTime.utc_now(), datetime, :second) do
-      s when s < 3600 -> "just now"
-      s when s < 86_400 -> "#{div(s, 3600)}h ago"
-      s when s < 172_800 -> "yesterday"
-      s -> "#{div(s, 86_400)}d ago"
-    end
-  end
 
   defp format_when(nil, _tz), do: "later"
 

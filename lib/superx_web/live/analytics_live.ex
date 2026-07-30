@@ -27,6 +27,7 @@ defmodule SuperXWeb.AnalyticsLive do
     |> assign(:summary, Analytics.summary(account, socket.assigns.days))
     |> assign(:activity, Analytics.posting_activity(account, 182))
     |> assign(:streak, Analytics.current_streak(account))
+    |> assign(:recent, Analytics.recent_posts(account, 5))
   end
 
   @impl true
@@ -86,6 +87,29 @@ defmodule SuperXWeb.AnalyticsLive do
         No history yet. SuperX records a snapshot each night — check back tomorrow.
       </p>
     </div>
+
+    <section :if={@recent != []} class="mt-9 border-t border-border pt-6">
+      <div class="flex items-baseline justify-between">
+        <h2 class="text-[15px] font-semibold">Recently published</h2>
+        <.link navigate={~p"/queue?tab=posted"} class="act text-xs">All posts</.link>
+      </div>
+
+      <div class="mt-4 flex flex-col gap-3">
+        <.post
+          :for={post <- @recent}
+          author={author(@current_x_account)}
+          segments={segments(post)}
+        >
+          <:meta>{ago(post.published_at)}</:meta>
+
+          <:actions>
+            <a :if={post.permalink} href={post.permalink} target="_blank" rel="noopener" class="act">
+              View on 𝕏
+            </a>
+          </:actions>
+        </.post>
+      </div>
+    </section>
     """
   end
 

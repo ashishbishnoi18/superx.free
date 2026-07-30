@@ -6,7 +6,7 @@ defmodule SuperXWeb.InspirationLive do
 
   use SuperXWeb, :live_view
 
-  alias SuperX.Content.{Corpus, VoiceProfile}
+  alias SuperX.Content.{Corpus, VoiceProfile, Writer}
 
   @ranges [{"day", "Past 24 hours", 1}, {"week", "Past week", 7}, {"month", "Past month", 30},
            {"all", "All time", nil}]
@@ -71,6 +71,48 @@ defmodule SuperXWeb.InspirationLive do
 
   def handle_event("suggest", %{"topic" => topic}, socket) do
     {:noreply, socket |> assign(:query, topic) |> search()}
+  end
+
+  # Browsing the corpus and wanting to use *this* post is the obvious next
+  # move, so it's one click rather than a trip back to Ready to Post and a
+  # hope that the same post gets picked.
+  def handle_event("draft_from", %{"id" => id}, socket) do
+    case Enum.find(socket.assigns.results, &(&1.id == id)) do
+      nil ->
+        {:noreply, socket}
+
+      source ->
+        user = socket.assigns.current_user
+        account = socket.assigns.current_x_account
+        parent = self()
+
+        Task.Supervisor.start_child(SuperX.TaskSupervisor, fn ->
+          send(parent, {:drafted, Writer.generate(user, account, source: source)})
+        end)
+
+        {:noreply, put_flash(socket, :info, "Writing a draft from that post…")}
+    end
+  end
+
+  @impl true
+  def handle_info({:drafted, {:ok, _generation}}, socket) do
+    send(self(), :refresh_quota)
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "Draft ready.")
+     |> push_navigate(to: ~p"/ready-to-post")}
+  end
+
+  def handle_info({:drafted, {:error, :quota_exceeded, _details}}, socket) do
+    {:noreply, put_flash(socket, :error, "You're out of AI credits for this window.")}
+  end
+
+  def handle_info({:drafted, {:error, reason}}, socket) do
+    require Logger
+    Logger.warning("Draft-from-corpus failed: #{inspect(reason)}")
+
+    {:noreply, put_flash(socket, :error, "Couldn't write that draft. Try again in a moment.")}
   end
 
   @impl true
@@ -140,47 +182,32 @@ defmodule SuperXWeb.InspirationLive do
       </p>
     </div>
 
-    <div class="flex flex-col">
-      <article
+    <%!-- Masonry rather than a row grid: posts vary a lot in length, and
+          equal-height cards would either clip the long ones or leave the
+          short ones swimming in dead space. --%>
+    <div class="columns-1 gap-4 lg:columns-2 [&>*]:mb-4">
+      <.post
         :for={post <- @results}
-        class="grid grid-cols-1 gap-8 border-t border-border py-5 last:border-b sm:grid-cols-[minmax(0,1fr)_8rem]"
+        author={corpus_author(post)}
+        segments={segments(post)}
+        class="break-inside-avoid"
       >
-        <div class="min-w-0">
-          <p class="mb-1.5 text-[12px]">
-            <a
-              href={"https://x.com/#{post.author_handle}"}
-              target="_blank"
-              rel="noopener"
-              class="hover-ember font-medium"
-            >
-              {post.author_name || post.author_handle}
-            </a>
-            <span class="text-faint">@{post.author_handle}</span>
-          </p>
-          <a
-            href={"https://x.com/#{post.author_handle}/status/#{post.x_post_id}"}
-            target="_blank"
-            rel="noopener"
-            class="hover-ember block max-w-[60ch] whitespace-pre-wrap leading-[1.6]"
-          >{post.text}</a>
-        </div>
+        <%!-- Likes and reposts only. Replies measure argument, not reach,
+              and at masonry widths a third figure pushes the actions onto
+              their own line for some cards and not others. --%>
+        <:footer>
+          <.metrics likes={post.likes} reposts={post.reposts} />
+        </:footer>
 
-        <div class="nb-mono flex flex-row gap-4 text-[11px] text-faint sm:flex-col sm:gap-0.5 sm:text-right">
-          <span><b class="font-medium text-muted-foreground">{format_count(post.likes)}</b> likes</span>
-          <span>{format_count(post.reposts)} reposts</span>
-          <span>{relative(post.posted_at)}</span>
-        </div>
-      </article>
+        <:actions>
+          <button phx-click="draft_from" phx-value-id={post.id} class="act-key">
+            Write one like this
+          </button>
+          <a href={corpus_url(post)} target="_blank" rel="noopener" class="act">Open</a>
+        </:actions>
+      </.post>
     </div>
     """
-  end
-
-  defp relative(datetime) do
-    case DateTime.diff(DateTime.utc_now(), datetime, :second) do
-      s when s < 3600 -> "just now"
-      s when s < 86_400 -> "#{div(s, 3600)}h ago"
-      s -> "#{div(s, 86_400)}d ago"
-    end
   end
 
   defp format_count(n) when n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"

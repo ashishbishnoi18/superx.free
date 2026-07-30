@@ -190,7 +190,12 @@ defmodule SuperXWeb.QueueLive do
       </:action>
     </Layouts.page_header>
 
-    <.composer :if={@editing} segments={@segments} editing={@editing} />
+    <.composer
+      :if={@editing}
+      segments={@segments}
+      editing={@editing}
+      account={@current_x_account}
+    />
 
     <div class="mb-6 flex gap-6 border-b border-border">
       <.link
@@ -215,13 +220,25 @@ defmodule SuperXWeb.QueueLive do
       >
         <div class="nb-mono text-[11px] leading-[1.9] text-muted-foreground">
           {format_time(post, @current_user.timezone)}
-          <span :if={Post.thread?(post)} class="block text-faint">
-            thread · {length(post.segments)}
-          </span>
         </div>
 
         <div class="min-w-0">
-          <p class="max-w-[58ch] whitespace-pre-wrap leading-[1.55]"><%= Post.preview_text(post) %></p>
+          <%!-- A thread shows every segment, connected, rather than the
+                first one and a count — you're checking what goes out, and
+                the tail is where mistakes hide. --%>
+          <div class="post-thread">
+            <div :for={segment <- post.segments} class="post-seg">
+              <div class="flex gap-2.5">
+                <Layouts.avatar
+                  :if={Post.thread?(post)}
+                  src={@current_x_account.avatar_url}
+                  size="size-6"
+                  class="mt-0.5"
+                />
+                <p class="max-w-[58ch] whitespace-pre-wrap leading-[1.55]">{segment["text"]}</p>
+              </div>
+            </div>
+          </div>
 
           <p :if={post.status == "failed"} class="mt-1.5 text-[12px] text-destructive">
             {post.error}
@@ -303,52 +320,62 @@ defmodule SuperXWeb.QueueLive do
 
   attr :segments, :list, required: true
   attr :editing, :any, required: true
+  attr :account, :map, required: true
 
+  # Composing is the one screen where you're acting *as* the account, so it
+  # carries the same avatar-and-thread shape a post does — what you're
+  # writing should look like what will ship.
   defp composer(assigns) do
+    assigns = assign(assigns, :over, Enum.any?(assigns.segments, &(String.length(&1) > 280)))
+
     ~H"""
-    <section class="mb-8 border-y border-border py-6">
-      <div class="mb-4 flex items-center justify-between">
+    <section class="post mb-8">
+      <div class="mb-3 flex items-center justify-between">
         <span class="nb-eyebrow">
           {if is_struct(@editing), do: "Editing", else: "New post"}
         </span>
         <button phx-click="close_composer" class="act text-xs">Close</button>
       </div>
 
-      <div class="flex flex-col gap-4">
-        <div :for={{text, index} <- Enum.with_index(@segments)}>
-          <textarea
-            class="textarea"
-            rows="4"
-            placeholder={if index == 0, do: "What's happening?", else: "Continue the thread…"}
-            phx-blur="update_segment"
-            phx-value-index={index}
-            name="value"
-          >{text}</textarea>
+      <div class="post-thread">
+        <div :for={{text, index} <- Enum.with_index(@segments)} class="post-seg">
+          <div class="flex gap-2.5">
+            <Layouts.avatar src={@account.avatar_url} size="size-6" class="mt-0.5" />
 
-          <div class="mt-1.5 flex items-center justify-between text-[11px]">
-            <span class={[
-              "nb-mono",
-              if(String.length(text) > 280, do: "text-destructive", else: "text-faint")
-            ]}>
-              {String.length(text)} / 280
-            </span>
+            <div class="min-w-0 flex-1">
+              <textarea
+                class="textarea"
+                rows={if index == 0, do: "4", else: "3"}
+                placeholder={if index == 0, do: "What's happening?", else: "Continue the thread…"}
+                phx-blur="update_segment"
+                phx-value-index={index}
+                name="value"
+              >{text}</textarea>
 
-            <button
-              :if={length(@segments) > 1}
-              phx-click="remove_segment"
-              phx-value-index={index}
-              class="act-danger text-xs"
-            >
-              Remove
-            </button>
+              <div class="mt-1.5 flex items-center justify-between">
+                <.char_ring count={String.length(text)} />
+
+                <button
+                  :if={length(@segments) > 1}
+                  phx-click="remove_segment"
+                  phx-value-index={index}
+                  class="act-danger text-xs"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="mt-5 flex items-center gap-6 text-xs">
-        <button phx-click="add_to_queue" class="act-key">Add to queue</button>
+      <div class="mt-4 flex flex-wrap items-center gap-5 border-t border-border pt-3 text-xs">
+        <button phx-click="add_to_queue" class="act-key" disabled={@over}>Add to queue</button>
         <button phx-click="save_draft" class="act">Save as draft</button>
         <button phx-click="add_segment" class="act">Continue as thread</button>
+        <span :if={@over} class="ml-auto text-[11px] text-destructive">
+          One post is over the limit.
+        </span>
       </div>
     </section>
     """

@@ -86,6 +86,7 @@ defmodule SuperXWeb do
       import Phoenix.HTML
       # Core UI components
       import SuperXWeb.CoreComponents
+      import SuperXWeb.PostComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

@@ -135,7 +135,7 @@ defmodule SuperXWeb.HomeLive do
             class="grid grid-cols-1 gap-7 border-t border-border py-4 last:border-b sm:grid-cols-[7.5rem_minmax(0,1fr)]"
           >
             <span class="nb-mono text-[11px] text-muted-foreground">
-              {format_when(post.scheduled_at, @current_user.timezone)}
+              {short_when(post.scheduled_at, @current_user.timezone)}
             </span>
             <p class="max-w-[58ch] whitespace-pre-wrap leading-[1.55]"><%= truncate(SuperX.Content.Post.preview_text(post), 220) %></p>
           </div>
@@ -152,28 +152,23 @@ defmodule SuperXWeb.HomeLive do
           No drafts waiting. SuperX writes new ones overnight.
         </p>
 
-        <div class="flex flex-col">
-          <article
+        <div class="mt-3 flex flex-col gap-3">
+          <.post
             :for={generation <- @shelf}
-            class="grid grid-cols-1 gap-7 border-t border-border py-5 last:border-b sm:grid-cols-[7.5rem_minmax(0,1fr)]"
+            author={author(@current_x_account)}
+            segments={segments(generation)}
           >
-            <span :if={generation.source_likes} class="text-[11px] text-faint">
-              {Generation.attribution(generation)}
-            </span>
-            <span :if={!generation.source_likes} />
+            <:meta>{Generation.attribution(generation) || ago(generation.inserted_at)}</:meta>
 
-            <div>
-              <p class="max-w-[62ch] whitespace-pre-wrap text-[15px] leading-[1.6]"><%= Generation.text(generation) %></p>
-              <div class="mt-3 flex items-center gap-5 text-xs">
-                <button phx-click="accept" phx-value-id={generation.id} class="act-key">
-                  Add to queue
-                </button>
-                <button phx-click="dismiss" phx-value-id={generation.id} class="act-danger">
-                  Discard
-                </button>
-              </div>
-            </div>
-          </article>
+            <:actions>
+              <button phx-click="accept" phx-value-id={generation.id} class="act-key">
+                Add to queue
+              </button>
+              <button phx-click="dismiss" phx-value-id={generation.id} class="act-danger">
+                Discard
+              </button>
+            </:actions>
+          </.post>
         </div>
       </section>
     </div>
@@ -189,12 +184,14 @@ defmodule SuperXWeb.HomeLive do
     if String.length(text) > max, do: String.slice(text, 0, max) <> "…", else: text
   end
 
-  defp format_when(nil, _tz), do: ""
+  # Matches the Queue's format — the same datum should not be written two
+  # ways in one app.
+  defp short_when(nil, _tz), do: "—"
 
-  defp format_when(datetime, timezone) do
+  defp short_when(datetime, timezone) do
     case DateTime.shift_zone(datetime, timezone, Tz.TimeZoneDatabase) do
-      {:ok, local} -> Calendar.strftime(local, "%a %-d %b at %-I:%M %p")
-      _ -> Calendar.strftime(datetime, "%a %-d %b at %-I:%M %p UTC")
+      {:ok, local} -> Calendar.strftime(local, "%-d %b %H:%M")
+      _ -> Calendar.strftime(datetime, "%-d %b %H:%M")
     end
   end
 end

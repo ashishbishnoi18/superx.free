@@ -408,6 +408,90 @@
   .measure-wide { max-width: 76rem; margin-inline: auto; }
 
   .divide-line > * + * { border-top: 1px solid var(--border); }
+
+  /* ── Posts ────────────────────────────────────────────────────────────
+     The one place the editorial system yields to a container.
+
+     Everything else in this app is our own data — schedules, settings,
+     metrics — and reads correctly as hairlines and air. An X post is not
+     our data: it is an artifact from another surface, with an author and
+     social proof attached. Scanning Inspiration means comparing *posts*,
+     and a hairline row flattens the author into metadata rather than the
+     person who wrote it.
+
+     So a post gets object-hood. It stays honest to the constitution by
+     using the existing `--card` token — one breath above the page — with
+     a hairline and no shadow. Depth still isn't how anything here is
+     signalled. */
+  .post {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 0.875rem 1rem 0.75rem;
+    transition: border-color 0.12s ease;
+  }
+  .post:hover { border-color: var(--line-strong); }
+
+  .post-head { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+  .post-name { font-weight: 500; }
+  .post-handle { color: var(--faint); }
+
+  .post-body {
+    white-space: pre-wrap;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    letter-spacing: -0.008em;
+    overflow-wrap: anywhere;
+  }
+
+  /* A thread reads as one object: segments stacked with the connector X
+     itself uses, rather than a "thread · 3" label the reader has to decode. */
+  .post-thread { display: flex; flex-direction: column; }
+
+  .post-seg { position: relative; padding-bottom: 0.875rem; }
+  .post-seg:last-child { padding-bottom: 0; }
+
+  .post-seg:not(:last-child)::before {
+    content: "";
+    position: absolute;
+    left: 0.6875rem;               /* centre of a size-6 avatar */
+    top: 1.875rem;
+    bottom: 0.25rem;
+    width: 1px;
+    background: var(--border);
+  }
+
+  /* Engagement figures. Always mono and tabular so numbers line up
+     between cards, which is the whole point of showing them. */
+  .metrics {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-feature-settings: "tnum";
+    color: var(--faint);
+  }
+  .metrics b { font-weight: 500; color: var(--muted-foreground); }
+
+  /* Character budget as a ring that fills — an X convention, and it reads
+     at a glance in a way a number does not. Turns ember near the limit and
+     destructive past it. */
+  .char-ring {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 9999px;
+    background: conic-gradient(var(--ring-color) var(--ring-pct), var(--border) 0);
+    position: relative;
+    flex: none;
+  }
+  .char-ring::after {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border-radius: 9999px;
+    background: var(--card);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
