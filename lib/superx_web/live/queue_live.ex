@@ -7,7 +7,7 @@ defmodule SuperXWeb.QueueLive do
   use SuperXWeb, :live_view
 
   alias SuperX.Content
-  alias SuperX.Content.Post
+  alias SuperX.Content.{Post, Week}
 
   @tabs ~w(scheduled draft posted failed)
 
@@ -18,6 +18,8 @@ defmodule SuperXWeb.QueueLive do
      |> assign(page_title: "Queue")
      |> assign(:tabs, @tabs)
      |> assign(:tab, "scheduled")
+     |> assign(:view, "list")
+     |> assign(:week_anchor, nil)
      |> assign(:editing, nil)
      |> assign(:segments, [""])
      |> load()}
@@ -43,7 +45,24 @@ defmodule SuperXWeb.QueueLive do
     |> assign(:posts, Content.list_posts(account, socket.assigns.tab))
     |> assign(:counts, Content.post_counts(account))
     |> assign(:next_slot, Content.next_open_slot_at(account, socket.assigns.current_user))
+    |> assign_week()
   end
+
+  # Only built when the calendar is on screen — it costs a query and the
+  # list view never reads it.
+  defp assign_week(%{assigns: %{view: "calendar"}} = socket) do
+    assign(
+      socket,
+      :week,
+      Week.build(
+        socket.assigns.current_x_account,
+        socket.assigns.current_user,
+        socket.assigns.week_anchor
+      )
+    )
+  end
+
+  defp assign_week(socket), do: assign(socket, :week, nil)
 
   defp open_editor(socket, id) do
     case Content.get_post(socket.assigns.current_user, id) do
@@ -131,6 +150,21 @@ defmodule SuperXWeb.QueueLive do
     end
   end
 
+  def handle_event("set_view", %{"view" => view}, socket) do
+    {:noreply, socket |> assign(:view, view) |> assign(:week_anchor, nil) |> load()}
+  end
+
+  def handle_event("shift_week", %{"by" => by}, socket) do
+    days = String.to_integer(by) * 7
+    base = socket.assigns.week_anchor || Week.today_in(socket.assigns.current_user.timezone)
+
+    {:noreply, socket |> assign(:week_anchor, Date.add(base, days)) |> load()}
+  end
+
+  def handle_event("this_week", _params, socket) do
+    {:noreply, socket |> assign(:week_anchor, nil) |> load()}
+  end
+
   # --- Queue actions -------------------------------------------------------
 
   def handle_event("unschedule", %{"id" => id}, socket) do
@@ -197,7 +231,28 @@ defmodule SuperXWeb.QueueLive do
       account={@current_x_account}
     />
 
-    <div class="mb-6 flex gap-6 border-b border-border">
+    <div class="mb-5 flex items-center gap-5 text-xs">
+      <button
+        :for={{value, label} <- [{"list", "List"}, {"calendar", "Calendar"}]}
+        phx-click="set_view"
+        phx-value-view={value}
+        class={if @view == value, do: "act-key", else: "act"}
+      >
+        {label}
+      </button>
+
+      <div :if={@view == "calendar"} class="ml-auto flex items-center gap-5">
+        <button phx-click="shift_week" phx-value-by="-1" class="act">← Earlier</button>
+        <button phx-click="this_week" class="nb-mono text-[11px] text-muted-foreground">
+          {Week.range_label(@week.start)}
+        </button>
+        <button phx-click="shift_week" phx-value-by="1" class="act">Later →</button>
+      </div>
+    </div>
+
+    <.calendar :if={@view == "calendar"} week={@week} />
+
+    <div :if={@view == "list"} class="mb-6 flex gap-6 border-b border-border">
       <.link
         :for={tab <- @tabs}
         patch={~p"/queue?tab=#{tab}"}
@@ -209,11 +264,11 @@ defmodule SuperXWeb.QueueLive do
       </.link>
     </div>
 
-    <div :if={@posts == []} class="py-16 text-center">
+    <div :if={@view == "list" and @posts == []} class="py-16 text-center">
       <p class="text-muted-foreground">{empty_message(@tab)}</p>
     </div>
 
-    <div class="flex flex-col">
+    <div :if={@view == "list"} class="flex flex-col">
       <article
         :for={post <- @posts}
         class="grid grid-cols-1 gap-7 border-b border-border py-5 sm:grid-cols-[7.5rem_minmax(0,1fr)_auto]"
@@ -316,6 +371,88 @@ defmodule SuperXWeb.QueueLive do
       {:ok, local} -> Calendar.strftime(local, "%-d %b %H:%M")
       _ -> Calendar.strftime(datetime, "%-d %b %H:%M")
     end
+  end
+
+  attr :week, :map, required: true
+
+  # Rows are the times the account actually posts at, not every hour — an
+  # account posting twice a week gets two rows. An empty cell is a real
+  # opening, which is what the view exists to show.
+  defp calendar(assigns) do
+    ~H"""
+    <div :if={@week.rows == []} class="border-y border-border py-14 text-center">
+      <p class="text-muted-foreground">
+        No posting times yet.
+        <.link navigate={~p"/settings"} class="act-key">Pick some</.link>
+        and the week fills in.
+      </p>
+    </div>
+
+    <div :if={@week.rows != []} class="overflow-x-auto">
+      <%!-- Fixed layout: without it a filled cell widens its column and the
+            week stops reading as a grid, which is the only reason to show
+            it this way. --%>
+      <table class="w-full min-w-[46rem] table-fixed border-collapse">
+        <thead>
+          <tr>
+            <th class="w-14 border-b border-border pb-2 text-left"></th>
+            <th
+              :for={date <- @week.days}
+              class="border-b border-border pb-2 text-left font-normal"
+            >
+              <span class={[
+                "nb-eyebrow text-[10px]",
+                date == @week.today && "text-primary"
+              ]}>
+                {Week.day_label(date)} {Calendar.strftime(date, "%-d")}
+              </span>
+            </th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <tr :for={row <- @week.rows}>
+            <td class="border-b border-border py-2 pr-3 align-top">
+              <span class="nb-mono text-[11px] text-faint">
+                {Calendar.strftime(row.time, "%H:%M")}
+              </span>
+            </td>
+
+            <td
+              :for={cell <- row.cells}
+              class="border-b border-l border-border p-2 align-top"
+            >
+              <%!-- No slot on this day at this time: not an opening, just
+                    outside the schedule. --%>
+              <span :if={is_nil(cell.slot)} class="text-faint">·</span>
+
+              <.link
+                :if={cell.slot && cell.post}
+                patch={~p"/queue/#{cell.post.id}"}
+                class="hover-ember block text-[12px] leading-[1.45]"
+              >
+                {truncate(Post.preview_text(cell.post), 70)}
+              </.link>
+
+              <span
+                :if={cell.slot && is_nil(cell.post)}
+                class={[
+                  "nb-mono text-[11px]",
+                  if(cell.past?, do: "text-faint line-through", else: "text-muted-foreground")
+                ]}
+              >
+                {if cell.past?, do: "missed", else: "open"}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    """
+  end
+
+  defp truncate(text, max) do
+    if String.length(text) > max, do: String.slice(text, 0, max) <> "…", else: text
   end
 
   attr :segments, :list, required: true
