@@ -168,19 +168,19 @@ defmodule SuperX.AI.Prompts do
   """
   def rewrite_from_corpus(%CorpusPost{} = source, topic, examples) do
     """
-    Here is a post that performed unusually well:
+    Here is a post that performed unusually well. You are going to borrow
+    how it is *built*, and nothing else.
 
     <reference_post>
     #{source.text}
     </reference_post>
 
-    It earned #{source.likes} likes and #{source.reposts} reposts.
+    First, work out its shape in the abstract — not what it says. Something
+    like: "opens with a claim about a group, names two contrasting traits,
+    closes by asserting the reader has it backwards." That description is
+    what you are allowed to reuse.
 
-    Study what makes it work structurally — how it opens, how it builds,
-    how long the lines are, where the turn is, how it lands. Ignore its
-    subject entirely.
-
-    Now write a new post using that same structure, about:
+    Now write a new post with that shape, about:
 
     <topic>
     #{topic}
@@ -188,9 +188,15 @@ defmodule SuperX.AI.Prompts do
 
     #{examples_block(examples)}
 
-    The result must be about the topic above, in the author's own voice, and
-    must not reference the post you were shown. Someone who read both should
-    see no resemblance in subject — only in shape.
+    Hard rule: do not reuse any phrase of three or more consecutive words
+    from the reference post. Not its opening, not its closing line, not its
+    distinctive turns of phrase. If your draft contains a recognisable
+    sentence from it, you have copied rather than learned, and the post is
+    unusable — the author would be publishing someone else's line under
+    their own name.
+
+    Someone shown both posts should be unable to tell that one came from
+    the other.
     """
   end
 

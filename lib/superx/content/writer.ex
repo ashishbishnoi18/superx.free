@@ -60,41 +60,112 @@ defmodule SuperX.Content.Writer do
       {:error, :no_topics}
     else
       source = opts[:source] || pick_source(account, voice, topic)
-      examples = Voice.examples(account, voice)
+      write(user, account, voice, topic, kind, source, 1)
+    end
+  end
 
-      prompt =
-        case source do
-          nil -> Prompts.write_from_topic(topic, examples)
-          post -> Prompts.rewrite_from_corpus(post, topic, examples)
+  # Attempts is bounded at two: one with the source, one without it. A
+  # model that has already latched onto the reference's phrasing tends to
+  # keep doing so, so the retry removes the reference rather than asking
+  # more politely.
+  defp write(user, account, voice, topic, kind, source, attempt) do
+    prompt =
+      case source do
+        nil -> Prompts.write_from_topic(topic, Voice.examples(account, voice))
+        post -> Prompts.rewrite_from_corpus(post, topic, Voice.examples(account, voice))
+      end
+
+    case AI.structured(prompt, Prompts.post_schema(),
+           system: Prompts.writer_system(voice, account),
+           model: AI.writer_model(),
+           temperature: 1.0,
+           max_tokens: 1200,
+           tool_description: "Return the written post."
+         ) do
+      {:ok, %{"segments" => segments}} when is_list(segments) and segments != [] ->
+        text = segments |> Enum.map_join(" ", &to_string/1) |> String.trim()
+
+        cond do
+          text == "" ->
+            retry_or_fail(user, account, voice, topic, kind, source, attempt, :blank)
+
+          source && attempt == 1 && derivative?(text, source.text) ->
+            # The whole premise is borrowing shape, not words. A post that
+            # reuses the reference's phrasing would publish someone else's
+            # line under this user's name.
+            Logger.info("Discarding derivative draft; rewriting without the reference")
+            write(user, account, voice, topic, kind, nil, attempt + 1)
+
+          true ->
+            store(user, account, kind, source, segments)
         end
 
-      case AI.structured(prompt, Prompts.post_schema(),
-             system: Prompts.writer_system(voice, account),
-             model: AI.writer_model(),
-             temperature: 1.0,
-             max_tokens: 1200,
-             tool_description: "Return the written post."
-           ) do
-        {:ok, %{"segments" => segments}} when segments != [] ->
-          Content.create_generation(%{
-            user_id: user.id,
-            x_account_id: account.id,
-            segments: Enum.map(segments, &%{"text" => String.trim(&1), "media_ids" => []}),
-            kind: kind,
-            source_corpus_post_id: source && source.id,
-            source_likes: source && source.likes,
-            model: AI.writer_model(),
-            credits_cost: @credit_cost,
-            score: source && source.engagement_score
-          })
+      # A tool call with no arguments — the model answered the shape but
+      # not the question. Seen in practice, so it retries rather than
+      # surfacing as a failed generation the user paid for.
+      {:ok, other} ->
+        Logger.debug("Writer returned no segments: #{inspect(other)}")
+        retry_or_fail(user, account, voice, topic, kind, source, attempt, {:empty_generation, other})
 
-        {:ok, other} ->
-          {:error, {:empty_generation, other}}
+      # A reasoning model that spent its turn thinking and never called the
+      # tool. Transient, so it gets the same retry as an empty call rather
+      # than costing the user a credit for nothing.
+      {:error, {:no_tool_use, _} = reason} ->
+        retry_or_fail(user, account, voice, topic, kind, source, attempt, reason)
 
-        {:error, reason} ->
-          {:error, reason}
-      end
+      {:error, reason} ->
+        {:error, reason}
     end
+  end
+
+  defp retry_or_fail(user, account, voice, topic, kind, source, attempt, reason) do
+    if attempt < 2 do
+      write(user, account, voice, topic, kind, source, attempt + 1)
+    else
+      {:error, reason}
+    end
+  end
+
+  defp store(user, account, kind, source, segments) do
+    Content.create_generation(%{
+      user_id: user.id,
+      x_account_id: account.id,
+      segments: Enum.map(segments, &%{"text" => String.trim(to_string(&1)), "media_ids" => []}),
+      kind: kind,
+      source_corpus_post_id: source && source.id,
+      source_likes: source && source.likes,
+      model: AI.writer_model(),
+      credits_cost: @credit_cost,
+      score: source && source.engagement_score
+    })
+  end
+
+  # Shared runs of six words are the signature of template substitution:
+  # the model keeps the reference's skeleton and swaps the nouns, which
+  # leaves its distinctive closing line intact.
+  #
+  # Six, not five: at five this fires on ordinary idiom — "one of the
+  # things that" is exactly five words and appears in unrelated posts all
+  # the time. Six still catches the real cases, which turn on a lifted
+  # clause rather than a lifted phrase.
+  @ngram 6
+
+  @doc false
+  def derivative?(text, source_text) do
+    theirs = ngrams(source_text)
+
+    text
+    |> ngrams()
+    |> Enum.any?(&MapSet.member?(theirs, &1))
+  end
+
+  defp ngrams(text) do
+    text
+    |> String.downcase()
+    |> String.replace(~r/[^\w\s]/u, " ")
+    |> String.split(~r/\s+/, trim: true)
+    |> Enum.chunk_every(@ngram, 1, :discard)
+    |> MapSet.new()
   end
 
   # Rotate through the user's topics rather than always taking the first,

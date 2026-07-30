@@ -194,6 +194,7 @@ defmodule SuperX.Content.Corpus do
     CorpusPost
     |> where([c], c.likes >= ^(opts[:min_likes] || 500))
     |> where([c], c.id not in subquery(used))
+    |> usable_as_template()
     |> filter_topics(topics)
     |> filter_since(opts[:since])
     # Randomised among the strong candidates so two runs don't produce
@@ -204,6 +205,29 @@ defmodule SuperX.Content.Corpus do
     |> order_by(fragment("random()"))
     |> limit(^limit)
     |> Repo.all()
+  end
+
+  # Not every post that performed well is worth learning from. A ranked
+  # list of statistics, a link dump, or a one-line joke all earn enormous
+  # engagement and none of them carry a shape that transfers to another
+  # subject — the writer imitates their cadence and produces nonsense.
+  #
+  # These are cheap structural proxies rather than a classifier pass: the
+  # cost of a false negative is one fewer candidate, and there are
+  # millions.
+  # `?` cannot appear inside a fragment's SQL — Ecto reads it as a
+  # parameter placeholder — so the patterns spell out alternations that
+  # would normally use it.
+  defp usable_as_template(query) do
+    query
+    # Too short to have a structure worth borrowing.
+    |> where([c], fragment("length(?) >= 120", c.text))
+    # Opens with a link, so the post isn't doing the work.
+    |> where([c], fragment("? !~* '^[[:space:]]*(http|https)://'", c.text))
+    # Heavily broken into lines: the shape is a list, not an argument.
+    |> where([c], fragment("(length(?) - length(replace(?, E'\\n', ''))) < 6", c.text, c.text))
+    # Opens with "1." or "1)" — a ranked list, same problem.
+    |> where([c], fragment("? !~ '^[[:space:]]*[0-9]+[.)][[:space:]]'", c.text))
   end
 
   @doc "Posts still missing an embedding, for the backfill job."
