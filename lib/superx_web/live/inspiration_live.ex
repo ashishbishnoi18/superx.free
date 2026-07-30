@@ -76,130 +76,111 @@ defmodule SuperXWeb.InspirationLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">Inspiration</h1>
-        <p class="mt-1 text-sm" style="color: var(--text-secondary)">
-          {format_count(@corpus_size)} posts that outperformed. Search for structure worth borrowing.
-        </p>
-      </div>
+    <Layouts.page_header
+      title="Inspiration"
+      description={"#{format_count(@corpus_size)} posts that outperformed their author's baseline. Search for structure worth borrowing, not subjects worth copying."}
+    />
 
-      <form phx-change="search" phx-submit="search" class="space-y-3">
-        <div class="relative">
-          <.icon
-            name="hero-magnifying-glass"
-            class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2"
-            style="color: var(--text-muted)"
-          />
-          <input
-            type="search"
-            name="query"
-            value={@query}
-            placeholder="Search by keyword…"
-            class="input pl-9"
-            phx-debounce="300"
-            autocomplete="off"
-          />
-        </div>
-      </form>
+    <form phx-change="search" phx-submit="search">
+      <input
+        type="search"
+        name="query"
+        value={@query}
+        placeholder="Search the library…"
+        class="input text-[15px]"
+        phx-debounce="300"
+        autocomplete="off"
+        aria-label="Search the library"
+      />
+    </form>
 
-      <div class="flex flex-wrap gap-2">
-        <button
-          :for={topic <- @suggestions}
-          phx-click="suggest"
-          phx-value-topic={topic}
-          class={["badge cursor-pointer", @query == topic && "badge-ember"]}
-        >
-          {topic}
-        </button>
-      </div>
+    <div class="flex flex-wrap gap-5 py-3 text-xs">
+      <button
+        :for={{key, label, _} <- @ranges}
+        phx-click="set_range"
+        phx-value-range={key}
+        class={if @range == key, do: "act-key", else: "act"}
+      >
+        {label}
+      </button>
 
-      <div class="flex flex-wrap items-center gap-4 text-sm">
-        <div class="flex items-center gap-1.5">
-          <span style="color: var(--text-muted)">Posted</span>
-          <select
-            class="select w-auto py-1 text-sm"
-            phx-change="set_range"
-            name="range"
-          >
-            <option :for={{key, label, _} <- @ranges} value={key} selected={@range == key}>
-              {label}
-            </option>
-          </select>
-        </div>
+      <span class="text-border">·</span>
 
-        <div class="flex items-center gap-1.5">
-          <span style="color: var(--text-muted)">Minimum likes</span>
-          <select
-            class="select w-auto py-1 text-sm"
-            phx-change="set_min_likes"
-            name="min_likes"
-          >
-            <option :for={n <- [0, 100, 500, 1000, 5000, 10_000]} value={n} selected={@min_likes == n}>
-              {format_count(n)}
-            </option>
-          </select>
-        </div>
-      </div>
+      <button
+        :for={n <- [100, 500, 5000, 20_000]}
+        phx-click="set_min_likes"
+        phx-value-min_likes={n}
+        class={if @min_likes == n, do: "act-key", else: "act"}
+      >
+        {format_count(n)}+ likes
+      </button>
+    </div>
 
-      <div :if={@corpus_size == 0} class="card p-10 text-center">
-        <.icon name="hero-inbox" class="mx-auto size-8" style="color: var(--text-muted)" />
-        <p class="mt-3 font-semibold">The library is empty</p>
-        <p class="mx-auto mt-1 max-w-md text-sm" style="color: var(--text-secondary)">
-          Run the ingestion worker to populate it. See
-          <code class="font-mono text-xs">scraper/README.md</code>
-          for how to point it at the topics you care about.
-        </p>
-      </div>
+    <div class="flex flex-wrap gap-4 pb-6 text-xs">
+      <button
+        :for={topic <- @suggestions}
+        phx-click="suggest"
+        phx-value-topic={topic}
+        class={if @query == topic, do: "act-key", else: "act"}
+      >
+        {topic}
+      </button>
+    </div>
 
-      <div :if={@corpus_size > 0 and @results == []} class="card p-10 text-center">
-        <p class="text-sm" style="color: var(--text-secondary)">
-          Nothing matched. Try a broader term or a lower like threshold.
-        </p>
-      </div>
+    <div :if={@corpus_size == 0} class="py-16 text-center">
+      <p class="text-muted-foreground">
+        The library is empty. Point the ingestion worker at the topics you care about —
+        see <code class="nb-mono text-[12px] text-foreground">scraper/README.md</code>.
+      </p>
+    </div>
 
-      <div class="columns-1 gap-4 md:columns-2 lg:columns-3 [&>*]:mb-4">
-        <article :for={post <- @results} class="card card-interactive break-inside-avoid p-4">
-          <div class="flex items-center gap-2.5">
-            <Layouts.avatar src={post.author_avatar_url} size="size-9" />
-            <div class="min-w-0">
-              <p class="truncate text-sm font-semibold">{post.author_name || post.author_handle}</p>
-              <p class="truncate text-xs" style="color: var(--text-muted)">
-                @{post.author_handle} · {format_count(post.author_followers)} followers
-              </p>
-            </div>
-          </div>
+    <div :if={@corpus_size > 0 and @results == []} class="py-16 text-center">
+      <p class="text-muted-foreground">
+        Nothing matched. Try a broader term or a lower threshold.
+      </p>
+    </div>
 
-          <p class="mt-3 whitespace-pre-wrap text-[0.9375rem] leading-relaxed">{post.text}</p>
-
-          <div
-            class="mt-3 flex items-center gap-4 text-xs tabular-nums"
-            style="color: var(--text-muted)"
-          >
-            <span><.icon name="hero-heart" class="mr-0.5 inline size-3" />{format_count(post.likes)}</span>
-            <span>
-              <.icon name="hero-arrow-path-rounded-square" class="mr-0.5 inline size-3" />{format_count(
-                post.reposts
-              )}
-            </span>
-            <span>
-              <.icon name="hero-chat-bubble-oval-left" class="mr-0.5 inline size-3" />{format_count(
-                post.replies
-              )}
-            </span>
+    <div class="flex flex-col">
+      <article
+        :for={post <- @results}
+        class="grid grid-cols-1 gap-8 border-t border-border py-5 last:border-b sm:grid-cols-[minmax(0,1fr)_8rem]"
+      >
+        <div class="min-w-0">
+          <p class="mb-1.5 text-[12px]">
             <a
-              href={"https://x.com/#{post.author_handle}/status/#{post.x_post_id}"}
+              href={"https://x.com/#{post.author_handle}"}
               target="_blank"
               rel="noopener"
-              class="ml-auto hover:underline"
+              class="hover-ember font-medium"
             >
-              Open
+              {post.author_name || post.author_handle}
             </a>
-          </div>
-        </article>
-      </div>
+            <span class="text-faint">@{post.author_handle}</span>
+          </p>
+          <a
+            href={"https://x.com/#{post.author_handle}/status/#{post.x_post_id}"}
+            target="_blank"
+            rel="noopener"
+            class="hover-ember block max-w-[60ch] whitespace-pre-wrap leading-[1.6]"
+          >{post.text}</a>
+        </div>
+
+        <div class="nb-mono flex flex-row gap-4 text-[11px] text-faint sm:flex-col sm:gap-0.5 sm:text-right">
+          <span><b class="font-medium text-muted-foreground">{format_count(post.likes)}</b> likes</span>
+          <span>{format_count(post.reposts)} reposts</span>
+          <span>{relative(post.posted_at)}</span>
+        </div>
+      </article>
     </div>
     """
+  end
+
+  defp relative(datetime) do
+    case DateTime.diff(DateTime.utc_now(), datetime, :second) do
+      s when s < 3600 -> "just now"
+      s when s < 86_400 -> "#{div(s, 3600)}h ago"
+      s -> "#{div(s, 86_400)}d ago"
+    end
   end
 
   defp format_count(n) when n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"

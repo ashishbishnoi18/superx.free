@@ -141,112 +141,92 @@ defmodule SuperXWeb.ReadyToPostLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <h1 class="text-2xl font-bold tracking-tight">Ready to Post</h1>
-          <p class="mt-1 text-sm" style="color: var(--text-secondary)">
-            Drafts written in your voice, built on posts that already worked.
-          </p>
-        </div>
-
+    <Layouts.page_header
+      title="Ready to Post"
+      description="Drafts written in your voice, each built on the shape of a post that already worked. Nothing goes out until you say so."
+    >
+      <:action>
         <button
           :if={@ai_configured}
           phx-click="generate"
           disabled={@generating}
-          class="btn btn-secondary shrink-0"
+          class="act-key whitespace-nowrap"
         >
-          <.icon
-            name={if @generating, do: "hero-arrow-path", else: "hero-sparkles"}
-            class={["size-4", @generating && "animate-spin"]}
-          />
           {if @generating, do: "Writing…", else: "Write another"}
         </button>
-      </div>
+      </:action>
+    </Layouts.page_header>
 
-      <div :if={!@ai_configured} class="card p-4 text-sm">
-        <p class="font-semibold">No LLM configured</p>
-        <p class="mt-1" style="color: var(--text-secondary)">
-          Set <code class="font-mono text-xs">ANTHROPIC_API_KEY</code> to generate drafts.
-        </p>
-      </div>
+    <p :if={!@ai_configured} class="mb-8 text-muted-foreground">
+      Set <code class="nb-mono text-[12px] text-foreground">ANTHROPIC_API_KEY</code>
+      to have SuperX write drafts for you. You can still write your own.
+    </p>
 
-      <div class="flex gap-5 border-b" style="border-color: var(--border-subtle)">
-        <.link patch={~p"/ready-to-post"} class="tab" aria-selected={is_nil(@kind)}>
-          All <span class="ml-1 text-xs opacity-60">{Map.get(@counts, "all", 0)}</span>
-        </.link>
-        <.link
-          :for={kind <- ["for_you", "trending", "viral"]}
-          patch={~p"/ready-to-post?kind=#{kind}"}
-          class="tab"
-          aria-selected={@kind == kind}
-        >
-          {label_for(kind)}
-          <span class="ml-1 text-xs opacity-60">{Map.get(@counts, kind, 0)}</span>
-        </.link>
-      </div>
+    <div class="mb-6 flex gap-6 border-b border-border">
+      <.link patch={~p"/ready-to-post"} class="tab" aria-selected={is_nil(@kind)}>
+        All <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "all", 0)}</span>
+      </.link>
+      <.link
+        :for={kind <- ["for_you", "trending", "viral"]}
+        patch={~p"/ready-to-post?kind=#{kind}"}
+        class="tab"
+        aria-selected={@kind == kind}
+      >
+        {label_for(kind)}
+        <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, kind, 0)}</span>
+      </.link>
+    </div>
 
-      <div :if={@shelf == []} class="card p-10 text-center">
-        <.icon name="hero-sparkles" class="mx-auto size-8" style="color: var(--text-muted)" />
-        <p class="mt-3 font-semibold">Nothing on the shelf</p>
-        <p class="mx-auto mt-1 max-w-sm text-sm" style="color: var(--text-secondary)">
-          <span :if={!@voice || !@voice.about}>
-            Set up your voice and SuperX will start writing drafts overnight.
+    <div :if={@shelf == []} class="py-16 text-center">
+      <p class="text-muted-foreground">
+        <span :if={!@voice || !@voice.about}>
+          Nothing here yet. Teach SuperX how you write and it starts drafting overnight.
+        </span>
+        <span :if={@voice && @voice.about}>
+          Nothing waiting. SuperX refills this overnight.
+        </span>
+      </p>
+      <.link :if={!@voice || !@voice.about} navigate={~p"/voice"} class="act-key mt-4 inline-block">
+        Set up your voice
+      </.link>
+    </div>
+
+    <div class="flex flex-col">
+      <article
+        :for={{generation, index} <- Enum.with_index(@shelf, 1)}
+        class="grid grid-cols-1 gap-7 border-b border-border py-6 sm:grid-cols-[7.5rem_minmax(0,1fr)]"
+      >
+        <div class="text-[11px] leading-[1.9] text-faint">
+          <span class="nb-mono text-muted-foreground">{pad(index)}</span>
+          <span :if={generation.source_likes} class="block text-muted-foreground">
+            {format_count(generation.source_likes)} likes
           </span>
-          <span :if={@voice && @voice.about}>
-            SuperX refills this overnight, or write one now.
-          </span>
-        </p>
-        <.link :if={!@voice || !@voice.about} navigate={~p"/voice"} class="btn btn-primary mt-5">
-          Set up voice
-        </.link>
-      </div>
+          <span>{relative(generation.inserted_at)}</span>
+        </div>
 
-      <div class="columns-1 gap-4 lg:columns-2 [&>*]:mb-4">
-        <article :for={generation <- @shelf} class="card card-interactive break-inside-avoid p-4">
-          <div class="flex items-start gap-2.5">
-            <Layouts.avatar src={@current_x_account.avatar_url} size="size-9" />
-            <div class="min-w-0 flex-1">
-              <p class="text-sm font-semibold">
-                {@current_x_account.display_name}
-                <span class="font-normal" style="color: var(--text-muted)">
-                  @{@current_x_account.handle}
-                </span>
-              </p>
-              <p class="mt-1 whitespace-pre-wrap text-[0.9375rem] leading-relaxed"><%= Generation.text(generation) %></p>
-            </div>
-          </div>
+        <div>
+          <p class="max-w-[62ch] whitespace-pre-wrap text-[15px] leading-[1.6] tracking-[-0.008em]"><%= Generation.text(generation) %></p>
 
-          <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <p
-              :if={Generation.attribution(generation)}
-              class="text-xs"
-              style="color: var(--text-muted)"
+          <div class="mt-3.5 flex flex-wrap items-center gap-5 text-xs">
+            <button phx-click="accept" phx-value-id={generation.id} class="act-key">
+              Add to queue
+            </button>
+            <button phx-click="edit" phx-value-id={generation.id} class="act">Edit</button>
+            <a
+              :if={generation.source_corpus_post}
+              href={source_url(generation.source_corpus_post)}
+              target="_blank"
+              rel="noopener"
+              class="act"
             >
-              <.icon name="hero-sparkles" class="mr-0.5 inline size-3" />
-              {Generation.attribution(generation)}
-            </p>
-            <span :if={!Generation.attribution(generation)} />
-
-            <div class="flex shrink-0 items-center gap-1.5">
-              <button
-                phx-click="dismiss"
-                phx-value-id={generation.id}
-                class="btn btn-ghost btn-sm"
-                title="Dismiss"
-              >
-                <.icon name="hero-x-mark" class="size-4" />
-              </button>
-              <button phx-click="edit" phx-value-id={generation.id} class="btn btn-secondary btn-sm">
-                Edit
-              </button>
-              <button phx-click="accept" phx-value-id={generation.id} class="btn btn-primary btn-sm">
-                Add to queue
-              </button>
-            </div>
+              See the source
+            </a>
+            <button phx-click="dismiss" phx-value-id={generation.id} class="act-danger">
+              Discard
+            </button>
           </div>
-        </article>
-      </div>
+        </div>
+      </article>
     </div>
     """
   end
@@ -255,6 +235,26 @@ defmodule SuperXWeb.ReadyToPostLive do
   defp label_for("trending"), do: "Trending"
   defp label_for("viral"), do: "Viral"
   defp label_for(other), do: String.capitalize(other)
+
+  defp pad(n), do: n |> to_string() |> String.pad_leading(2, "0")
+
+  defp source_url(%{author_handle: handle, x_post_id: id}),
+    do: "https://x.com/#{handle}/status/#{id}"
+
+  defp format_count(n) when n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"
+  defp format_count(n) when n >= 10_000, do: "#{round(n / 1_000)}K"
+  defp format_count(n) when n >= 1_000, do: "#{Float.round(n / 1_000, 1)}K"
+  defp format_count(n), do: to_string(n)
+
+  # Coarse relative time — the exact minute never matters on this screen.
+  defp relative(datetime) do
+    case DateTime.diff(DateTime.utc_now(), datetime, :second) do
+      s when s < 3600 -> "just now"
+      s when s < 86_400 -> "#{div(s, 3600)}h ago"
+      s when s < 172_800 -> "yesterday"
+      s -> "#{div(s, 86_400)}d ago"
+    end
+  end
 
   defp format_when(nil, _tz), do: "later"
 

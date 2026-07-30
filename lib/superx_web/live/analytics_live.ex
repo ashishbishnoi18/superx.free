@@ -37,54 +37,54 @@ defmodule SuperXWeb.AnalyticsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
-      <div class="flex items-start justify-between gap-4">
-        <h1 class="text-2xl font-bold tracking-tight">Analytics</h1>
-
-        <form phx-change="set_range">
-          <select name="days" class="select w-auto py-1.5 text-sm">
-            <option :for={{days, label} <- @ranges} value={days} selected={@days == days}>
-              {label}
-            </option>
-          </select>
-        </form>
-      </div>
-
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <.metric
-          label="Followers"
-          value={@summary.followers}
-          change={@summary.followers_change}
-        />
-        <.metric label="Posts" value={@summary.posts} />
-        <.metric label="Impressions" value={@summary.impressions} />
-        <.metric label="Engagements" value={@summary.engagements} />
-      </div>
-
-      <section class="card p-5">
-        <div class="flex items-baseline justify-between">
-          <h2 class="font-semibold">
-            <span :if={@streak > 0}>
-              {@streak}-day streak
-            </span>
-            <span :if={@streak == 0}>No streak yet</span>
-          </h2>
-          <p class="text-xs" style="color: var(--text-muted)">Last 26 weeks</p>
+    <Layouts.page_header title="Analytics" description={"Last #{@days} days."}>
+      <:action>
+        <div class="flex gap-4 text-xs">
+          <button
+            :for={{days, label} <- @ranges}
+            phx-click="set_range"
+            phx-value-days={days}
+            class={if @days == days, do: "act-key", else: "act"}
+          >
+            {label}
+          </button>
         </div>
+      </:action>
+    </Layouts.page_header>
 
-        <.heatmap activity={@activity} />
-      </section>
+    <div class="mb-9 grid grid-cols-2 gap-px border-t border-border bg-border lg:grid-cols-4">
+      <.metric label="Followers" value={@summary.followers} change={@summary.followers_change} />
+      <.metric label="Posts" value={@summary.posts} />
+      <.metric label="Impressions" value={@summary.impressions} />
+      <.metric label="Engagements" value={@summary.engagements} />
+    </div>
 
-      <section :if={@summary.series != []} class="card p-5">
-        <h2 class="font-semibold">Followers</h2>
-        <.sparkline series={@summary.series} />
-      </section>
-
-      <div :if={@summary.series == []} class="card p-10 text-center">
-        <p class="text-sm" style="color: var(--text-secondary)">
-          No history yet. SuperX records a snapshot each night — check back tomorrow.
-        </p>
+    <section class="border-t border-border pt-6">
+      <div class="flex items-baseline justify-between">
+        <h2 class="text-[15px] font-semibold">
+          <span :if={@streak > 0}>{@streak}-day streak</span>
+          <span :if={@streak == 0}>No streak yet</span>
+        </h2>
+        <span class="nb-mono text-[11px] text-faint">last 26 weeks</span>
       </div>
+
+      <.heatmap activity={@activity} />
+    </section>
+
+    <section :if={@summary.series != []} class="mt-9 border-t border-border pt-6">
+      <div class="flex items-baseline justify-between">
+        <h2 class="text-[15px] font-semibold">Followers</h2>
+        <span class="nb-mono text-[11px] text-faint">
+          {format_count(first_value(@summary.series))} → {format_count(@summary.followers)}
+        </span>
+      </div>
+      <.sparkline series={@summary.series} />
+    </section>
+
+    <div :if={@summary.series == []} class="py-16 text-center">
+      <p class="text-muted-foreground">
+        No history yet. SuperX records a snapshot each night — check back tomorrow.
+      </p>
     </div>
     """
   end
@@ -95,21 +95,23 @@ defmodule SuperXWeb.AnalyticsLive do
 
   defp metric(assigns) do
     ~H"""
-    <div class="card p-4">
-      <p class="text-xs font-semibold uppercase tracking-wide" style="color: var(--text-muted)">
-        {@label}
+    <div class="bg-background px-5 py-4">
+      <p class="text-[11px] text-faint">{@label}</p>
+      <p class="nb-display mt-1 text-[1.875rem] font-semibold leading-[1.1] tracking-[-0.035em] tabular-nums">
+        {format_count(@value)}
       </p>
-      <p class="mt-1.5 text-3xl font-bold tabular-nums">{format_count(@value)}</p>
       <p
         :if={@change && @change != 0}
-        class={["mt-1 text-xs font-medium tabular-nums", @change > 0 && "text-ember-600"]}
-        style={@change < 0 && "color: var(--text-muted)"}
+        class={["nb-mono mt-0.5 text-[11px]", if(@change > 0, do: "text-success", else: "text-faint")]}
       >
-        {if @change > 0, do: "+", else: ""}{@change} in range
+        {if @change > 0, do: "+", else: ""}{@change}
       </p>
     </div>
     """
   end
+
+  defp first_value([%{followers: followers} | _]), do: followers
+  defp first_value(_), do: 0
 
   attr :activity, :map, required: true
 
@@ -150,11 +152,13 @@ defmodule SuperXWeb.AnalyticsLive do
   end
 
   # Four steps is enough to read density without implying false precision.
+  # Empty days are a hairline wash, not a filled tile — the grid should read
+  # as paper with marks on it.
   defp cell_color(_count, false), do: "transparent"
-  defp cell_color(0, _), do: "var(--surface-sunken)"
-  defp cell_color(1, _), do: "var(--color-ember-200)"
-  defp cell_color(2, _), do: "var(--color-ember-400)"
-  defp cell_color(_, _), do: "var(--color-ember-600)"
+  defp cell_color(0, _), do: "var(--muted)"
+  defp cell_color(1, _), do: "color-mix(in oklab, var(--primary) 30%, transparent)"
+  defp cell_color(2, _), do: "color-mix(in oklab, var(--primary) 60%, transparent)"
+  defp cell_color(_, _), do: "var(--primary)"
 
   attr :series, :list, required: true
 
@@ -178,21 +182,27 @@ defmodule SuperXWeb.AnalyticsLive do
 
     ~H"""
     <div class="mt-4">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="h-28 w-full">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="h-32 w-full" role="img"
+           aria-label={"Follower trend from #{@min} to #{@max}"}>
+        <defs>
+          <linearGradient id="follower-fade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.16" />
+            <stop offset="100%" stop-color="var(--primary)" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+
+        <polygon points={"0,100 " <> @points <> " 100,100"} fill="url(#follower-fade)" />
+
         <polyline
           points={@points}
           fill="none"
-          stroke="var(--color-ember-500)"
+          stroke="var(--primary)"
           stroke-width="1.5"
           vector-effect="non-scaling-stroke"
           stroke-linejoin="round"
           stroke-linecap="round"
         />
       </svg>
-      <div class="mt-1 flex justify-between text-xs tabular-nums" style="color: var(--text-muted)">
-        <span>{format_count(@min)}</span>
-        <span>{format_count(@max)}</span>
-      </div>
     </div>
     """
   end

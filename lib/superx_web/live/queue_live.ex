@@ -184,189 +184,171 @@ defmodule SuperXWeb.QueueLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <h1 class="text-2xl font-bold tracking-tight">Queue</h1>
-          <p class="mt-1 text-sm" style="color: var(--text-secondary)">
-            <span :if={@next_slot}>
-              Next open slot {format_when(@next_slot, @current_user.timezone)}.
-            </span>
-            <span :if={!@next_slot}>
-              No posting times set —
-              <.link navigate={~p"/settings"} class="underline">choose some</.link>.
-            </span>
-          </p>
+    <Layouts.page_header title="Queue" description={queue_description(@next_slot, @current_user)}>
+      <:action>
+        <button phx-click="compose" class="act-key whitespace-nowrap">Create a post</button>
+      </:action>
+    </Layouts.page_header>
+
+    <.composer :if={@editing} segments={@segments} editing={@editing} />
+
+    <div class="mb-6 flex gap-6 border-b border-border">
+      <.link
+        :for={tab <- @tabs}
+        patch={~p"/queue?tab=#{tab}"}
+        class="tab"
+        aria-selected={@tab == tab}
+      >
+        {tab_label(tab)}
+        <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, tab, 0)}</span>
+      </.link>
+    </div>
+
+    <div :if={@posts == []} class="py-16 text-center">
+      <p class="text-muted-foreground">{empty_message(@tab)}</p>
+    </div>
+
+    <div class="flex flex-col">
+      <article
+        :for={post <- @posts}
+        class="grid grid-cols-1 gap-7 border-b border-border py-5 sm:grid-cols-[7.5rem_minmax(0,1fr)_auto]"
+      >
+        <div class="nb-mono text-[11px] leading-[1.9] text-muted-foreground">
+          {format_time(post, @current_user.timezone)}
+          <span :if={Post.thread?(post)} class="block text-faint">
+            thread · {length(post.segments)}
+          </span>
         </div>
 
-        <button phx-click="compose" class="btn btn-primary shrink-0">
-          <.icon name="hero-pencil-square" class="size-4" /> Create a post
-        </button>
-      </div>
+        <div class="min-w-0">
+          <p class="max-w-[58ch] whitespace-pre-wrap leading-[1.55]"><%= Post.preview_text(post) %></p>
 
-      <.composer :if={@editing} segments={@segments} account={@current_x_account} editing={@editing} />
+          <p :if={post.status == "failed"} class="mt-1.5 text-[12px] text-destructive">
+            {post.error}
+          </p>
 
-      <div class="flex gap-5 border-b" style="border-color: var(--border-subtle)">
-        <.link
-          :for={tab <- @tabs}
-          patch={~p"/queue?tab=#{tab}"}
-          class="tab"
-          aria-selected={@tab == tab}
-        >
-          {tab_label(tab)}
-          <span class="ml-1 text-xs opacity-60">{Map.get(@counts, tab, 0)}</span>
-        </.link>
-      </div>
-
-      <div :if={@posts == []} class="card p-10 text-center">
-        <p class="text-sm" style="color: var(--text-secondary)">{empty_message(@tab)}</p>
-      </div>
-
-      <div class="space-y-3">
-        <article :for={post <- @posts} class="card p-4">
-          <div class="flex items-start gap-3">
-            <Layouts.avatar src={@current_x_account.avatar_url} size="size-9" />
-
-            <div class="min-w-0 flex-1">
-              <p class="whitespace-pre-wrap text-[0.9375rem] leading-relaxed"><%= Post.preview_text(post) %></p>
-
-              <p :if={Post.thread?(post)} class="mt-1.5 text-xs" style="color: var(--text-muted)">
-                <.icon name="hero-bars-3-bottom-left" class="mr-0.5 inline size-3" />
-                Thread of {length(post.segments)}
-              </p>
-
-              <p class="mt-2 text-xs" style="color: var(--text-muted)">
-                <span :if={post.status == "scheduled"}>
-                  <.icon name="hero-clock" class="mr-0.5 inline size-3" />
-                  {format_when(post.scheduled_at, @current_user.timezone)}
-                </span>
-                <span :if={post.status == "posted"}>
-                  <.icon name="hero-check-circle" class="mr-0.5 inline size-3" />
-                  Published {format_when(post.published_at, @current_user.timezone)}
-                  <a
-                    :if={post.permalink}
-                    href={post.permalink}
-                    target="_blank"
-                    rel="noopener"
-                    class="ml-1 underline"
-                  >
-                    View on 𝕏
-                  </a>
-                </span>
-                <span :if={post.status == "failed"} class="text-ember-600">
-                  <.icon name="hero-exclamation-triangle" class="mr-0.5 inline size-3" />
-                  {post.error}
-                </span>
-              </p>
-            </div>
-
-            <div class="flex shrink-0 items-center gap-1.5">
-              <.link
-                :if={post.status in ["draft", "scheduled"]}
-                patch={~p"/queue/#{post.id}"}
-                class="btn btn-ghost btn-sm"
-                title="Edit"
-              >
-                <.icon name="hero-pencil" class="size-4" />
-              </.link>
-              <button
-                :if={post.status == "scheduled"}
-                phx-click="unschedule"
-                phx-value-id={post.id}
-                class="btn btn-secondary btn-sm"
-              >
-                Unschedule
-              </button>
-              <button
-                :if={post.status == "failed"}
-                phx-click="retry"
-                phx-value-id={post.id}
-                class="btn btn-soft btn-sm"
-              >
-                Retry
-              </button>
-              <button
-                :if={post.status != "posted"}
-                phx-click="delete"
-                phx-value-id={post.id}
-                data-confirm="Delete this post?"
-                class="btn btn-ghost btn-sm"
-                title="Delete"
-              >
-                <.icon name="hero-trash" class="size-4" />
-              </button>
-            </div>
+          <div class="mt-3 flex flex-wrap items-center gap-5 text-xs">
+            <.link :if={post.status in ["draft", "scheduled"]} patch={~p"/queue/#{post.id}"} class="act-key">
+              Edit
+            </.link>
+            <button
+              :if={post.status == "scheduled"}
+              phx-click="unschedule"
+              phx-value-id={post.id}
+              class="act"
+            >
+              Move to drafts
+            </button>
+            <button :if={post.status == "failed"} phx-click="retry" phx-value-id={post.id} class="act-key">
+              Try again
+            </button>
+            <a
+              :if={post.permalink}
+              href={post.permalink}
+              target="_blank"
+              rel="noopener"
+              class="act"
+            >
+              View on 𝕏
+            </a>
+            <button
+              :if={post.status != "posted"}
+              phx-click="delete"
+              phx-value-id={post.id}
+              data-confirm="Delete this post?"
+              class="act-danger"
+            >
+              Delete
+            </button>
           </div>
-        </article>
-      </div>
+        </div>
+
+        <span class={["nb-mono text-[11px] tracking-[0.04em]", state_class(post.status)]}>
+          {state_label(post.status)}
+        </span>
+      </article>
     </div>
     """
   end
 
+  defp queue_description(nil, _user), do: "No posting times set yet — pick some under Schedule."
+
+  defp queue_description(slot, user) do
+    "Next opening is #{format_when(slot, user.timezone)}. Approved drafts fill it on their own."
+  end
+
+  defp state_class("posted"), do: "text-success"
+  defp state_class("failed"), do: "text-destructive"
+  defp state_class(_), do: "text-faint"
+
+  defp state_label("scheduled"), do: "scheduled"
+  defp state_label("posted"), do: "published"
+  defp state_label("failed"), do: "failed"
+  defp state_label("publishing"), do: "sending"
+  defp state_label(other), do: other
+
+  defp format_time(%Post{status: "posted", published_at: at}, tz), do: short_when(at, tz)
+  defp format_time(%Post{status: "failed", failed_at: at}, tz), do: short_when(at, tz)
+  defp format_time(%Post{scheduled_at: at}, tz) when not is_nil(at), do: short_when(at, tz)
+  defp format_time(_post, _tz), do: "—"
+
+  defp short_when(nil, _tz), do: "—"
+
+  defp short_when(datetime, timezone) do
+    case DateTime.shift_zone(datetime, timezone, Tz.TimeZoneDatabase) do
+      {:ok, local} -> Calendar.strftime(local, "%-d %b %H:%M")
+      _ -> Calendar.strftime(datetime, "%-d %b %H:%M")
+    end
+  end
+
   attr :segments, :list, required: true
-  attr :account, :map, required: true
   attr :editing, :any, required: true
 
   defp composer(assigns) do
     ~H"""
-    <section class="card p-4">
-      <div class="mb-3 flex items-center justify-between">
-        <p class="text-sm font-semibold">
-          {if is_struct(@editing), do: "Edit post", else: "New post"}
-        </p>
-        <button phx-click="close_composer" class="btn btn-ghost btn-sm" title="Close">
-          <.icon name="hero-x-mark" class="size-4" />
-        </button>
+    <section class="mb-8 border-y border-border py-6">
+      <div class="mb-4 flex items-center justify-between">
+        <span class="nb-eyebrow">
+          {if is_struct(@editing), do: "Editing", else: "New post"}
+        </span>
+        <button phx-click="close_composer" class="act text-xs">Close</button>
       </div>
 
-      <div class="space-y-3">
-        <div :for={{text, index} <- Enum.with_index(@segments)} class="flex items-start gap-3">
-          <Layouts.avatar src={@account.avatar_url} size="size-9" />
+      <div class="flex flex-col gap-4">
+        <div :for={{text, index} <- Enum.with_index(@segments)}>
+          <textarea
+            class="textarea"
+            rows="4"
+            placeholder={if index == 0, do: "What's happening?", else: "Continue the thread…"}
+            phx-blur="update_segment"
+            phx-value-index={index}
+            name="value"
+          >{text}</textarea>
 
-          <div class="min-w-0 flex-1">
-            <textarea
-              class="textarea"
-              rows="3"
-              placeholder={if index == 0, do: "What's happening?", else: "Continue the thread…"}
-              phx-blur="update_segment"
+          <div class="mt-1.5 flex items-center justify-between text-[11px]">
+            <span class={[
+              "nb-mono",
+              if(String.length(text) > 280, do: "text-destructive", else: "text-faint")
+            ]}>
+              {String.length(text)} / 280
+            </span>
+
+            <button
+              :if={length(@segments) > 1}
+              phx-click="remove_segment"
               phx-value-index={index}
-              name="value"
-            >{text}</textarea>
-
-            <div class="mt-1 flex items-center justify-between">
-              <span
-                class={[
-                  "text-xs tabular-nums",
-                  String.length(text) > 280 && "font-semibold text-ember-600"
-                ]}
-                style={String.length(text) <= 280 && "color: var(--text-muted)"}
-              >
-                {String.length(text)}/280
-              </span>
-
-              <button
-                :if={length(@segments) > 1}
-                phx-click="remove_segment"
-                phx-value-index={index}
-                class="btn btn-ghost btn-sm"
-                title="Remove"
-              >
-                <.icon name="hero-minus-circle" class="size-4" />
-              </button>
-            </div>
+              class="act-danger text-xs"
+            >
+              Remove
+            </button>
           </div>
         </div>
       </div>
 
-      <div class="mt-3 flex items-center justify-between gap-3">
-        <button phx-click="add_segment" class="btn btn-ghost btn-sm">
-          <.icon name="hero-plus" class="size-4" /> Add to thread
-        </button>
-
-        <div class="flex gap-2">
-          <button phx-click="save_draft" class="btn btn-secondary">Save draft</button>
-          <button phx-click="add_to_queue" class="btn btn-primary">Add to queue</button>
-        </div>
+      <div class="mt-5 flex items-center gap-6 text-xs">
+        <button phx-click="add_to_queue" class="act-key">Add to queue</button>
+        <button phx-click="save_draft" class="act">Save as draft</button>
+        <button phx-click="add_segment" class="act">Continue as thread</button>
       </div>
     </section>
     """

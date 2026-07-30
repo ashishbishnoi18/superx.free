@@ -84,78 +84,69 @@ defmodule SuperXWeb.SettingsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
+    <Layouts.page_header
+      title="Schedule"
+      description="When you post, and in which time zone. Slots are stored as local times, so a 9am slot stays 9am through daylight saving."
+    />
+
+    <div class="grid grid-cols-1 gap-7 border-t border-border py-6 sm:grid-cols-[14rem_minmax(0,1fr)]">
       <div>
-        <h1 class="text-2xl font-bold tracking-tight">Settings</h1>
-        <p class="mt-1 text-sm" style="color: var(--text-secondary)">
-          When you post, and in which time zone.
+        <label class="label" for="timezone">Time zone</label>
+        <p class="text-[12px] leading-[1.6] text-faint">Everything below is written in this zone.</p>
+      </div>
+      <form phx-change="set_timezone">
+        <select id="timezone" name="timezone" class="select">
+          <option :for={tz <- @timezones} value={tz} selected={@current_user.timezone == tz}>
+            {tz}
+          </option>
+        </select>
+      </form>
+    </div>
+
+    <div class="grid grid-cols-1 gap-7 border-t border-border py-6 sm:grid-cols-[14rem_minmax(0,1fr)]">
+      <div>
+        <span class="label">Posting times</span>
+        <p class="text-[12px] leading-[1.6] text-faint">
+          Approved drafts fill the next opening. Pause one to skip it without losing it.
         </p>
       </div>
 
-      <section class="card p-5">
-        <h2 class="font-semibold">Time zone</h2>
-        <p class="mt-1 text-xs" style="color: var(--text-secondary)">
-          Slots are stored as local times, so they hold through daylight saving.
+      <div>
+        <p :if={@slots == []} class="text-muted-foreground">
+          No times yet. Add the first one below.
         </p>
 
-        <form phx-change="set_timezone" class="mt-3">
-          <select name="timezone" class="select">
-            <option :for={tz <- @timezones} value={tz} selected={@current_user.timezone == tz}>
-              {tz}
-            </option>
-          </select>
-        </form>
-      </section>
-
-      <section class="card p-5">
-        <h2 class="font-semibold">Posting times</h2>
-        <p class="mt-1 text-xs" style="color: var(--text-secondary)">
-          Approved posts fill the next open slot automatically.
-        </p>
-
-        <div :if={@slots == []} class="mt-4 rounded-xl p-4 text-center text-sm"
-             style="background-color: var(--surface-sunken); color: var(--text-secondary)">
-          No slots yet. Add a few below.
-        </div>
-
-        <ul class="mt-4 space-y-2">
+        <ul class="flex flex-col">
           <li
             :for={slot <- @slots}
-            class="flex items-center gap-3 rounded-xl px-3 py-2"
-            style="background-color: var(--surface-sunken)"
+            class="flex items-baseline gap-4 border-b border-border py-2.5 first:border-t"
           >
-            <button
-              phx-click="toggle_slot"
-              phx-value-id={slot.id}
-              class="shrink-0"
-              title={if slot.enabled, do: "Disable", else: "Enable"}
-            >
-              <.icon
-                name={if slot.enabled, do: "hero-check-circle-solid", else: "hero-pause-circle"}
-                class={["size-5", slot.enabled && "text-ember-600"]}
-              />
-            </button>
-
-            <span class={["flex-1 text-sm", !slot.enabled && "line-through opacity-50"]}>
-              <span class="font-medium">{ScheduleSlot.day_name(slot)}</span>
-              at {format_time(slot.time)}
+            <span class={[
+              "nb-mono w-24 text-[11px]",
+              if(slot.enabled, do: "text-muted-foreground", else: "text-faint line-through")
+            ]}>
+              {ScheduleSlot.day_name(slot)}
+            </span>
+            <span class={[
+              "nb-mono flex-1 text-[13px]",
+              !slot.enabled && "text-faint line-through"
+            ]}>
+              {format_time(slot.time)}
             </span>
 
-            <button
-              phx-click="delete_slot"
-              phx-value-id={slot.id}
-              class="btn btn-ghost btn-sm"
-              title="Remove"
-            >
-              <.icon name="hero-trash" class="size-4" />
+            <button phx-click="toggle_slot" phx-value-id={slot.id} class="act text-xs">
+              {if slot.enabled, do: "Pause", else: "Resume"}
+            </button>
+            <button phx-click="delete_slot" phx-value-id={slot.id} class="act-danger text-xs">
+              Remove
             </button>
           </li>
         </ul>
 
-        <form phx-submit="add_slot" class="mt-4 flex flex-wrap items-end gap-3">
+        <form phx-submit="add_slot" class="mt-5 flex flex-wrap items-end gap-5">
           <div>
             <label class="label" for="day_of_week">Day</label>
-            <select id="day_of_week" name="day_of_week" class="select w-auto">
+            <select id="day_of_week" name="day_of_week" class="select w-auto pr-6">
               <option :for={dow <- 0..6} value={dow} selected={dow == 1}>
                 {ScheduleSlot.day_name(dow)}
               </option>
@@ -167,11 +158,9 @@ defmodule SuperXWeb.SettingsLive do
             <input type="time" id="time" name="time" value="09:00" class="input w-auto" required />
           </div>
 
-          <button type="submit" class="btn btn-secondary">
-            <.icon name="hero-plus" class="size-4" /> Add slot
-          </button>
+          <button type="submit" class="act-key pb-2 text-xs">Add time</button>
         </form>
-      </section>
+      </div>
     </div>
     """
   end

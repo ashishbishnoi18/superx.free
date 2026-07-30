@@ -64,158 +64,119 @@ defmodule SuperXWeb.HomeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-8">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">
-          For you today
-        </h1>
-        <p class="mt-1 text-sm" style="color: var(--text-secondary)">
-          {greeting(@current_x_account)}
-        </p>
-      </div>
+    <Layouts.page_header title="Today" description={greeting(@current_x_account)} />
 
-      <.setup_checklist :if={!@voice_ready or !@has_slots} voice_ready={@voice_ready} has_slots={@has_slots} />
-
-      <div class="grid gap-4 sm:grid-cols-3">
-        <.stat label="Queued" value={@counts["scheduled"]} icon="hero-calendar-days" href={~p"/queue"} />
-        <.stat label="Ready to post" value={@shelf_total} icon="hero-sparkles" href={~p"/ready-to-post"} />
-        <.stat label="Published" value={@counts["posted"]} icon="hero-check-circle" href={~p"/analytics"} />
-      </div>
-
-      <section :if={@counts["failed"] > 0} class="card border-ember-200 p-4">
-        <div class="flex items-start gap-3">
-          <.icon name="hero-exclamation-triangle" class="mt-0.5 size-5 shrink-0 text-ember-600" />
-          <div class="flex-1">
-            <p class="font-semibold">
-              {@counts["failed"]} {ngettext("post failed", "posts failed", @counts["failed"])} to publish
-            </p>
-            <p class="mt-0.5 text-sm" style="color: var(--text-secondary)">
-              Usually an expired connection or an X rate limit. You can retry them.
-            </p>
-          </div>
-          <.link navigate={~p"/queue?tab=failed"} class="btn btn-soft btn-sm shrink-0">Review</.link>
-        </div>
-      </section>
-
-      <section class="space-y-3">
-        <div class="flex items-baseline justify-between">
-          <h2 class="font-semibold">Next up</h2>
-          <.link navigate={~p"/queue"} class="text-sm hover:underline" style="color: var(--text-secondary)">
-            View queue
-          </.link>
-        </div>
-
-        <div :if={@next_posts == []} class="card p-6 text-center">
-          <p class="text-sm" style="color: var(--text-secondary)">
-            Nothing scheduled. Approve a draft below to fill your next slot.
-          </p>
-        </div>
-
-        <div :for={post <- @next_posts} class="card card-interactive p-4">
-          <div class="flex items-start gap-3">
-            <Layouts.avatar src={@current_x_account.avatar_url} size="size-9" />
-            <div class="min-w-0 flex-1">
-              <p class="whitespace-pre-wrap text-sm leading-relaxed"><%= truncate(SuperX.Content.Post.preview_text(post), 220) %></p>
-              <p class="mt-2 text-xs" style="color: var(--text-muted)">
-                <.icon name="hero-clock" class="mr-1 inline size-3" />
-                {format_when(post.scheduled_at, @current_user.timezone)}
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="space-y-3">
-        <div class="flex items-baseline justify-between">
-          <h2 class="font-semibold">Waiting for your approval</h2>
-          <.link
-            navigate={~p"/ready-to-post"}
-            class="text-sm hover:underline"
-            style="color: var(--text-secondary)"
-          >
-            See all
-          </.link>
-        </div>
-
-        <div :if={@shelf == []} class="card p-6 text-center">
-          <p class="text-sm" style="color: var(--text-secondary)">
-            No drafts waiting. SuperX writes new ones overnight, or you can
-            <.link navigate={~p"/ready-to-post"} class="font-medium underline">generate some now</.link>.
-          </p>
-        </div>
-
-        <div :for={generation <- @shelf} class="card p-4">
-          <p class="whitespace-pre-wrap text-sm leading-relaxed">{Generation.text(generation)}</p>
-
-          <div class="mt-3 flex items-center justify-between gap-3">
-            <p :if={Generation.attribution(generation)} class="text-xs" style="color: var(--text-muted)">
-              <.icon name="hero-sparkles" class="mr-1 inline size-3" />
-              {Generation.attribution(generation)}
-            </p>
-            <span :if={!Generation.attribution(generation)} />
-
-            <div class="flex shrink-0 gap-2">
-              <button phx-click="dismiss" phx-value-id={generation.id} class="btn btn-ghost btn-sm">
-                Dismiss
-              </button>
-              <button phx-click="accept" phx-value-id={generation.id} class="btn btn-primary btn-sm">
-                Add to queue
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-    """
-  end
-
-  attr :voice_ready, :boolean, required: true
-  attr :has_slots, :boolean, required: true
-
-  defp setup_checklist(assigns) do
-    ~H"""
-    <section class="card p-5">
-      <h2 class="font-semibold">Finish setting up</h2>
-      <p class="mt-1 text-sm" style="color: var(--text-secondary)">
-        Two things make the drafts good rather than generic.
-      </p>
-
-      <ul class="mt-4 space-y-2.5">
-        <li class="flex items-center gap-3">
-          <.icon
-            name={if @voice_ready, do: "hero-check-circle-solid", else: "hero-arrow-right-circle"}
-            class={["size-5 shrink-0", @voice_ready && "text-ember-600"]}
-          />
-          <span class="flex-1 text-sm">Teach SuperX how you write</span>
-          <.link :if={!@voice_ready} navigate={~p"/voice"} class="btn btn-soft btn-sm">Set up voice</.link>
+    <section :if={!@voice_ready or !@has_slots} class="mb-10 border-y border-border py-6">
+      <p class="nb-eyebrow mb-3">Finish setting up</p>
+      <ul class="flex flex-col gap-2.5">
+        <li class="flex items-baseline gap-3">
+          <span class={["nb-mono text-[11px]", @voice_ready && "text-success"]}>
+            {if @voice_ready, do: "done", else: "todo"}
+          </span>
+          <span class="flex-1">Teach SuperX how you write</span>
+          <.link :if={!@voice_ready} navigate={~p"/voice"} class="act-key text-xs">Set up voice</.link>
         </li>
-        <li class="flex items-center gap-3">
-          <.icon
-            name={if @has_slots, do: "hero-check-circle-solid", else: "hero-arrow-right-circle"}
-            class={["size-5 shrink-0", @has_slots && "text-ember-600"]}
-          />
-          <span class="flex-1 text-sm">Choose when you want to post</span>
-          <.link :if={!@has_slots} navigate={~p"/settings"} class="btn btn-soft btn-sm">Pick times</.link>
+        <li class="flex items-baseline gap-3">
+          <span class={["nb-mono text-[11px]", @has_slots && "text-success"]}>
+            {if @has_slots, do: "done", else: "todo"}
+          </span>
+          <span class="flex-1">Choose when you want to post</span>
+          <.link :if={!@has_slots} navigate={~p"/settings"} class="act-key text-xs">Pick times</.link>
         </li>
       </ul>
     </section>
-    """
-  end
 
-  attr :label, :string, required: true
-  attr :value, :integer, required: true
-  attr :icon, :string, required: true
-  attr :href, :string, required: true
+    <div class="mb-10 grid grid-cols-3 gap-px border-y border-border bg-border">
+      <.link
+        :for={
+          {label, value, href} <- [
+            {"Queued", @counts["scheduled"], ~p"/queue"},
+            {"Waiting on you", @shelf_total, ~p"/ready-to-post"},
+            {"Published", @counts["posted"], ~p"/analytics"}
+          ]
+        }
+        navigate={href}
+        class="group bg-background px-5 py-4"
+      >
+        <p class="text-[11px] text-faint">{label}</p>
+        <p class="nb-display mt-1 text-[1.875rem] font-semibold leading-[1.1] tracking-[-0.035em] tabular-nums group-hover:text-primary">
+          {value}
+        </p>
+      </.link>
+    </div>
 
-  defp stat(assigns) do
-    ~H"""
-    <.link navigate={@href} class="card card-interactive p-4">
-      <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide" style="color: var(--text-muted)">
-        <.icon name={@icon} class="size-4" />
-        {@label}
-      </div>
-      <p class="mt-2 text-3xl font-bold tabular-nums">{@value}</p>
-    </.link>
+    <div class="space-y-10">
+      <section :if={@counts["failed"] > 0}>
+        <div class="flex items-baseline justify-between gap-4">
+          <p>
+            <span class="nb-mono text-[11px] text-destructive">failed</span>
+            <span class="ml-3">
+              {@counts["failed"]} {ngettext("post", "posts", @counts["failed"])} didn't publish.
+              Usually an expired connection or a rate limit.
+            </span>
+          </p>
+          <.link navigate={~p"/queue?tab=failed"} class="act-key shrink-0 text-xs">Review</.link>
+        </div>
+      </section>
+
+      <section>
+        <div class="mb-1 flex items-baseline justify-between">
+          <h2 class="nb-eyebrow">Next up</h2>
+          <.link navigate={~p"/queue"} class="act text-xs">Full queue</.link>
+        </div>
+
+        <p :if={@next_posts == []} class="py-6 text-muted-foreground">
+          Nothing scheduled. Approve a draft below to fill your next opening.
+        </p>
+
+        <div class="flex flex-col">
+          <div
+            :for={post <- @next_posts}
+            class="grid grid-cols-1 gap-7 border-t border-border py-4 last:border-b sm:grid-cols-[7.5rem_minmax(0,1fr)]"
+          >
+            <span class="nb-mono text-[11px] text-muted-foreground">
+              {format_when(post.scheduled_at, @current_user.timezone)}
+            </span>
+            <p class="max-w-[58ch] whitespace-pre-wrap leading-[1.55]"><%= truncate(SuperX.Content.Post.preview_text(post), 220) %></p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="mb-1 flex items-baseline justify-between">
+          <h2 class="nb-eyebrow">Waiting on you</h2>
+          <.link navigate={~p"/ready-to-post"} class="act text-xs">See all</.link>
+        </div>
+
+        <p :if={@shelf == []} class="py-6 text-muted-foreground">
+          No drafts waiting. SuperX writes new ones overnight.
+        </p>
+
+        <div class="flex flex-col">
+          <article
+            :for={generation <- @shelf}
+            class="grid grid-cols-1 gap-7 border-t border-border py-5 last:border-b sm:grid-cols-[7.5rem_minmax(0,1fr)]"
+          >
+            <span :if={generation.source_likes} class="text-[11px] text-faint">
+              {Generation.attribution(generation)}
+            </span>
+            <span :if={!generation.source_likes} />
+
+            <div>
+              <p class="max-w-[62ch] whitespace-pre-wrap text-[15px] leading-[1.6]"><%= Generation.text(generation) %></p>
+              <div class="mt-3 flex items-center gap-5 text-xs">
+                <button phx-click="accept" phx-value-id={generation.id} class="act-key">
+                  Add to queue
+                </button>
+                <button phx-click="dismiss" phx-value-id={generation.id} class="act-danger">
+                  Discard
+                </button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
     """
   end
 

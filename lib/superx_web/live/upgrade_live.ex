@@ -52,121 +52,94 @@ defmodule SuperXWeb.UpgradeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-8">
-      <div>
-        <h1 class="text-2xl font-bold tracking-tight">Plans</h1>
-        <p class="mt-1 text-sm" style="color: var(--text-secondary)">
-          You're on {Plan.get(@tier).name}.
-        </p>
-      </div>
-
-      <section class="card p-5">
-        <div class="flex items-baseline justify-between">
-          <h2 class="font-semibold">This window</h2>
-          <button
-            :if={@subscription && @subscription.provider_customer_id}
-            phx-click="manage"
-            class="btn btn-ghost btn-sm"
-          >
-            Manage billing
-          </button>
-        </div>
-
-        <div class="mt-4 space-y-4">
-          <.usage_bar
-            :for={
-              {key, label} <- [
-                {"credits_month", "AI credits"},
-                {"posts_month", "Posts"},
-                {"replies_day", "Assisted replies"}
-              ]
-            }
-            label={label}
-            usage={Map.get(@usage, key)}
-          />
-        </div>
-      </section>
-
-      <div class="flex justify-center">
-        <div
-          class="inline-flex rounded-full border p-0.5"
-          style="border-color: var(--border-strong); background-color: var(--surface-sunken)"
+    <Layouts.page_header title="Plan" description={"You're on #{Plan.get(@tier).name}."}>
+      <:action>
+        <button
+          :if={@subscription && @subscription.provider_customer_id}
+          phx-click="manage"
+          class="act whitespace-nowrap text-xs"
         >
-          <button
-            :for={{value, label} <- [{"month", "Monthly"}, {"year", "Yearly · 2 months free"}]}
-            phx-click="set_interval"
-            phx-value-interval={value}
-            class={[
-              "rounded-full px-4 py-1.5 text-sm font-medium",
-              to_string(@interval) == value && "bg-[var(--surface-raised)] shadow-sm"
-            ]}
-          >
-            {label}
-          </button>
-        </div>
-      </div>
+          Manage billing
+        </button>
+      </:action>
+    </Layouts.page_header>
 
-      <div :if={!@billing_configured} class="card p-4 text-sm">
-        <p class="font-semibold">Billing isn't configured</p>
-        <p class="mt-1" style="color: var(--text-secondary)">
-          Set <code class="font-mono text-xs">STRIPE_SECRET_KEY</code>
-          and the price ids to accept payments.
-          <span :if={!@open_instance}>
-            On a private instance, set
-            <code class="font-mono text-xs">SUPERX_DEFAULT_TIER=ultra</code>
-            instead to lift every limit without payment.
-          </span>
-          <span :if={@open_instance}>
-            This instance grants {Plan.get(@tier).name} limits to everyone.
-          </span>
-        </p>
+    <section class="mb-10">
+      <p class="nb-eyebrow mb-4">This window</p>
+      <div class="flex flex-col gap-5">
+        <.usage_bar
+          :for={
+            {key, label} <- [
+              {"credits_month", "AI credits"},
+              {"posts_month", "Posts"},
+              {"replies_day", "Assisted replies"}
+            ]
+          }
+          label={label}
+          usage={Map.get(@usage, key)}
+        />
       </div>
+    </section>
 
-      <div class="grid gap-5 lg:grid-cols-3">
-        <section
-          :for={plan <- @plans}
-          class={[
-            "card flex flex-col p-6",
-            plan.tier == "advanced" && "ring-2 ring-ember-500"
-          ]}
-        >
-          <div class="flex items-center justify-between">
-            <h3 class="font-bold">{plan.name}</h3>
-            <span :if={plan.tier == "advanced"} class="badge badge-ember">Most popular</span>
-            <span :if={plan.tier == @tier} class="badge">Current</span>
+    <p :if={!@billing_configured} class="mb-8 max-w-[60ch] text-muted-foreground">
+      Billing isn't configured. Set
+      <code class="nb-mono text-[12px] text-foreground">STRIPE_SECRET_KEY</code>
+      and the price ids to accept payments.
+      <span :if={!@open_instance}>
+        On a private instance, set
+        <code class="nb-mono text-[12px] text-foreground">SUPERX_DEFAULT_TIER=ultra</code>
+        instead to lift every limit without payment.
+      </span>
+      <span :if={@open_instance}>
+        This instance grants {Plan.get(@tier).name} limits to everyone.
+      </span>
+    </p>
+
+    <div class="mb-6 flex gap-5 text-xs">
+      <button
+        :for={{value, label} <- [{"month", "Monthly"}, {"year", "Yearly · 2 months free"}]}
+        phx-click="set_interval"
+        phx-value-interval={value}
+        class={if to_string(@interval) == value, do: "act-key", else: "act"}
+      >
+        {label}
+      </button>
+    </div>
+
+    <div class="flex flex-col">
+      <section
+        :for={plan <- @plans}
+        class="grid grid-cols-1 gap-7 border-t border-border py-6 last:border-b sm:grid-cols-[14rem_minmax(0,1fr)]"
+      >
+        <div>
+          <div class="flex items-baseline gap-2">
+            <h3 class="text-[15px] font-semibold">{plan.name}</h3>
+            <span :if={plan.tier == @tier} class="nb-mono text-[11px] text-primary">current</span>
           </div>
-
-          <p class="mt-1 text-sm" style="color: var(--text-secondary)">{plan.tagline}</p>
-
-          <p class="mt-4">
-            <span class="text-3xl font-bold tabular-nums">
-              ${price(plan, @interval)}
-            </span>
-            <span class="text-sm" style="color: var(--text-muted)">
-              /{if @interval == :month, do: "month", else: "year"}
+          <p class="mt-1 text-[12px] leading-[1.6] text-faint">{plan.tagline}</p>
+          <p class="nb-display mt-3 text-[1.5rem] font-semibold tracking-[-0.03em] tabular-nums">
+            ${price(plan, @interval)}
+            <span class="nb-mono text-[11px] font-normal text-faint">
+              /{if @interval == :month, do: "mo", else: "yr"}
             </span>
           </p>
+        </div>
 
-          <ul class="mt-5 flex-1 space-y-2.5">
-            <li :for={feature <- plan.features} class="flex items-start gap-2 text-sm">
-              <.icon name="hero-check" class="mt-0.5 size-4 shrink-0 text-ember-600" />
-              <span>{feature}</span>
-            </li>
+        <div>
+          <ul class="flex flex-col gap-1.5">
+            <li :for={feature <- plan.features} class="text-muted-foreground">{feature}</li>
           </ul>
 
           <button
             :if={plan.tier != @tier and @billing_configured}
             phx-click="checkout"
             phx-value-tier={plan.tier}
-            class={["btn mt-6", if(plan.tier == "advanced", do: "btn-primary", else: "btn-secondary")]}
+            class="act-key mt-5 text-xs"
           >
             {if Plan.upgrade?(@tier, plan.tier), do: "Upgrade", else: "Switch"} to {plan.name}
           </button>
-          <p :if={plan.tier == @tier} class="mt-6 text-center text-sm" style="color: var(--text-muted)">
-            Your current plan
-          </p>
-        </section>
-      </div>
+        </div>
+      </section>
     </div>
     """
   end
@@ -185,17 +158,15 @@ defmodule SuperXWeb.UpgradeLive do
 
     ~H"""
     <div>
-      <div class="flex items-baseline justify-between text-sm">
-        <span class="font-medium">{@label}</span>
-        <span class="tabular-nums" style="color: var(--text-muted)">
+      <div class="flex items-baseline justify-between">
+        <span>{@label}</span>
+        <span class="nb-mono text-[11px] text-muted-foreground">
           {@usage.used} / {@usage.limit}
         </span>
       </div>
-      <div class="mt-1.5 h-1.5 overflow-hidden rounded-full" style="background-color: var(--surface-sunken)">
-        <div class="h-full rounded-full bg-ember-500" style={"width: #{@pct}%"} />
-      </div>
-      <p :if={@usage.resets_at} class="mt-1 text-xs" style="color: var(--text-muted)">
-        Resets {Calendar.strftime(@usage.resets_at, "%-d %b")}
+      <div class="meter mt-2"><i style={"width: #{@pct}%"} /></div>
+      <p :if={@usage.resets_at} class="nb-mono mt-1 text-[11px] text-faint">
+        resets {Calendar.strftime(@usage.resets_at, "%-d %b")}
       </p>
     </div>
     """

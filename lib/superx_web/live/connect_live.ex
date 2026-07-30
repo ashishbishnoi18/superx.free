@@ -19,32 +19,32 @@ defmodule SuperXWeb.ConnectLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="mx-auto max-w-lg py-12 text-center">
-      <div class="mx-auto flex size-14 items-center justify-center rounded-2xl bg-ember-50">
-        <.icon name="hero-at-symbol" class="size-7 text-ember-600" />
-      </div>
-
-      <h1 class="mt-6 text-2xl font-bold tracking-tight">Connect your 𝕏 account</h1>
-      <p class="mt-3 text-sm leading-relaxed" style="color: var(--text-secondary)">
-        SuperX needs access to post on your behalf and to read your own posts,
-        which is how it learns the way you write. It never posts anything you
-        haven't approved.
+    <div class="mx-auto max-w-[46ch] py-16">
+      <h1 class="text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.03em]">
+        Connect your 𝕏 account
+      </h1>
+      <p class="mt-3 leading-[1.6] text-muted-foreground">
+        SuperX reads your own posts to learn how you write, and publishes the ones
+        you approve. It never posts anything you haven't seen.
       </p>
 
-      <.link href={~p"/auth/x"} class="btn btn-primary btn-lg mt-8">
-        Connect with <span class="font-bold">𝕏</span>
+      <.link href={~p"/auth/x"} class="act-key mt-7 inline-block">
+        Connect with 𝕏 →
       </.link>
 
-      <ul class="mt-10 space-y-3 text-left text-sm" style="color: var(--text-secondary)">
-        <li :for={
-          item <- [
-            "Read your posts to learn your voice",
-            "Publish the posts you schedule",
-            "Read your profile metrics for analytics"
-          ]
-        } class="flex items-start gap-2.5">
-          <.icon name="hero-check-circle" class="mt-0.5 size-4 shrink-0 text-ember-600" />
-          <span>{item}</span>
+      <ul class="mt-10 flex flex-col">
+        <li
+          :for={
+            {what, why} <- [
+              {"Read your posts", "so drafts sound like you, not like an assistant"},
+              {"Publish on your behalf", "only what you've approved, at the times you set"},
+              {"Read your profile metrics", "for the analytics page"}
+            ]
+          }
+          class="grid grid-cols-1 gap-4 border-t border-border py-3.5 last:border-b sm:grid-cols-[12rem_minmax(0,1fr)]"
+        >
+          <span class="font-medium">{what}</span>
+          <span class="text-muted-foreground">{why}</span>
         </li>
       </ul>
     </div>

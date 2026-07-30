@@ -33,7 +33,9 @@ const liveSocket = new LiveSocket("/live", Socket, {
 })
 
 // Show progress bar on live navigation and form submits
-topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
+// The loading bar is the one moving thing in the UI, so it uses the ember
+// accent like every other "this is live" signal.
+topbar.config({barColors: {0: "#c2410c"}, shadowColor: "rgba(0, 0, 0, .18)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 

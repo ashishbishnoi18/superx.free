@@ -13,25 +13,27 @@
     <script>
       // Applied before first paint so the page never flashes the wrong theme.
       (() => {
-        const apply = (theme) => {
-          const resolved =
-            theme === "system"
-              ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-              : theme;
-          document.documentElement.setAttribute("data-theme", resolved);
-          document.documentElement.style.colorScheme = resolved;
-        };
-        const setTheme = (theme) => {
-          if (theme === "system") localStorage.removeItem("phx:theme");
-          else localStorage.setItem("phx:theme", theme);
-          apply(theme);
-        };
-        apply(localStorage.getItem("phx:theme") || "system");
-        window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-          if (!localStorage.getItem("phx:theme")) apply("system");
+        const stored = localStorage.getItem("superx:theme");
+        const dark = stored
+          ? stored === "dark"
+          : window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+        document.documentElement.classList.toggle("dark", dark);
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+
+        window.addEventListener("phx:set-theme", (e) => {
+          const next = e.detail?.theme ?? (document.documentElement.classList.contains("dark") ? "light" : "dark");
+          localStorage.setItem("superx:theme", next);
+          document.documentElement.classList.toggle("dark", next === "dark");
+          document.documentElement.style.colorScheme = next;
         });
-        window.addEventListener("storage", (e) => e.key === "phx:theme" && apply(e.newValue || "system"));
-        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
+
+        // Follow the OS only while the user hasn't expressed a preference.
+        window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+          if (localStorage.getItem("superx:theme")) return;
+          document.documentElement.classList.toggle("dark", e.matches);
+          document.documentElement.style.colorScheme = e.matches ? "dark" : "light";
+        });
       })();
     </script>
   </head>

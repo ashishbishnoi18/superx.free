@@ -55,74 +55,70 @@ defmodule SuperXWeb.AccountsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <h1 class="text-2xl font-bold tracking-tight">Accounts</h1>
-          <p class="mt-1 text-sm" style="color: var(--text-secondary)">
-            {length(@accounts)} of {@account_limit} connected on the {String.capitalize(@tier)} plan.
-          </p>
-        </div>
-
+    <Layouts.page_header
+      title="Accounts"
+      description={"#{length(@accounts)} of #{@account_limit} connected on the #{String.capitalize(@tier)} plan."}
+    >
+      <:action>
         <.link
           :if={length(@accounts) < @account_limit}
           href={~p"/auth/x?redirect_to=/accounts"}
-          class="btn btn-primary"
+          class="act-key whitespace-nowrap"
         >
-          <.icon name="hero-plus" class="size-4" /> Connect account
+          Connect another
         </.link>
-        <.link :if={length(@accounts) >= @account_limit} navigate={~p"/upgrade"} class="btn btn-secondary">
+        <.link :if={length(@accounts) >= @account_limit} navigate={~p"/upgrade"} class="act whitespace-nowrap">
           Upgrade for more
         </.link>
-      </div>
+      </:action>
+    </Layouts.page_header>
 
-      <div class="space-y-3">
-        <div
-          :for={account <- @accounts}
-          class="card flex items-center gap-4 p-4"
-        >
-          <Layouts.avatar src={account.avatar_url} size="size-11" />
+    <div class="flex flex-col">
+      <div
+        :for={account <- @accounts}
+        class="flex items-center gap-4 border-t border-border py-4 last:border-b"
+      >
+        <Layouts.avatar src={account.avatar_url} size="size-8" />
 
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
-              <p class="truncate font-semibold">{account.display_name || account.handle}</p>
-              <span :if={@current_x_account && account.id == @current_x_account.id} class="badge badge-ember">
-                Active
-              </span>
-              <span :if={account.reauth_needed} class="badge" style="color: var(--color-ember-700)">
-                Needs reconnect
-              </span>
-            </div>
-            <p class="truncate text-sm" style="color: var(--text-muted)">
-              @{account.handle} · {format_count(account.followers_count)} followers
-            </p>
-            <p :if={account.reauth_needed} class="mt-1 text-xs" style="color: var(--text-secondary)">
-              {account.reauth_reason || "X rejected the stored credentials."}
-            </p>
-          </div>
-
-          <div class="flex shrink-0 items-center gap-2">
-            <.link :if={account.reauth_needed} href={~p"/auth/x?redirect_to=/accounts"} class="btn btn-soft btn-sm">
-              Reconnect
-            </.link>
-            <button
-              :if={!@current_x_account || account.id != @current_x_account.id}
-              phx-click="switch"
-              phx-value-id={account.id}
-              class="btn btn-secondary btn-sm"
+        <div class="min-w-0 flex-1">
+          <p class="truncate">
+            <span class="font-medium">{account.display_name || account.handle}</span>
+            <span class="ml-1.5 text-faint">@{account.handle}</span>
+            <span
+              :if={@current_x_account && account.id == @current_x_account.id}
+              class="nb-mono ml-2 text-[11px] text-primary"
             >
-              Switch to
-            </button>
-            <button
-              phx-click="disconnect"
-              phx-value-id={account.id}
-              data-confirm={"Disconnect @#{account.handle}? Scheduled posts for it will be cancelled."}
-              class="btn btn-ghost btn-sm"
-              title="Disconnect"
-            >
-              <.icon name="hero-trash" class="size-4" />
-            </button>
-          </div>
+              active
+            </span>
+          </p>
+          <p class="nb-mono mt-0.5 text-[11px] text-faint">
+            {format_count(account.followers_count)} followers
+          </p>
+          <p :if={account.reauth_needed} class="mt-1 text-[12px] text-destructive">
+            {account.reauth_reason || "X rejected the stored credentials."}
+          </p>
+        </div>
+
+        <div class="flex shrink-0 items-center gap-5 text-xs">
+          <.link :if={account.reauth_needed} href={~p"/auth/x?redirect_to=/accounts"} class="act-key">
+            Reconnect
+          </.link>
+          <button
+            :if={!@current_x_account || account.id != @current_x_account.id}
+            phx-click="switch"
+            phx-value-id={account.id}
+            class="act-key"
+          >
+            Switch to
+          </button>
+          <button
+            phx-click="disconnect"
+            phx-value-id={account.id}
+            data-confirm={"Disconnect @#{account.handle}? Scheduled posts for it will be cancelled."}
+            class="act-danger"
+          >
+            Disconnect
+          </button>
         </div>
       </div>
     </div>
