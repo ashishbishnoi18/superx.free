@@ -61,8 +61,12 @@ config :superx, Oban,
        {"*/15 * * * *", SuperX.Workers.TokenRefresher},
        # Daily analytics snapshot per connected account.
        {"10 0 * * *", SuperX.Workers.AnalyticsSnapshot},
+       # Refresh the corpus before the shelf is written from it.
+       {"0 1 * * *", SuperX.Workers.CorpusRefresh},
        # Top up each user's Ready to Post shelf overnight.
        {"30 2 * * *", SuperX.Workers.ShelfTopUp},
+       # Poll mentions so the Engage inbox is current each morning.
+       {"*/20 * * * *", SuperX.Workers.MentionSync},
        # Roll monthly/daily quota windows.
        {"0 0 * * *", SuperX.Workers.QuotaRoller}
      ]}

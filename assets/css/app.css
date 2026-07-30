@@ -444,6 +444,16 @@
     overflow-wrap: anywhere;
   }
 
+  /* An inbox is scanned, and one 40-line post otherwise takes the whole
+     screen. Clamped bodies keep the queue legible; the full text is one
+     click away on X. */
+  .post-body[data-clamp] {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--clamp-lines, 8);
+    overflow: hidden;
+  }
+
   /* A thread reads as one object: segments stacked with the connector X
      itself uses, rather than a "thread · 3" label the reader has to decode. */
   .post-thread { display: flex; flex-direction: column; }

@@ -2,28 +2,32 @@ defmodule SuperX.Workers.CorpusIngest do
   @moduledoc """
   Pulls high-performing posts into the shared corpus.
 
-  Enqueued per topic so one bad query can't stall the rest, and so retries
-  are scoped to the topic that actually failed.
+  Enqueued per topic so one bad query can't stall the rest, and so a retry
+  is scoped to the topic that actually failed.
+
+  Reads come from twitterapi.io when it's configured, and fall back to the
+  self-hosted Go worker otherwise. Both return the same shape, so nothing
+  downstream knows or cares which one ran.
   """
 
   use Oban.Worker,
     queue: :ingestion,
     max_attempts: 3,
     # Two jobs for the same topic in the same hour would fetch the same
-    # posts and cost rate limit for nothing.
+    # posts and bill for them twice.
     unique: [period: 3600, fields: [:worker, :args]]
 
   require Logger
 
   alias SuperX.Content.Corpus
-  alias SuperX.Scraper
+  alias SuperX.{Scraper, TwitterAPI}
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"topic" => topic} = args}) do
-    limit = args["limit"] || 50
+    limit = args["limit"] || 40
     min_likes = args["min_likes"] || 500
 
-    case Scraper.search(topic, limit: limit, min_likes: min_likes) do
+    case fetch(topic, limit, min_likes) do
       {:ok, []} ->
         Logger.info("Corpus ingest for #{inspect(topic)} returned nothing")
         :ok
@@ -32,16 +36,22 @@ defmodule SuperX.Workers.CorpusIngest do
         {count, _} = Corpus.upsert_many(posts)
         Logger.info("Ingested #{count} post(s) for #{inspect(topic)}")
 
-        # Embeddings are backfilled separately so a slow embedding
-        # provider doesn't hold the ingestion queue.
+        # Embeddings are backfilled separately so a slow embedding provider
+        # doesn't hold the ingestion queue.
         if SuperX.AI.embeddings_configured?() do
           %{} |> SuperX.Workers.EmbedCorpus.new() |> Oban.insert()
         end
 
         :ok
 
-      {:error, :scraper_not_running} ->
-        Logger.info("Skipping corpus ingest: scraper worker unavailable")
+      {:error, :not_configured} ->
+        Logger.info("Skipping corpus ingest: no read source configured")
+        :ok
+
+      {:error, :out_of_credits} ->
+        # Retrying would only fail again and log noise; this needs a human
+        # to top up.
+        Logger.error("Corpus ingest halted: twitterapi.io is out of credits")
         :ok
 
       {:error, reason} ->
@@ -50,20 +60,36 @@ defmodule SuperX.Workers.CorpusIngest do
     end
   end
 
+  defp fetch(topic, limit, min_likes) do
+    cond do
+      TwitterAPI.configured?() ->
+        case TwitterAPI.search(topic, min_likes: min_likes, max: limit, lang: "en") do
+          {:ok, tweets} -> {:ok, Enum.map(tweets, &TwitterAPI.to_corpus_attrs/1)}
+          error -> error
+        end
+
+      Scraper.configured?() ->
+        Scraper.search(topic, min_likes: min_likes, limit: limit)
+
+      true ->
+        {:error, :not_configured}
+    end
+  end
+
   @doc """
   Enqueues ingestion for a list of topics.
 
-  Jobs are spaced out so a large topic list doesn't burst against X all
-  at once — the scraper rate-limits internally, but queueing politely
-  keeps the ingestion queue from being blocked for an hour.
+  Jobs are spaced out because the API bills per record and rate-limits per
+  plan: firing twenty topics at once would either 429 or spend the month's
+  budget in a minute.
   """
   def enqueue_topics(topics, opts \\ []) when is_list(topics) do
-    spacing = opts[:spacing_seconds] || 90
+    spacing = opts[:spacing_seconds] || 120
 
     topics
     |> Enum.with_index()
     |> Enum.map(fn {topic, index} ->
-      %{topic: topic, limit: opts[:limit] || 50, min_likes: opts[:min_likes] || 500}
+      %{topic: topic, limit: opts[:limit] || 40, min_likes: opts[:min_likes] || 500}
       |> new(schedule_in: index * spacing)
     end)
     |> Oban.insert_all()

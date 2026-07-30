@@ -64,6 +64,7 @@ defmodule SuperXWeb.Layouts do
             Ready to Post
           </.nav_link>
           <.nav_link navigate={~p"/queue"} active={@active == :queue}>Queue</.nav_link>
+          <.nav_link navigate={~p"/engage"} active={@active == :engage}>Engage</.nav_link>
         </.nav_section>
 
         <.nav_section label="Research">

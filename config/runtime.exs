@@ -36,6 +36,19 @@ config :superx, SuperX.AI,
   anthropic_api_key: System.get_env("ANTHROPIC_API_KEY"),
   voyage_api_key: System.get_env("VOYAGE_API_KEY")
 
+# twitterapi.io — the read side. Without a key the corpus, mentions, and
+# Signals stay empty and the rest of the app works normally.
+#
+# min_interval_ms paces calls to your plan's QPS. The free tier is
+# advertised at 0.2 QPS but measured tighter than that in practice — even
+# 6s spacing draws the occasional 429 on a first attempt. That's handled:
+# retries back off at this interval, so throughput self-corrects to roughly
+# one call per 11s rather than failing. Lower this once you're on a paid
+# plan; raising QPS beyond what you pay for only buys 429s.
+config :superx, SuperX.TwitterAPI,
+  api_key: System.get_env("TWITTERAPI_IO_KEY"),
+  min_interval_ms: String.to_integer(System.get_env("TWITTERAPI_IO_MIN_INTERVAL_MS", "5000"))
+
 config :superx, SuperX.Billing,
   stripe_secret_key: System.get_env("STRIPE_SECRET_KEY"),
   stripe_webhook_secret: System.get_env("STRIPE_WEBHOOK_SECRET")

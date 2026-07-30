@@ -18,6 +18,7 @@ defmodule SuperXWeb.ShellHook do
     SuperXWeb.QueueLive => :queue,
     SuperXWeb.AnalyticsLive => :analytics,
     SuperXWeb.ReadyToPostLive => :ready_to_post,
+    SuperXWeb.EngageLive => :engage,
     SuperXWeb.InspirationLive => :inspiration,
     SuperXWeb.VoiceLive => :voice,
     SuperXWeb.SettingsLive => :settings,

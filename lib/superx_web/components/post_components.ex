@@ -27,6 +27,7 @@ defmodule SuperXWeb.PostComponents do
   attr :author, :map, required: true
   attr :segments, :list, required: true
   attr :class, :any, default: nil
+  attr :clamp, :integer, default: nil, doc: "cap the body at N lines, for scannable lists"
   attr :rest, :global
 
   slot :meta, doc: "attribution or source line, above the actions"
@@ -46,7 +47,11 @@ defmodule SuperXWeb.PostComponents do
                 <span class="post-name truncate">{@author[:name] || @author[:handle]}</span>
                 <span class="post-handle truncate">@{@author[:handle]}</span>
               </p>
-              <p class={["post-body", index == 0 && "mt-0.5"]}>{segment["text"]}</p>
+              <p
+                class={["post-body", index == 0 && "mt-0.5"]}
+                data-clamp={@clamp && "true"}
+                style={@clamp && "--clamp-lines: #{@clamp}"}
+              >{segment["text"]}</p>
             </div>
           </div>
         </div>

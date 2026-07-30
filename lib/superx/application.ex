@@ -14,8 +14,11 @@ defmodule SuperX.Application do
       {Phoenix.PubSub, name: SuperX.PubSub},
       # Runs LLM calls off the LiveView process so the UI stays responsive.
       {Task.Supervisor, name: SuperX.TaskSupervisor},
-      # External Go worker for corpus reads. Starts even when the binary
-      # is missing; ingestion is then simply disabled.
+      # Serialises every twitterapi.io call behind one clock, because the
+      # plan's QPS is shared across the whole node.
+      SuperX.TwitterAPI,
+      # Optional self-hosted read path. Starts even when the binary is
+      # missing; twitterapi.io is the default source.
       SuperX.Scraper,
       {Oban, Application.fetch_env!(:superx, Oban)},
       # Start to serve requests, typically the last entry
