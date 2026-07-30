@@ -60,6 +60,7 @@ defmodule SuperXWeb.Layouts do
       <nav class="flex flex-1 flex-col gap-7 overflow-y-auto px-3 py-1">
         <.nav_section label="Today">
           <.nav_link navigate={~p"/home"} active={@active == :home}>Home</.nav_link>
+          <.nav_link navigate={~p"/ask"} active={@active == :ask}>Ask</.nav_link>
           <.nav_link navigate={~p"/ready-to-post"} active={@active == :ready_to_post}>
             Ready to Post
           </.nav_link>

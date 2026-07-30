@@ -18,6 +18,20 @@ nothing publishes without you accepting it.
 Approved drafts fill the next open one and publish automatically, with
 retries and a visible failure state when X refuses.
 
+**Engage** — Mentions and topic feeds sync into one inbox, scored 0-100
+for whether they're worth answering and ordered by that rather than by
+recency. Replies are drafted in your voice and send immediately, because
+a reply two days late isn't a reply.
+
+**Signals** — Standing watches on X: posts matching a search, followers of
+an account, people replying to an account, members of a list. Each one
+scores whoever it finds against a sentence describing who you're looking
+for, and files the keepers in **Contacts**.
+
+**Ask** — Chat with tools over your own data. It can read your analytics,
+queue, inbox, contacts, and the library, and draft or queue posts. It
+cannot publish; queueing is as far as it goes.
+
 **Inspiration** — Hybrid search over the corpus: Postgres full text
 always, vector similarity when embeddings are configured, re-ranked by
 engagement normalised against author reach.
@@ -97,23 +111,34 @@ Each optional integration degrades rather than breaks:
 
 | Missing | Effect |
 |---|---|
-| `ANTHROPIC_API_KEY` | No voice derivation or drafting. Everything else works; you write posts yourself. |
+| `ANTHROPIC_API_KEY` | No drafting, no reply writing, no lead scoring, no Ask. Signals still find people but return them unranked. |
+| `TWITTERAPI_IO_KEY` | No corpus, no mentions, no feeds, no Signals. The Create loop still works on posts you write. |
 | `VOYAGE_API_KEY` | Corpus search falls back to full text. |
 | `STRIPE_*` | Billing disabled, every account keeps free limits. Correct for a private instance. |
-| `X_WEB_BEARER` / `X_SEARCH_PATH` | Corpus stays empty, Inspiration shows a setup note. |
 
-## The corpus
+## Reads
 
-`Inspiration` and the "inspired by a post with N likes" attribution both
-read from a shared library of high-performing posts. Populating it is the
-one part of this that X's API can't do at a workable price, so it lives
-in a separate Go worker you opt into — see
-[`scraper/README.md`](scraper/README.md), including the terms-of-service
-position, before enabling it.
+Everything SuperX reads from X — the corpus, mentions, feeds, followers,
+lists — goes through [twitterapi.io](https://twitterapi.io), a commercial
+data API. Writes go through X's own API with your OAuth token, because
+posting as someone should use credentials they granted directly.
 
-The control plane only cares about the shape in `scraper/protocol.go`, so
-a licensed dataset or a third-party API can be dropped in behind the same
-contract.
+Two things to know before turning it on:
+
+**It bills per record**, roughly 15 credits per tweet on search. Every
+paging helper here takes a mandatory ceiling for that reason — a loop that
+pages "until done" can spend a month of budget in a minute. Corpus
+ingestion is capped at 20 topics a day.
+
+**The free tier is slow.** Advertised at 0.2 QPS and measured tighter;
+calls are serialised behind one clock for the whole node and retries back
+off at the same interval. Expect roughly one call per 11 seconds until you
+subscribe, then lower `TWITTERAPI_IO_MIN_INTERVAL_MS` to match your plan.
+
+A self-hosted Go scraper remains in `scraper/` as an alternative source
+behind the same contract, but it carries terms-of-service exposure that
+the paid API does not. It is off unless configured, and twitterapi.io wins
+when both are present.
 
 ## Operating notes
 

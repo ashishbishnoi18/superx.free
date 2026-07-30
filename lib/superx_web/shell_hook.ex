@@ -15,6 +15,7 @@ defmodule SuperXWeb.ShellHook do
 
   @nav_by_module %{
     SuperXWeb.HomeLive => :home,
+    SuperXWeb.AskLive => :ask,
     SuperXWeb.QueueLive => :queue,
     SuperXWeb.AnalyticsLive => :analytics,
     SuperXWeb.ReadyToPostLive => :ready_to_post,

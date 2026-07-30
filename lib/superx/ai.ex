@@ -88,6 +88,17 @@ defmodule SuperX.AI do
   end
 
   @doc """
+  Sends a request body through untouched and returns the full response.
+
+  Needed by the tool-use loop in `SuperX.Ask`, which has to see
+  `stop_reason` and the raw content blocks to decide whether to run tools
+  and go round again. Everything else should use `complete/2` or
+  `structured/3`.
+  """
+  @spec raw(map()) :: {:ok, map()} | {:error, term()}
+  def raw(body) when is_map(body), do: request(body)
+
+  @doc """
   Embeds a list of texts, returning vectors in the same order.
 
   `input_type` should be `"document"` when embedding corpus posts and
