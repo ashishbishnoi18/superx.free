@@ -220,13 +220,28 @@ defmodule SuperX.Ask do
     |> Repo.update()
   end
 
+  # Truncating mid-sentence often lands on a conjunction, and a sidebar
+  # entry ending in "and" reads as broken rather than shortened.
+  @dangling ~w(and or but so the a an of to for with in on at is are was were)
+
   @doc "A short title derived from the opening question."
   def title_from(question) do
     question
-    |> String.split(~r/\s+/)
+    |> String.split(~r/\s+/, trim: true)
     |> Enum.take(8)
+    |> drop_dangling()
     |> Enum.join(" ")
     |> String.slice(0, 70)
+  end
+
+  defp drop_dangling([]), do: []
+
+  defp drop_dangling(words) do
+    if String.downcase(List.last(words)) in @dangling do
+      words |> Enum.drop(-1) |> drop_dangling()
+    else
+      words
+    end
   end
 
   def credit_cost, do: @credit_cost

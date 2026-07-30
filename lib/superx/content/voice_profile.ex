@@ -65,7 +65,7 @@ defmodule SuperX.Content.VoiceProfile do
       |> Enum.map(fn handle ->
         handle
         |> String.trim()
-        |> String.replace(~r{^https?://(www\.)?(x|twitter)\.com/}i, "")
+        |> String.replace(~r{^(https?://)?(www\.)?(x|twitter)\.com/}i, "")
         |> String.trim_leading("@")
         |> String.split("/", parts: 2)
         |> hd()

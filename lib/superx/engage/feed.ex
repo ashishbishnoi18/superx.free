@@ -34,7 +34,12 @@ defmodule SuperX.Engage.Feed do
     |> validate_length(:query, min: 2, max: 200)
     |> validate_number(:min_likes, greater_than_or_equal_to: 0)
     |> put_default_name()
-    |> unique_constraint([:x_account_id, :query], message: "is already a feed")
+    # Attached to :query rather than the composite's first field, so the
+    # error lands on the input the user can actually change.
+    |> unique_constraint(:query,
+      name: :feeds_x_account_id_query_index,
+      message: "is already a feed"
+    )
   end
 
   # The query is usually a fine label; naming it is optional busywork.

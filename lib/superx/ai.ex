@@ -203,8 +203,9 @@ defmodule SuperX.AI do
     if configured?() do
       req =
         Req.new(
-          url: messages_url(),
-          json: body,
+          [
+            url: messages_url(),
+            json: body,
           headers: [
             {"x-api-key", llm_key()},
             # DeepSeek ignores this; Anthropic requires it. Sending it
@@ -215,6 +216,7 @@ defmodule SuperX.AI do
           receive_timeout: 120_000,
           retry: :transient,
           max_retries: 2
+          ] ++ test_plug()
         )
 
       case Req.post(req) do
@@ -256,6 +258,14 @@ defmodule SuperX.AI do
 
   defp config(key), do: Application.get_env(:superx, __MODULE__, [])[key]
   defp llm_key, do: config(:api_key)
+
+  # Test seam; absent in prod, so the option is never passed.
+  defp test_plug do
+    case Application.get_env(:superx, :ai_plug) do
+      nil -> []
+      plug -> [plug: plug]
+    end
+  end
   defp voyage_key, do: config(:voyage_api_key)
 
   defp messages_url do

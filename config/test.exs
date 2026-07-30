@@ -38,3 +38,7 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# Stub the HTTP wire in tests rather than reaching the real APIs.
+config :superx, twitter_api_plug: {Req.Test, SuperX.TwitterAPI}
+config :superx, ai_plug: {Req.Test, SuperX.AI}

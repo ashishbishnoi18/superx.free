@@ -253,9 +253,10 @@ defmodule SuperX.TwitterAPI do
 
       req =
         Req.new(
-          url: @base <> path,
-          params: params,
-          headers: [{"x-api-key", api_key()}],
+          [
+            url: @base <> path,
+            params: params,
+            headers: [{"x-api-key", api_key()}],
           receive_timeout: 45_000,
           retry: :transient,
           max_retries: 3,
@@ -264,6 +265,7 @@ defmodule SuperX.TwitterAPI do
           # 429 they're retrying. Spacing them at the plan interval is what
           # actually makes the backoff work.
           retry_delay: fn attempt -> interval_ms() * (attempt + 1) end
+          ] ++ test_plug(:twitter_api_plug)
         )
 
       case Req.get(req) do
@@ -360,6 +362,15 @@ defmodule SuperX.TwitterAPI do
   defp utc_now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
   defp api_key, do: Application.get_env(:superx, __MODULE__, [])[:api_key]
+
+  # Lets tests stub the wire without changing how this behaves in prod,
+  # where the key is absent and the option is simply not passed.
+  defp test_plug(key) do
+    case Application.get_env(:superx, key) do
+      nil -> []
+      plug -> [plug: plug]
+    end
+  end
 
   defp interval_ms do
     Application.get_env(:superx, __MODULE__, [])[:min_interval_ms] || @default_interval_ms
