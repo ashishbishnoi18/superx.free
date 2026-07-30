@@ -199,6 +199,7 @@ defmodule SuperX.Signals.Scout do
     case AI.structured(prompt, schema,
            model: AI.utility_model(),
            max_tokens: 2000,
+           thinking: false,
            tool_description: "Score every candidate."
          ) do
       {:ok, %{"scores" => scores}} ->

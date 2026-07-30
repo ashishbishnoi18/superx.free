@@ -32,8 +32,43 @@ config :superx, SuperX.X,
   client_secret: System.get_env("X_CLIENT_SECRET"),
   redirect_uri: System.get_env("X_REDIRECT_URI", "http://localhost:4000/auth/x/callback")
 
+# LLM provider. Both speak Anthropic's Messages API — DeepSeek serves it
+# at /anthropic with the same header and content-block format — so this is
+# a base URL and two model names, not a second client.
+#
+# Models are overridable individually: the writer wants quality (it decides
+# whether a post sounds like the user), the utility model runs the
+# high-volume classification and scoring where cheap is right.
+llm =
+  case System.get_env("SUPERX_LLM_PROVIDER", "anthropic") do
+    "deepseek" ->
+      %{
+        provider: "deepseek",
+        base_url: "https://api.deepseek.com/anthropic",
+        api_key: System.get_env("DEEPSEEK_API_KEY"),
+        writer_model: System.get_env("SUPERX_WRITER_MODEL", "deepseek-v4-pro"),
+        utility_model: System.get_env("SUPERX_UTILITY_MODEL", "deepseek-v4-flash")
+      }
+
+    _anthropic ->
+      %{
+        provider: "anthropic",
+        base_url: "https://api.anthropic.com",
+        api_key: System.get_env("ANTHROPIC_API_KEY"),
+        writer_model: System.get_env("SUPERX_WRITER_MODEL", "claude-sonnet-5"),
+        utility_model:
+          System.get_env("SUPERX_UTILITY_MODEL", "claude-haiku-4-5-20251001")
+      }
+  end
+
 config :superx, SuperX.AI,
-  anthropic_api_key: System.get_env("ANTHROPIC_API_KEY"),
+  provider: llm.provider,
+  base_url: llm.base_url,
+  api_key: llm.api_key,
+  writer_model: llm.writer_model,
+  utility_model: llm.utility_model,
+  embedding_model: "voyage-3-large",
+  embedding_dimensions: 1024,
   voyage_api_key: System.get_env("VOYAGE_API_KEY")
 
 # twitterapi.io — the read side. Without a key the corpus, mentions, and

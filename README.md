@@ -111,10 +111,40 @@ Each optional integration degrades rather than breaks:
 
 | Missing | Effect |
 |---|---|
-| `ANTHROPIC_API_KEY` | No drafting, no reply writing, no lead scoring, no Ask. Signals still find people but return them unranked. |
+| LLM key (`ANTHROPIC_API_KEY` or `DEEPSEEK_API_KEY`) | No drafting, no reply writing, no lead scoring, no Ask. Signals still find people but return them unranked. |
 | `TWITTERAPI_IO_KEY` | No corpus, no mentions, no feeds, no Signals. The Create loop still works on posts you write. |
 | `VOYAGE_API_KEY` | Corpus search falls back to full text. |
 | `STRIPE_*` | Billing disabled, every account keeps free limits. Correct for a private instance. |
+
+## Which model
+
+Both providers speak Anthropic's Messages API — DeepSeek serves it at
+`api.deepseek.com/anthropic` with the same header and content blocks — so
+`SUPERX_LLM_PROVIDER` is a base URL and two model names, not a second
+client.
+
+| | Writer | Utility |
+|---|---|---|
+| `anthropic` | `claude-sonnet-5` | `claude-haiku-4-5` |
+| `deepseek` | `deepseek-v4-pro` | `deepseek-v4-flash` |
+
+The writer decides whether a post sounds like you, so it gets the better
+model. The utility model runs the high-volume classification — engagement
+scoring, lead qualification — where cheap is the right call. Override
+either with `SUPERX_WRITER_MODEL` / `SUPERX_UTILITY_MODEL`.
+
+Two things about reasoning models, both handled but worth knowing:
+
+- They reject a *named* `tool_choice` while thinking. Structured output
+  therefore asks for `any` with exactly one tool defined, which means the
+  same thing and is accepted by both providers in both modes.
+- They spend the token budget on thinking before writing, so a tight
+  `max_tokens` returns a successful response containing no text. That
+  surfaces as an error rather than a blank draft. Thinking is turned off
+  explicitly on the scoring paths, where it bills as output for no gain.
+
+DeepSeek's `deepseek-reasoner` is not used: it doesn't support function
+calling, which Ask's tool loop depends on.
 
 ## Reads
 

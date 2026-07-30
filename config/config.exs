@@ -74,15 +74,8 @@ config :superx, Oban,
      ]}
   ]
 
-# LLM provider. Keys come from runtime env, never compiled in.
-config :superx, SuperX.AI,
-  provider: :anthropic,
-  # Drafting posts in the user's voice — quality matters most here.
-  writer_model: "claude-sonnet-5",
-  # Cheap, high-volume classification and scoring.
-  utility_model: "claude-haiku-4-5-20251001",
-  embedding_model: "voyage-3-large",
-  embedding_dimensions: 1024
+# LLM provider, base URL, keys and model names are all resolved at runtime
+# from the environment — see config/runtime.exs.
 
 # X (Twitter) API. Writes only — reads come from the scraper.
 config :superx, SuperX.X,

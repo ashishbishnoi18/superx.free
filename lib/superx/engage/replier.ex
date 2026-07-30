@@ -163,6 +163,7 @@ defmodule SuperX.Engage.Replier do
     case AI.structured(prompt, schema,
            model: AI.utility_model(),
            max_tokens: 1500,
+           thinking: false,
            tool_description: "Return a score for every item."
          ) do
       {:ok, %{"scores" => scores}} ->

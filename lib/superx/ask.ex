@@ -125,7 +125,7 @@ defmodule SuperX.Ask do
         )
 
       {:ok, %{"content" => content}} ->
-        {:ok, extract_text(content), summaries}
+        {:ok, content |> extract_text() |> strip_markdown(), summaries}
 
       {:error, reason} ->
         {:error, reason}
@@ -174,10 +174,22 @@ defmodule SuperX.Ask do
     Never queue text the user hasn't seen and agreed to. Draft first, show
     it, then queue it if they say yes.
 
-    Answer briefly and concretely. Plain prose, no headers or bullet lists
-    unless the answer is genuinely a list. Say what's true — if the numbers
-    are flat, say they're flat.
+    Answer briefly and concretely. Say what's true — if the numbers are
+    flat, say they're flat.
+
+    Write plain text. No markdown: no **bold**, no ## headers, no bullet
+    characters. This is rendered as prose, so the markers show up
+    literally. Use short paragraphs for structure instead.
     """
+  end
+
+  # A safety net for the instruction above. Models reach for markdown by
+  # habit, and a stray `**` in the UI reads as a bug rather than emphasis.
+  defp strip_markdown(text) do
+    text
+    |> String.replace(~r/\*\*(.+?)\*\*/s, "\\1")
+    |> String.replace(~r/^#+\s+/m, "")
+    |> String.replace(~r/^\s*[-*]\s+/m, "· ")
   end
 
   defp history_for(%Chat{} = chat) do
