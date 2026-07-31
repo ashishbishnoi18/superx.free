@@ -1,0 +1,17 @@
+#!/bin/sh
+# Migrate, then serve.
+#
+# The app supervises Oban, which queries its own tables the moment it
+# starts. On a fresh database that crashes the release before anything
+# can migrate it — and migrating through `docker compose exec` needs the
+# container to already be healthy, which it can't be. Running both here,
+# in order, in one process removes the ordering problem entirely.
+#
+# `migrate` starts only the repo, not the app, so this is safe to run on
+# every boot: with no pending migrations it is a no-op.
+set -eu
+
+cd -P -- "$(dirname -- "$0")"
+
+./migrate
+PHX_SERVER=true exec ./superx start

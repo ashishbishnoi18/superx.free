@@ -120,4 +120,5 @@ USER nobody
 # above and adding an entrypoint. See https://github.com/krallin/tini for details
 # ENTRYPOINT ["/tini", "--"]
 
-CMD ["/app/bin/server"]
+# Migrates before serving; see rel/overlays/bin/start for why.
+CMD ["/app/bin/start"]
