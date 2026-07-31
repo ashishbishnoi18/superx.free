@@ -101,6 +101,22 @@ mix phx.server
 The seed prints a sign-in URL, so you can exercise every screen without X
 or LLM credentials.
 
+## Deploying
+
+Production runs on a single box behind nginx. `./deploy.sh` bundles the
+current commit, ships it over SSH, rebuilds, and restarts — migrations run
+inside the container on boot, so there is no separate step.
+
+```bash
+./deploy.sh          # deploy HEAD to superx.free
+HOST=other ./deploy.sh
+```
+
+First-time setup on a new host: clone the repo, write `.env`, add an nginx
+vhost proxying to `127.0.0.1:4000` (with the websocket upgrade on
+`/live/websocket`, or LiveView will not connect), issue a certificate, and
+enable a systemd unit that runs `docker compose up -d`.
+
 ## Configuration
 
 Everything is environment variables; see `.env.example` for the full
