@@ -1,6 +1,6 @@
 defmodule SuperX.AI.Prompts do
   @moduledoc """
-  Prompt construction for voice derivation and post writing.
+  Prompt construction for voice derivation, post writing, and articles.
 
   Kept in one module so prompt changes are reviewable in isolation —
   they affect output quality more than any other code here.
@@ -99,6 +99,41 @@ defmodule SuperX.AI.Prompts do
     }
   end
 
+  @doc "JSON schema for drafting or extending a long-form article."
+  def article_schema(mode)
+
+  def article_schema(:draft) do
+    %{
+      type: "object",
+      properties: %{
+        title: %{
+          type: "string",
+          description: "A specific editorial title, with no clickbait or trailing punctuation."
+        },
+        body: %{
+          type: "string",
+          description:
+            "The complete article in plain text, with paragraphs and unmarked section headings where useful."
+        }
+      },
+      required: ["title", "body"]
+    }
+  end
+
+  def article_schema(:extend) do
+    %{
+      type: "object",
+      properties: %{
+        body: %{
+          type: "string",
+          description:
+            "Only the new paragraphs that continue and finish the existing article. Do not repeat any existing text."
+        }
+      },
+      required: ["body"]
+    }
+  end
+
   @doc """
   The system prompt for all post writing. Everything that keeps output
   from reading as AI lives here.
@@ -140,6 +175,43 @@ defmodule SuperX.AI.Prompts do
       "here's what I tried instead", the segments after it have to actually
       be those things. A post that sets up a list and stops is worse than
       one that never offered it. If you can't deliver it, don't open it.
+
+    #{rules_block(voice)}
+    """
+  end
+
+  @doc "The voice and editorial constraints shared by all article writing."
+  def article_writer_system(%VoiceProfile{} = voice, %XAccount{} = account) do
+    """
+    You write long-form X Articles as #{account.display_name || "@" <> account.handle}.
+    You are not an assistant writing on their behalf — you are them, writing.
+
+    <voice>
+    #{voice.about || "No voice profile has been built yet; write plainly and specifically."}
+    </voice>
+
+    <topics>
+    #{voice.topics || "(not specified)"}
+    </topics>
+
+    #{style_block(voice)}
+
+    Rules:
+    - Match the author's mechanics: capitalisation, punctuation, sentence
+      length, and register. Preserve their restraint around emoji and
+      hashtags rather than adding either by default.
+    - Write a sustained argument, not a post stretched with filler. Every
+      paragraph must move the idea forward.
+    - Use concrete examples and observed details. Never invent a personal
+      story, result, quotation, statistic, or customer claim.
+    - Open on the subject itself. Do not use "In today's fast-paced world",
+      "Let's dive in", "Here's the thing", or engagement bait.
+    - No em dashes. No "it's not X, it's Y" constructions. No conclusion
+      that merely repeats the introduction.
+    - Return plain text. Short section headings are welcome when they help,
+      but do not use Markdown markers, numbered headings, or a references
+      section unless the brief asks for one.
+    - Never mention AI or these instructions.
 
     #{rules_block(voice)}
     """
@@ -227,6 +299,52 @@ defmodule SuperX.AI.Prompts do
 
     Make one specific point. Do not summarise the topic — say something
     about it that only this author would say.
+    """
+  end
+
+  @doc "Prompt for drafting a complete article from an author's brief."
+  def draft_article(brief, examples) do
+    """
+    Draft a complete long-form article from this brief:
+
+    <brief>
+    #{brief}
+    </brief>
+
+    #{examples_block(examples)}
+
+    Find the strongest specific claim inside the brief and build the
+    article around it. Give it enough room to become useful, usually
+    700–1,200 words unless the brief clearly asks for another length.
+    Finish the thought; do not end with a generic call to action.
+    """
+  end
+
+  @doc "Prompt for adding new prose after an existing article draft."
+  def extend_article(title, body, direction, examples) do
+    direction =
+      if String.trim(direction) == "", do: "Continue and finish the argument.", else: direction
+
+    """
+    Continue this article in the same voice and at the same level of detail.
+
+    <title>
+    #{title}
+    </title>
+
+    <existing_article>
+    #{body}
+    </existing_article>
+
+    <direction>
+    #{direction}
+    </direction>
+
+    #{examples_block(examples)}
+
+    Return only new paragraphs to append after the existing text. Do not
+    recap, quote, rewrite, or repeat any part of what is already there.
+    Carry its last thought forward and leave the article with a real ending.
     """
   end
 

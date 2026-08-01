@@ -17,6 +17,7 @@ defmodule SuperXWeb.ShellHook do
     SuperXWeb.HomeLive => :home,
     SuperXWeb.AskLive => :ask,
     SuperXWeb.QueueLive => :queue,
+    SuperXWeb.ArticlesLive => :articles,
     SuperXWeb.AnalyticsLive => :analytics,
     SuperXWeb.ReadyToPostLive => :ready_to_post,
     SuperXWeb.WorkersLive => :workers,

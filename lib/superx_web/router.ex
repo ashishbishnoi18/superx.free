@@ -65,6 +65,10 @@ defmodule SuperXWeb.Router do
       live "/queue", QueueLive, :index
       live "/queue/:id", QueueLive, :edit
 
+      live "/articles", ArticlesLive, :index
+      live "/articles/new", ArticlesLive, :new
+      live "/articles/:id/edit", ArticlesLive, :edit
+
       live "/ready-to-post", ReadyToPostLive, :index
       live "/workers", WorkersLive, :index
       live "/engage", EngageLive, :index
