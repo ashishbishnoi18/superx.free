@@ -1,5 +1,7 @@
 defmodule SuperX.CorpusTest do
-  use SuperX.DataCase, async: true
+  # The sample-floor tests temporarily change application configuration,
+  # which is global even though the database sandbox is not.
+  use SuperX.DataCase, async: false
 
   alias SuperX.Content.{Corpus, Exclusions}
   alias SuperX.Workers.CorpusRefresh
@@ -62,6 +64,48 @@ defmodule SuperX.CorpusTest do
 
       assert [_] = Corpus.candidates_for(account_id, ["ai agents"], min_likes: 0)
       assert [] == Corpus.candidates_for(account_id, ["knitting"], min_likes: 0)
+    end
+  end
+
+  describe "advanced filtering" do
+    test "combines media, metric, length, and date constraints in SQL" do
+      matching =
+        attrs(%{
+          x_post_id: "matching",
+          reposts: 30,
+          replies: 20,
+          bookmarks: 10,
+          impressions: 2_000,
+          media: [%{"type" => "photo", "url" => "https://images.example/matching.jpg"}],
+          posted_at: ~U[2026-07-15 12:00:00Z]
+        })
+
+      Corpus.upsert_many([
+        matching,
+        Map.merge(matching, %{x_post_id: "without-media", media: []}),
+        Map.merge(matching, %{x_post_id: "few-reposts", reposts: 29}),
+        Map.merge(matching, %{x_post_id: "few-replies", replies: 19}),
+        Map.merge(matching, %{x_post_id: "few-bookmarks", bookmarks: 9}),
+        Map.merge(matching, %{x_post_id: "few-views", impressions: 1_999}),
+        Map.merge(matching, %{x_post_id: "too-short", text: String.duplicate("x", 119)}),
+        Map.merge(matching, %{x_post_id: "too-early", posted_at: ~U[2026-07-09 23:59:59Z]}),
+        Map.merge(matching, %{x_post_id: "too-late", posted_at: ~U[2026-07-21 00:00:00Z]})
+      ])
+
+      results =
+        Corpus.search(
+          min_likes: 0,
+          min_reposts: 30,
+          min_replies: 20,
+          min_bookmarks: 10,
+          min_views: 2_000,
+          min_length: 120,
+          since: ~U[2026-07-10 00:00:00Z],
+          until: ~U[2026-07-20 23:59:59Z],
+          has_media: true
+        )
+
+      assert Enum.map(results, & &1.x_post_id) == ["matching"]
     end
   end
 

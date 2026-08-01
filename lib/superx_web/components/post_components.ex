@@ -63,6 +63,7 @@ defmodule SuperXWeb.PostComponents do
               </p>
               <.post_media
                 media_ids={segment["media_ids"] || []}
+                media={segment["media"] || []}
                 upload={upload}
                 owner_id={@media_owner_id}
                 segment_index={index}
@@ -93,6 +94,7 @@ defmodule SuperXWeb.PostComponents do
 
   @doc "Attached post media, shared by cards and editable previews."
   attr :media_ids, :list, default: []
+  attr :media, :list, default: []
   attr :upload, :any, default: nil
   attr :owner_id, :string, default: nil
   attr :segment_index, :integer, default: nil
@@ -101,16 +103,27 @@ defmodule SuperXWeb.PostComponents do
 
   def post_media(assigns) do
     entries = if assigns.upload, do: assigns.upload.entries, else: []
-    count = length(assigns.media_ids) + length(entries)
+    media = Enum.filter(assigns.media, &(media_url(&1) not in [nil, ""]))
+    count = length(assigns.media_ids) + length(media) + length(entries)
 
     assigns =
       assigns
       |> assign(:entries, entries)
+      |> assign(:media, media)
       |> assign(:count, count)
       |> assign(:can_add?, can_add_media?(assigns.media_ids, entries, count))
 
     ~H"""
     <div :if={@count > 0} class="post-media-grid" data-count={@count}>
+      <div :for={item <- @media} class="post-media-item">
+        <img
+          src={media_url(item)}
+          alt={media_alt(item)}
+          class="post-media-image"
+          loading="lazy"
+        />
+      </div>
+
       <div :for={media_id <- @media_ids} class="post-media-item">
         <img
           src={SuperX.Media.url(media_id)}
@@ -180,6 +193,16 @@ defmodule SuperXWeb.PostComponents do
     count < Post.max_media_per_segment() and
       not Enum.any?(media_ids, &SuperX.Media.gif?/1) and
       not Enum.any?(entries, &(&1.client_type == "image/gif"))
+  end
+
+  defp media_url(item), do: item["url"] || item[:url]
+
+  defp media_alt(item) do
+    case item["type"] || item[:type] do
+      "video" -> "Attached video preview"
+      "animated_gif" -> "Attached GIF preview"
+      _ -> "Attached post media"
+    end
   end
 
   defp upload_error(:too_large), do: "Each attachment must be 5 MB or smaller."
@@ -264,7 +287,7 @@ defmodule SuperXWeb.PostComponents do
   @doc "Segments for anything that carries them, normalised to a list."
   def segments(%Generation{segments: segments}), do: normalize(segments)
   def segments(%Post{segments: segments}), do: normalize(segments)
-  def segments(%CorpusPost{text: text}), do: [%{"text" => text}]
+  def segments(%CorpusPost{text: text, media: media}), do: [%{"text" => text, "media" => media}]
 
   defp normalize([]), do: [%{"text" => ""}]
   defp normalize(segments), do: segments
