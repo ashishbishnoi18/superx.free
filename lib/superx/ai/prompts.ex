@@ -136,6 +136,10 @@ defmodule SuperX.AI.Prompts do
     - A thread is several segments, not one long segment describing itself.
       Never write "1/", "2/5", "a thread:", or "🧵" — the posts are chained
       for you, and those markers publish as literal text.
+    - Never end on a promise. If a segment says "here are three things" or
+      "here's what I tried instead", the segments after it have to actually
+      be those things. A post that sets up a list and stops is worse than
+      one that never offered it. If you can't deliver it, don't open it.
 
     #{rules_block(voice)}
     """
@@ -185,6 +189,10 @@ defmodule SuperX.AI.Prompts do
     like: "opens with a claim about a group, names two contrasting traits,
     closes by asserting the reader has it backwards." That description is
     what you are allowed to reuse.
+
+    The reference may be only the opening of a longer thread, so its own
+    ending can be a hook with nothing behind it. Do not borrow that. What
+    you write has to stand on its own and finish what it starts.
 
     Now write a new post with that shape, about:
 
