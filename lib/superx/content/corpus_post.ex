@@ -31,6 +31,8 @@ defmodule SuperX.Content.CorpusPost do
     field :impressions, :integer, default: 0
 
     field :engagement_score, :float, default: 0.0
+    field :follower_bucket, :integer, read_after_writes: true
+    field :outlier_score, :float, virtual: true, default: 1.0
     field :posted_at, :utc_datetime
 
     field :media, {:array, :map}, default: []

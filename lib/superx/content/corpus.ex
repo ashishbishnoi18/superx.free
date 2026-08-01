@@ -13,7 +13,7 @@ defmodule SuperX.Content.Corpus do
   import Pgvector.Ecto.Query
 
   alias SuperX.AI
-  alias SuperX.Content.{CorpusPost, Exclusions}
+  alias SuperX.Content.{CorpusOutlierBaseline, CorpusPost, Exclusions}
   alias SuperX.Repo
 
   @doc """
@@ -30,10 +30,81 @@ defmodule SuperX.Content.Corpus do
       |> Enum.map(&build_row(&1, now))
       |> Enum.reject(&is_nil/1)
 
-    Repo.insert_all(CorpusPost, rows,
-      on_conflict: refresh_query(),
-      conflict_target: [:x_post_id]
-    )
+    case rows do
+      [] ->
+        {0, nil}
+
+      rows ->
+        {:ok, result} =
+          Repo.transaction(fn ->
+            # Ingestion jobs can overlap. Serialising this short write path
+            # prevents a later transaction from publishing a median that
+            # was calculated before an earlier batch committed.
+            Repo.query!(
+              "SELECT pg_advisory_xact_lock(hashtext('superx.corpus.outlier_baselines'))"
+            )
+
+            old_buckets = existing_buckets(rows)
+
+            {count, returned} =
+              Repo.insert_all(CorpusPost, rows,
+                on_conflict: refresh_query(),
+                conflict_target: [:x_post_id],
+                returning: [:follower_bucket]
+              )
+
+            new_buckets = Enum.map(returned, & &1.follower_bucket)
+            refresh_outlier_baselines(old_buckets ++ new_buckets)
+
+            {count, nil}
+          end)
+
+        result
+    end
+  end
+
+  defp existing_buckets(rows) do
+    x_post_ids = Enum.map(rows, & &1.x_post_id)
+
+    CorpusPost
+    |> where([c], c.x_post_id in ^x_post_ids)
+    |> select([c], c.follower_bucket)
+    |> Repo.all()
+  end
+
+  # Fixed half-decade bands compare accounts no more than roughly 3.2x
+  # apart, while leaving enough observations for a stable median. The
+  # sub-1,000 tail is pooled because the corpus is sparse there and the
+  # underlying engagement score already floors reach at 100 followers.
+  #
+  # The median, rather than the mean, defines "typical": the very viral
+  # posts this corpus collects must not drag their own benchmark upwards.
+  # Comparing the existing weighted engagement score within reach bands
+  # also avoids the permanent small-account premium produced by a flat
+  # engagement/followers ratio. A multiple of 1.0 is therefore the middle
+  # post for a genuinely comparable account size.
+  defp refresh_outlier_baselines(buckets) do
+    buckets = Enum.uniq(buckets)
+
+    if buckets != [] do
+      Repo.query!(
+        """
+        INSERT INTO corpus_outlier_baselines AS baseline
+          (follower_bucket, median_engagement_score, sample_size)
+        SELECT
+          follower_bucket,
+          percentile_cont(0.5) WITHIN GROUP (ORDER BY engagement_score),
+          count(*)
+        FROM corpus_posts
+        WHERE follower_bucket = ANY($1::smallint[])
+        GROUP BY follower_bucket
+        ON CONFLICT (follower_bucket) DO UPDATE SET
+          median_engagement_score = EXCLUDED.median_engagement_score,
+          sample_size = EXCLUDED.sample_size
+        """,
+        [buckets]
+      )
+    end
   end
 
   # Topics are unioned rather than replaced: the same post surfacing under
@@ -113,11 +184,13 @@ defmodule SuperX.Content.Corpus do
     * `:min_likes` — engagement floor (default 100)
     * `:since` — only posts published after this datetime
     * `:has_media` — true/false
+    * `:sort` — `:engagement` (default) or `:outlier`
     * `:limit` — default 40
   """
   def search(opts \\ []) do
     limit = opts[:limit] || 40
     query_text = opts[:query]
+    sort = normalize_sort(opts[:sort])
 
     base =
       CorpusPost
@@ -130,21 +203,35 @@ defmodule SuperX.Content.Corpus do
     cond do
       is_nil(query_text) or query_text == "" ->
         base
-        |> order_by([c], desc: c.engagement_score)
+        |> with_outlier()
+        |> order_results(sort)
         |> limit(^limit)
         |> Repo.all()
 
       AI.embeddings_configured?() ->
-        semantic_search(base, query_text, limit)
+        semantic_search(base, query_text, limit, sort)
 
       true ->
-        text_search(base, query_text, limit)
+        text_search(base, query_text, limit, sort)
     end
   end
 
-  defp text_search(base, query_text, limit) do
+  defp normalize_sort(sort) when sort in [:outlier, "outlier"], do: :outlier
+  defp normalize_sort(_sort), do: :engagement
+
+  defp text_search(base, query_text, limit, :outlier) do
     base
     |> where([c], fragment("? @@ plainto_tsquery('english', ?)", c.search, ^query_text))
+    |> with_outlier()
+    |> order_results(:outlier)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  defp text_search(base, query_text, limit, :engagement) do
+    base
+    |> where([c], fragment("? @@ plainto_tsquery('english', ?)", c.search, ^query_text))
+    |> with_outlier()
     |> order_by([c],
       desc:
         fragment(
@@ -159,24 +246,62 @@ defmodule SuperX.Content.Corpus do
     |> Repo.all()
   end
 
-  defp semantic_search(base, query_text, limit) do
+  defp semantic_search(base, query_text, limit, sort) do
     case AI.embed_one(query_text, input_type: "query") do
       {:ok, vector} ->
         # Over-fetch on distance, then re-rank by engagement, so the final
         # set is both on-topic and proven.
-        base
-        |> where([c], not is_nil(c.embedding))
-        |> order_by([c], asc: cosine_distance(c.embedding, ^Pgvector.new(vector)))
-        |> limit(^(limit * 3))
-        |> subquery()
-        |> order_by([c], desc: c.engagement_score)
+        nearest =
+          base
+          |> where([c], not is_nil(c.embedding))
+          |> order_by([c], asc: cosine_distance(c.embedding, ^Pgvector.new(vector)))
+          |> limit(^(limit * 3))
+          |> select([c], c.id)
+
+        CorpusPost
+        |> where([c], c.id in subquery(nearest))
+        |> with_outlier()
+        |> order_results(sort)
         |> limit(^limit)
         |> Repo.all()
 
       {:error, _reason} ->
-        text_search(base, query_text, limit)
+        text_search(base, query_text, limit, sort)
     end
   end
+
+  defp with_outlier(query) do
+    query
+    |> join(:left, [c], baseline in CorpusOutlierBaseline,
+      as: :outlier_baseline,
+      on: baseline.follower_bucket == c.follower_bucket
+    )
+    |> select_merge([c, outlier_baseline: baseline], %{
+      outlier_score:
+        type(
+          fragment(
+            "COALESCE(? / NULLIF(?, 0.0), 1.0)",
+            c.engagement_score,
+            baseline.median_engagement_score
+          ),
+          :float
+        )
+    })
+  end
+
+  defp order_results(query, :outlier) do
+    order_by(query, [c, outlier_baseline: baseline],
+      desc:
+        fragment(
+          "COALESCE(? / NULLIF(?, 0.0), 1.0)",
+          c.engagement_score,
+          baseline.median_engagement_score
+        ),
+      desc: c.engagement_score
+    )
+  end
+
+  defp order_results(query, :engagement), do: order_by(query, [c], desc: c.engagement_score)
 
   defp filter_min_likes(query, nil), do: query
   defp filter_min_likes(query, min), do: where(query, [c], c.likes >= ^min)
@@ -204,7 +329,9 @@ defmodule SuperX.Content.Corpus do
   Picks candidate posts to use as structural templates for a user.
 
   Excludes anything already used as a source for this account, so the
-  shelf doesn't keep rebuilding the same post.
+  shelf doesn't keep rebuilding the same post. `:min_outlier` opts into a
+  corpus-relative performance floor; omitting it preserves the existing
+  selection behaviour.
   """
   def candidates_for(x_account_id, topics, opts \\ []) do
     limit = opts[:limit] || 10
@@ -225,6 +352,7 @@ defmodule SuperX.Content.Corpus do
     |> filter_exclusions(Exclusions.all_keys())
     |> filter_topics(topics)
     |> filter_since(opts[:since])
+    |> filter_min_outlier(opts[:min_outlier])
     # Randomised among the strong candidates so two runs don't produce
     # the same shelf.
     |> order_by([c], desc: c.engagement_score)
@@ -233,6 +361,19 @@ defmodule SuperX.Content.Corpus do
     |> order_by(fragment("random()"))
     |> limit(^limit)
     |> Repo.all()
+  end
+
+  defp filter_min_outlier(query, nil), do: query
+
+  defp filter_min_outlier(query, minimum) do
+    query
+    |> join(:inner, [c], baseline in CorpusOutlierBaseline,
+      on: baseline.follower_bucket == c.follower_bucket
+    )
+    |> where(
+      [c, baseline],
+      c.engagement_score >= baseline.median_engagement_score * ^minimum
+    )
   end
 
   # Not every post that performed well is worth learning from. A ranked

@@ -65,6 +65,93 @@ defmodule SuperX.CorpusTest do
     end
   end
 
+  describe "outlier detection" do
+    test "benchmarks engagement against the median for a comparable account size" do
+      Corpus.upsert_many([
+        outlier_attrs("typical-1", 100),
+        outlier_attrs("typical-2", 100),
+        outlier_attrs("typical-3", 100),
+        outlier_attrs("outlier", 300)
+      ])
+
+      scores =
+        Corpus.search(min_likes: 0, sort: :outlier)
+        |> Map.new(&{&1.x_post_id, &1.outlier_score})
+
+      assert_in_delta scores["typical-1"], 1.0, 0.001
+      assert_in_delta scores["outlier"], 3.0, 0.001
+    end
+
+    test "refreshes the whole affected band when a post's metrics change" do
+      Corpus.upsert_many([
+        outlier_attrs("typical-1", 100),
+        outlier_attrs("typical-2", 100),
+        outlier_attrs("typical-3", 100),
+        outlier_attrs("outlier", 300)
+      ])
+
+      Corpus.upsert_many([outlier_attrs("typical-1", 300)])
+
+      outlier =
+        Corpus.search(min_likes: 0, sort: :outlier)
+        |> Enum.find(&(&1.x_post_id == "outlier"))
+
+      assert_in_delta outlier.outlier_score, 1.5, 0.001
+    end
+
+    test "refreshes the old band when an author's reach crosses a boundary" do
+      Corpus.upsert_many([
+        outlier_attrs("low", 100),
+        outlier_attrs("middle", 200),
+        outlier_attrs("moving", 300)
+      ])
+
+      Corpus.upsert_many([outlier_attrs("moving", 300, 100_000)])
+
+      low =
+        Corpus.search(min_likes: 0, sort: :outlier)
+        |> Enum.find(&(&1.x_post_id == "low"))
+
+      assert_in_delta low.outlier_score, 2 / 3, 0.001
+    end
+
+    test "sorts by performance relative to reach rather than raw engagement" do
+      Corpus.upsert_many([
+        outlier_attrs("large-typical-1", 1_000, 100_000),
+        outlier_attrs("large-typical-2", 1_000, 100_000),
+        outlier_attrs("large-typical-3", 1_000, 100_000),
+        outlier_attrs("large-best", 1_500, 100_000),
+        outlier_attrs("small-typical-1", 100, 10_000),
+        outlier_attrs("small-typical-2", 100, 10_000),
+        outlier_attrs("small-typical-3", 100, 10_000),
+        outlier_attrs("small-outlier", 300, 10_000)
+      ])
+
+      assert [%{x_post_id: "large-best"} | _] =
+               Corpus.search(min_likes: 0, sort: :engagement)
+
+      assert [%{x_post_id: "small-outlier"} | _] =
+               Corpus.search(min_likes: 0, sort: :outlier)
+    end
+
+    test "optionally keeps only proven outliers for writer candidates" do
+      Corpus.upsert_many([
+        outlier_attrs("typical-1", 100),
+        outlier_attrs("typical-2", 100),
+        outlier_attrs("typical-3", 100),
+        outlier_attrs("outlier", 300)
+      ])
+
+      candidates =
+        Corpus.candidates_for(Ecto.UUID.generate(), nil,
+          min_likes: 0,
+          min_outlier: 2.5
+        )
+
+      assert Enum.map(candidates, & &1.x_post_id) == ["outlier"]
+    end
+  end
+
   describe "usable_as_template" do
     test "keeps a post whose shape transfers" do
       Corpus.upsert_many([attrs(%{})])
@@ -173,5 +260,17 @@ defmodule SuperX.CorpusTest do
       # More user topics than a run can hold, so the cap is what decides.
       assert 20 |> CorpusRefresh.topics_for_run() |> length() == 20
     end
+  end
+
+  defp outlier_attrs(id, likes, followers \\ 10_000) do
+    attrs(%{
+      x_post_id: id,
+      author_followers: followers,
+      likes: likes,
+      reposts: 0,
+      replies: 0,
+      quotes: 0,
+      bookmarks: 0
+    })
   end
 end

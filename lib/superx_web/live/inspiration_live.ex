@@ -15,6 +15,8 @@ defmodule SuperXWeb.InspirationLive do
     {"all", "All time", nil}
   ]
 
+  @sorts ~w(engagement outlier)
+
   @impl true
   def mount(_params, _session, socket) do
     voice = SuperX.Content.get_voice_profile(socket.assigns.current_x_account)
@@ -25,6 +27,8 @@ defmodule SuperXWeb.InspirationLive do
      |> assign(:query, "")
      |> assign(:range, "week")
      |> assign(:min_likes, 100)
+     |> assign(:sort, "engagement")
+     |> assign(:show_outliers, false)
      |> assign(:searching, false)
      |> assign(:ranges, @ranges)
      |> assign(:exclude, [])
@@ -60,6 +64,7 @@ defmodule SuperXWeb.InspirationLive do
         query: socket.assigns.query,
         since: since,
         min_likes: socket.assigns.min_likes,
+        sort: socket.assigns.sort,
         exclude: socket.assigns.exclude,
         limit: 48
       )
@@ -78,6 +83,14 @@ defmodule SuperXWeb.InspirationLive do
 
   def handle_event("set_min_likes", %{"min_likes" => value}, socket) do
     {:noreply, socket |> assign(:min_likes, String.to_integer(value)) |> search()}
+  end
+
+  def handle_event("set_sort", %{"sort" => sort}, socket) when sort in @sorts do
+    {:noreply, socket |> assign(:sort, sort) |> search()}
+  end
+
+  def handle_event("toggle_outliers", _params, socket) do
+    {:noreply, assign(socket, :show_outliers, not socket.assigns.show_outliers)}
   end
 
   def handle_event("toggle_exclude", %{"key" => key}, socket) do
@@ -145,7 +158,7 @@ defmodule SuperXWeb.InspirationLive do
       description={"#{format_count(@corpus_size)} posts that outperformed their author's baseline. Search for structure worth borrowing, not subjects worth copying."}
     />
 
-    <form phx-change="search" phx-submit="search">
+    <form id="inspiration-search" phx-change="search" phx-submit="search">
       <input
         type="search"
         name="query"
@@ -203,6 +216,32 @@ defmodule SuperXWeb.InspirationLive do
       </button>
     </div>
 
+    <div class="mb-6 flex flex-wrap items-center gap-5 border-y border-border py-3 text-xs">
+      <span class="text-faint">Sort</span>
+      <button
+        :for={{value, label} <- [{"engagement", "Engagement"}, {"outlier", "Outlier"}]}
+        id={"sort-#{value}"}
+        phx-click="set_sort"
+        phx-value-sort={value}
+        class={if @sort == value, do: "act-key", else: "act"}
+        aria-pressed={@sort == value}
+      >
+        {label}
+      </button>
+
+      <span class="text-border">·</span>
+
+      <label class="flex cursor-pointer items-center gap-2 text-muted-foreground">
+        <input
+          id="outlier-toggle"
+          type="checkbox"
+          checked={@show_outliers}
+          phx-click="toggle_outliers"
+        />
+        <span>Show outlier scores</span>
+      </label>
+    </div>
+
     <div :if={@corpus_size == 0} class="py-16 text-center">
       <p class="text-muted-foreground">
         The library is empty. Point the ingestion worker at the topics you care about —
@@ -219,9 +258,10 @@ defmodule SuperXWeb.InspirationLive do
     <%!-- Masonry rather than a row grid: posts vary a lot in length, and
           equal-height cards would either clip the long ones or leave the
           short ones swimming in dead space. --%>
-    <div class="columns-1 gap-4 lg:columns-2 [&>*]:mb-4">
+    <div id="inspiration-results" class="columns-1 gap-4 lg:columns-2 [&>*]:mb-4">
       <.post
         :for={post <- @results}
+        id={"inspiration-post-#{post.id}"}
         author={corpus_author(post)}
         segments={segments(post)}
         class="break-inside-avoid"
@@ -232,6 +272,16 @@ defmodule SuperXWeb.InspirationLive do
         <:footer>
           <.metrics likes={post.likes} reposts={post.reposts} />
         </:footer>
+
+        <:meta :if={@show_outliers and post.outlier_score >= 2.0}>
+          <span
+            id={"outlier-#{post.id}"}
+            class="nb-mono text-[10px] text-muted-foreground"
+            title={"#{format_outlier(post.outlier_score)} times typical engagement for this account size"}
+          >
+            <span class="text-foreground">{format_outlier(post.outlier_score)}×</span> typical
+          </span>
+        </:meta>
 
         <:actions>
           <button phx-click="draft_from" phx-value-id={post.id} class="act-key">
@@ -248,4 +298,6 @@ defmodule SuperXWeb.InspirationLive do
   defp format_count(n) when n >= 10_000, do: "#{round(n / 1_000)}K"
   defp format_count(n) when n >= 1_000, do: "#{Float.round(n / 1_000, 1)}K"
   defp format_count(n), do: to_string(n)
+
+  defp format_outlier(score), do: :erlang.float_to_binary(score, decimals: 1)
 end
