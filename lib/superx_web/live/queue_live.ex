@@ -8,6 +8,7 @@ defmodule SuperXWeb.QueueLive do
 
   alias SuperX.Content
   alias SuperX.Content.{Post, Week}
+  alias SuperXWeb.MediaUploads
 
   @tabs ~w(scheduled draft posted failed)
 
@@ -21,7 +22,7 @@ defmodule SuperXWeb.QueueLive do
      |> assign(:view, "list")
      |> assign(:week_anchor, nil)
      |> assign(:editing, nil)
-     |> assign(:segments, [""])
+     |> assign(:segments, [])
      |> load()}
   end
 
@@ -70,63 +71,96 @@ defmodule SuperXWeb.QueueLive do
         put_flash(socket, :error, "That post no longer exists.")
 
       post ->
-        socket
-        |> assign(:editing, post)
-        |> assign(:segments, segments_to_text(post.segments))
+        socket |> assign(:editing, post) |> put_composer(post.segments)
     end
   end
-
-  defp segments_to_text([]), do: [""]
-  defp segments_to_text(segments), do: Enum.map(segments, &(&1["text"] || ""))
 
   # --- Composer ------------------------------------------------------------
 
   @impl true
   def handle_event("compose", _params, socket) do
-    {:noreply, socket |> assign(:editing, :new) |> assign(:segments, [""])}
+    {:noreply, socket |> assign(:editing, :new) |> put_composer([])}
   end
 
   def handle_event("close_composer", _params, socket) do
     {:noreply,
      socket
      |> assign(:editing, nil)
-     |> assign(:segments, [""])
+     |> assign(:segments, [])
      |> push_patch(to: ~p"/queue?tab=#{socket.assigns.tab}")}
   end
 
   def handle_event("update_segment", %{"index" => index, "value" => value}, socket) do
     index = String.to_integer(index)
-    {:noreply, assign(socket, :segments, List.replace_at(socket.assigns.segments, index, value))}
+
+    segments =
+      List.update_at(socket.assigns.segments, index, &Map.put(&1, :text, value))
+
+    {:noreply, assign(socket, :segments, segments)}
   end
 
   def handle_event("add_segment", _params, socket) do
-    {:noreply, assign(socket, :segments, socket.assigns.segments ++ [""])}
+    segment = composer_segment(%{"text" => "", "media_ids" => []})
+
+    {:noreply,
+     socket
+     |> assign(:segments, socket.assigns.segments ++ [segment])
+     |> allow_segment_upload(segment)}
   end
 
   def handle_event("remove_segment", %{"index" => index}, socket) do
     index = String.to_integer(index)
+    socket = cancel_segment_uploads(socket, Enum.at(socket.assigns.segments, index))
     segments = List.delete_at(socket.assigns.segments, index)
-    {:noreply, assign(socket, :segments, if(segments == [], do: [""], else: segments))}
+
+    if segments == [] do
+      {:noreply, put_composer(socket, [])}
+    else
+      {:noreply, assign(socket, :segments, segments)}
+    end
   end
 
+  def handle_event("remove_media", %{"index" => index, "media-id" => media_id}, socket) do
+    segments =
+      List.update_at(socket.assigns.segments, String.to_integer(index), fn segment ->
+        Map.update!(segment, :media_ids, &List.delete(&1, media_id))
+      end)
+
+    {:noreply, assign(socket, :segments, segments)}
+  end
+
+  def handle_event("cancel_media_upload", %{"upload" => name, "ref" => ref}, socket) do
+    if Enum.any?(socket.assigns.segments, &(upload_name(&1) == name)) do
+      {:noreply, MediaUploads.cancel(socket, name, ref)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("media_changed", _params, socket), do: {:noreply, socket}
+
   def handle_event("save_draft", _params, socket) do
-    case persist(socket, "draft") do
+    {socket, result} = persist(socket, "draft")
+
+    case result do
       {:ok, _post} ->
         {:noreply,
          socket
          |> put_flash(:info, "Saved to drafts.")
          |> assign(:editing, nil)
-         |> assign(:segments, [""])
+         |> assign(:segments, [])
          |> assign(:tab, "draft")
          |> load()}
 
-      {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, error_message(changeset))}
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, error_message(reason))}
     end
   end
 
   def handle_event("add_to_queue", _params, socket) do
-    with {:ok, post} <- persist(socket, "draft"),
+    {socket, result} = persist(socket, "draft")
+
+    with {:ok, post} <- result,
          {:ok, scheduled} <- Content.schedule_post(post) do
       {:noreply,
        socket
@@ -135,7 +169,7 @@ defmodule SuperXWeb.QueueLive do
          "Queued for #{format_when(scheduled.scheduled_at, socket.assigns.current_user.timezone)}."
        )
        |> assign(:editing, nil)
-       |> assign(:segments, [""])
+       |> assign(:segments, [])
        |> assign(:tab, "scheduled")
        |> load()}
     else
@@ -197,7 +231,24 @@ defmodule SuperXWeb.QueueLive do
   end
 
   defp persist(socket, status) do
-    segments = Enum.map(socket.assigns.segments, &%{"text" => &1, "media_ids" => []})
+    {segments, errors} = consume_media(socket)
+    socket = assign(socket, :segments, segments)
+
+    result =
+      case errors do
+        [] -> persist_segments(socket, status)
+        [reason | _] -> {:error, reason}
+      end
+
+    {socket, result}
+  end
+
+  defp persist_segments(socket, status) do
+    segments =
+      Enum.map(socket.assigns.segments, fn segment ->
+        %{"text" => segment.text, "media_ids" => segment.media_ids}
+      end)
+
     attrs = %{segments: segments, status: status}
 
     case socket.assigns.editing do
@@ -205,12 +256,52 @@ defmodule SuperXWeb.QueueLive do
         Content.update_post(post, attrs)
 
       _ ->
-        Content.create_post(
-          socket.assigns.current_user,
-          socket.assigns.current_x_account,
-          attrs
-        )
+        Content.create_post(socket.assigns.current_user, socket.assigns.current_x_account, attrs)
     end
+  end
+
+  defp consume_media(socket) do
+    Enum.map_reduce(socket.assigns.segments, [], fn segment, errors ->
+      case MediaUploads.consume(socket, upload_name(segment)) do
+        {:ok, keys} -> {%{segment | media_ids: segment.media_ids ++ keys}, errors}
+        {:error, reason} -> {segment, [reason | errors]}
+      end
+    end)
+  end
+
+  defp put_composer(socket, stored_segments) do
+    segments =
+      case stored_segments do
+        [] -> [composer_segment(%{"text" => "", "media_ids" => []})]
+        segments -> Enum.map(segments, &composer_segment/1)
+      end
+
+    socket = assign(socket, :segments, segments)
+    Enum.reduce(segments, socket, &allow_segment_upload(&2, &1))
+  end
+
+  defp composer_segment(segment) do
+    %{
+      id: Ecto.UUID.generate(),
+      text: segment["text"] || "",
+      media_ids: segment["media_ids"] || []
+    }
+  end
+
+  defp allow_segment_upload(socket, segment) do
+    MediaUploads.allow(socket, upload_name(segment), length(segment.media_ids))
+  end
+
+  defp upload_name(segment), do: "post_media_#{segment.id}"
+
+  defp cancel_segment_uploads(socket, nil), do: socket
+
+  defp cancel_segment_uploads(socket, segment) do
+    upload = Map.get(socket.assigns.uploads, upload_name(segment))
+
+    Enum.reduce(upload.entries, socket, fn entry, acc ->
+      MediaUploads.cancel(acc, upload.name, entry.ref)
+    end)
   end
 
   # --- Render --------------------------------------------------------------
@@ -229,6 +320,7 @@ defmodule SuperXWeb.QueueLive do
       segments={@segments}
       editing={@editing}
       account={@current_x_account}
+      uploads={@uploads}
     />
 
     <div class="mb-5 flex items-center gap-5 text-xs">
@@ -278,22 +370,14 @@ defmodule SuperXWeb.QueueLive do
         </div>
 
         <div class="min-w-0">
-          <%!-- A thread shows every segment, connected, rather than the
-                first one and a count — you're checking what goes out, and
-                the tail is where mistakes hide. --%>
-          <div class="post-thread">
-            <div :for={segment <- post.segments} class="post-seg">
-              <div class="flex gap-2.5">
-                <Layouts.avatar
-                  :if={Post.thread?(post)}
-                  src={@current_x_account.avatar_url}
-                  size="size-6"
-                  class="mt-0.5"
-                />
-                <p class="max-w-[58ch] whitespace-pre-wrap leading-[1.55]">{segment["text"]}</p>
-              </div>
-            </div>
-          </div>
+          <%!-- Every segment is visible because the tail is where mistakes
+                hide; the shared card also keeps attachment crops identical
+                to the shelf and composer. --%>
+          <.post
+            author={author(@current_x_account)}
+            segments={segments(post)}
+            class="max-w-[42rem]"
+          />
 
           <p :if={post.status == "failed"} class="mt-1.5 text-[12px] text-destructive">
             {post.error}
@@ -466,42 +550,62 @@ defmodule SuperXWeb.QueueLive do
   attr :segments, :list, required: true
   attr :editing, :any, required: true
   attr :account, :map, required: true
+  attr :uploads, :map, required: true
 
   # Composing is the one screen where you're acting *as* the account, so it
   # carries the same avatar-and-thread shape a post does — what you're
   # writing should look like what will ship.
   defp composer(assigns) do
-    assigns = assign(assigns, :over, Enum.any?(assigns.segments, &(String.length(&1) > 280)))
+    assigns =
+      assigns
+      |> assign(:over, Enum.any?(assigns.segments, &(String.length(&1.text) > 280)))
+      |> assign(
+        :uploading,
+        Enum.any?(assigns.segments, fn segment ->
+          upload = Map.fetch!(assigns.uploads, upload_name(segment))
+          Enum.any?(upload.entries, &(not &1.done?))
+        end)
+      )
 
     ~H"""
-    <section class="post mb-8">
+    <form id="post-composer" phx-change="media_changed" class="post mb-8">
       <div class="mb-3 flex items-center justify-between">
         <span class="nb-eyebrow">
           {if is_struct(@editing), do: "Editing", else: "New post"}
         </span>
-        <button phx-click="close_composer" class="act text-xs">Close</button>
+        <button type="button" phx-click="close_composer" class="act text-xs">Close</button>
       </div>
 
       <div class="post-thread">
-        <div :for={{text, index} <- Enum.with_index(@segments)} class="post-seg">
+        <div :for={{segment, index} <- Enum.with_index(@segments)} class="post-seg">
           <div class="flex gap-2.5">
             <Layouts.avatar src={@account.avatar_url} size="size-6" class="mt-0.5" />
 
             <div class="min-w-0 flex-1">
               <textarea
+                id={"post-segment-#{segment.id}"}
                 class="textarea"
                 rows={if index == 0, do: "4", else: "3"}
                 placeholder={if index == 0, do: "What's happening?", else: "Continue the thread…"}
                 phx-blur="update_segment"
                 phx-value-index={index}
                 name="value"
-              >{text}</textarea>
+              >{segment.text}</textarea>
+
+              <.post_media
+                media_ids={segment.media_ids}
+                upload={Map.fetch!(@uploads, upload_name(segment))}
+                segment_index={index}
+                remove_event="remove_media"
+                cancel_event="cancel_media_upload"
+              />
 
               <div class="mt-1.5 flex items-center justify-between">
-                <.char_ring count={String.length(text)} />
+                <.char_ring count={String.length(segment.text)} />
 
                 <button
                   :if={length(@segments) > 1}
+                  type="button"
                   phx-click="remove_segment"
                   phx-value-index={index}
                   class="act-danger text-xs"
@@ -515,14 +619,30 @@ defmodule SuperXWeb.QueueLive do
       </div>
 
       <div class="mt-4 flex flex-wrap items-center gap-5 border-t border-border pt-3 text-xs">
-        <button phx-click="add_to_queue" class="act-key" disabled={@over}>Add to queue</button>
-        <button phx-click="save_draft" class="act">Save as draft</button>
-        <button phx-click="add_segment" class="act">Continue as thread</button>
+        <button
+          id="add-post-to-queue"
+          type="button"
+          phx-click="add_to_queue"
+          class="act-key"
+          disabled={@over or @uploading}
+        >
+          Add to queue
+        </button>
+        <button
+          id="save-post-draft"
+          type="button"
+          phx-click="save_draft"
+          class="act"
+          disabled={@uploading}
+        >
+          Save as draft
+        </button>
+        <button type="button" phx-click="add_segment" class="act">Continue as thread</button>
         <span :if={@over} class="ml-auto text-[11px] text-destructive">
           One post is over the limit.
         </span>
       </div>
-    </section>
+    </form>
     """
   end
 
@@ -540,6 +660,11 @@ defmodule SuperXWeb.QueueLive do
     |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
     |> Enum.map_join("; ", fn {field, msgs} -> "#{field} #{Enum.join(msgs, ", ")}" end)
   end
+
+  defp error_message(:upload_in_progress), do: "Wait for the attachment to finish uploading."
+  defp error_message(:unsupported_media), do: "Use a JPEG, PNG, WebP or GIF."
+  defp error_message(:too_large), do: "Each attachment must be 5 MB or smaller."
+  defp error_message({:store_failed, _reason}), do: "We couldn't store that attachment."
 
   defp error_message(other), do: inspect(other)
 

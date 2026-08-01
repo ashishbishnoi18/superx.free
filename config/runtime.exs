@@ -35,6 +35,18 @@ end
 
 config :superx, SuperXWeb.Endpoint, http: [port: String.to_integer(env.("PORT", "4000"))]
 
+# A mounted path keeps queued media across container rebuilds. Development
+# stays in the source tree so previews are easy to inspect and clear.
+config :superx, SuperX.Media,
+  path:
+    env.(
+      "SUPERX_UPLOADS_DIR",
+      if(config_env() == :prod,
+        do: "/app/uploads",
+        else: Path.expand("../priv/uploads", __DIR__)
+      )
+    )
+
 # --- Secrets shared by every environment -----------------------------------
 
 # X OAuth2 app credentials. Without these, login is disabled and the app

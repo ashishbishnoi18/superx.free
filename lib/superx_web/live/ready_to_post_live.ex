@@ -8,6 +8,7 @@ defmodule SuperXWeb.ReadyToPostLive do
 
   alias SuperX.Content
   alias SuperX.Content.{Generation, Writer}
+  alias SuperXWeb.MediaUploads
 
   @impl true
   def mount(_params, _session, socket) do
@@ -35,10 +36,13 @@ defmodule SuperXWeb.ReadyToPostLive do
   defp load(socket) do
     account = socket.assigns.current_x_account
 
+    shelf = Content.list_shelf(account, kind: socket.assigns.kind)
+
     socket
-    |> assign(:shelf, Content.list_shelf(account, kind: socket.assigns.kind))
+    |> assign(:shelf, shelf)
     |> assign(:counts, Content.shelf_counts(account))
     |> assign(:voice, Content.get_voice_profile(account))
+    |> allow_shelf_uploads(shelf)
   end
 
   @impl true
@@ -97,7 +101,7 @@ defmodule SuperXWeb.ReadyToPostLive do
   def handle_event("accept", %{"id" => id}, socket) do
     user = socket.assigns.current_user
 
-    with %Generation{} = generation <- Content.get_generation(user, id),
+    with {:ok, socket, generation} <- prepare_generation(socket, id),
          {:ok, post} <- Content.accept_generation(user, generation),
          {:ok, scheduled} <- Content.schedule_post(post) do
       {:noreply,
@@ -111,7 +115,10 @@ defmodule SuperXWeb.ReadyToPostLive do
          |> put_flash(:error, "Choose some posting times first.")
          |> push_navigate(to: ~p"/settings")}
 
-      _ ->
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, media_error(reason, "queue"))}
+
+      _reason ->
         {:noreply, put_flash(socket, :error, "We couldn't queue that post.")}
     end
   end
@@ -119,11 +126,35 @@ defmodule SuperXWeb.ReadyToPostLive do
   def handle_event("edit", %{"id" => id}, socket) do
     user = socket.assigns.current_user
 
-    with %Generation{} = generation <- Content.get_generation(user, id),
+    with {:ok, socket, generation} <- prepare_generation(socket, id),
          {:ok, post} <- Content.accept_generation(user, generation) do
       {:noreply, push_navigate(socket, to: ~p"/queue/#{post.id}")}
     else
-      _ -> {:noreply, put_flash(socket, :error, "We couldn't open that draft.")}
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, media_error(reason, "open"))}
+
+      _reason ->
+        {:noreply, put_flash(socket, :error, "We couldn't open that draft.")}
+    end
+  end
+
+  def handle_event("media_changed", _params, socket), do: {:noreply, socket}
+
+  def handle_event("cancel_shelf_upload", %{"upload" => name, "ref" => ref}, socket) do
+    {:noreply, MediaUploads.cancel(socket, name, ref)}
+  end
+
+  def handle_event(
+        "remove_shelf_media",
+        %{"owner" => id, "index" => index, "media-id" => media_id},
+        socket
+      ) do
+    with %Generation{} = generation <- Content.get_generation(socket.assigns.current_user, id),
+         segments <- remove_generation_media(generation.segments, index, media_id),
+         {:ok, _generation} <- Content.update_generation(generation, %{segments: segments}) do
+      {:noreply, load(socket)}
+    else
+      _reason -> {:noreply, put_flash(socket, :error, "We couldn't remove that attachment.")}
     end
   end
 
@@ -195,37 +226,65 @@ defmodule SuperXWeb.ReadyToPostLive do
           that would publish it — approving is a judgement about how it
           will read on X, not about a row in our database. --%>
     <div class="columns-1 gap-4 lg:columns-2 [&>*]:mb-4">
-      <.post
+      <form
         :for={generation <- @shelf}
-        author={author(@current_x_account)}
-        segments={segments(generation)}
+        id={"shelf-media-#{generation.id}"}
+        phx-change="media_changed"
         class="break-inside-avoid"
       >
-        <%!-- The attribution is itself the reference to the source, so it
-              carries the link rather than duplicating it as an action. --%>
-        <:meta>
-          <a
-            :if={generation.source_corpus_post}
-            href={corpus_url(generation.source_corpus_post)}
-            target="_blank"
-            rel="noopener"
-            class="hover-ember"
-          >
-            {Generation.attribution(generation)}
-          </a>
-          <span :if={!generation.source_corpus_post}>{ago(generation.inserted_at)}</span>
-        </:meta>
+        <.post
+          author={author(@current_x_account)}
+          segments={segments(generation)}
+          media_uploads={shelf_uploads(@uploads, generation)}
+          media_owner_id={generation.id}
+          media_remove_event="remove_shelf_media"
+          media_cancel_event="cancel_shelf_upload"
+        >
+          <%!-- The attribution is itself the reference to the source, so it
+                carries the link rather than duplicating it as an action. --%>
+          <:meta>
+            <a
+              :if={generation.source_corpus_post}
+              href={corpus_url(generation.source_corpus_post)}
+              target="_blank"
+              rel="noopener"
+              class="hover-ember"
+            >
+              {Generation.attribution(generation)}
+            </a>
+            <span :if={!generation.source_corpus_post}>{ago(generation.inserted_at)}</span>
+          </:meta>
 
-        <:actions>
-          <button phx-click="accept" phx-value-id={generation.id} class="act-key">
-            Add to queue
-          </button>
-          <button phx-click="edit" phx-value-id={generation.id} class="act">Edit</button>
-          <button phx-click="dismiss" phx-value-id={generation.id} class="act-danger">
-            Discard
-          </button>
-        </:actions>
-      </.post>
+          <:actions>
+            <button
+              type="button"
+              phx-click="accept"
+              phx-value-id={generation.id}
+              class="act-key"
+              disabled={generation_uploading?(@uploads, generation)}
+            >
+              Add to queue
+            </button>
+            <button
+              type="button"
+              phx-click="edit"
+              phx-value-id={generation.id}
+              class="act"
+              disabled={generation_uploading?(@uploads, generation)}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              phx-click="dismiss"
+              phx-value-id={generation.id}
+              class="act-danger"
+            >
+              Discard
+            </button>
+          </:actions>
+        </.post>
+      </form>
     </div>
     """
   end
@@ -243,4 +302,86 @@ defmodule SuperXWeb.ReadyToPostLive do
       _ -> Calendar.strftime(datetime, "%a %-d %b, %-I:%M %p UTC")
     end
   end
+
+  defp allow_shelf_uploads(socket, shelf) do
+    Enum.reduce(shelf, socket, fn generation, acc ->
+      generation.segments
+      |> Enum.with_index()
+      |> Enum.reduce(acc, fn {segment, index}, inner ->
+        MediaUploads.allow(
+          inner,
+          shelf_upload_name(generation, index),
+          length(segment["media_ids"] || [])
+        )
+      end)
+    end)
+  end
+
+  defp shelf_uploads(uploads, generation) do
+    generation.segments
+    |> Enum.with_index()
+    |> Map.new(fn {_segment, index} ->
+      {index, Map.fetch!(uploads, shelf_upload_name(generation, index))}
+    end)
+  end
+
+  defp generation_uploading?(uploads, generation) do
+    generation.segments
+    |> Enum.with_index()
+    |> Enum.any?(fn {_segment, index} ->
+      upload = Map.fetch!(uploads, shelf_upload_name(generation, index))
+      Enum.any?(upload.entries, &(not &1.done?))
+    end)
+  end
+
+  defp prepare_generation(socket, id) do
+    case Content.get_generation(socket.assigns.current_user, id) do
+      %Generation{} = generation -> consume_generation_media(socket, generation)
+      nil -> {:error, :not_found}
+    end
+  end
+
+  defp consume_generation_media(socket, generation) do
+    {segments, errors} =
+      generation.segments
+      |> Enum.with_index()
+      |> Enum.map_reduce([], fn {segment, index}, errors ->
+        case MediaUploads.consume(socket, shelf_upload_name(generation, index)) do
+          {:ok, keys} ->
+            media_ids = (segment["media_ids"] || []) ++ keys
+            {Map.put(segment, "media_ids", media_ids), errors}
+
+          {:error, reason} ->
+            {segment, [reason | errors]}
+        end
+      end)
+
+    case errors do
+      [] ->
+        case Content.update_generation(generation, %{segments: segments}) do
+          {:ok, generation} -> {:ok, socket, generation}
+          {:error, reason} -> {:error, reason}
+        end
+
+      [reason | _] ->
+        {:error, reason}
+    end
+  end
+
+  defp remove_generation_media(segments, index, media_id) do
+    List.update_at(segments, String.to_integer(index), fn segment ->
+      Map.update(segment, "media_ids", [], &List.delete(&1, media_id))
+    end)
+  end
+
+  defp shelf_upload_name(generation, index), do: "shelf_media_#{generation.id}_#{index}"
+
+  defp media_error(:upload_in_progress, _action),
+    do: "Wait for the attachment to finish uploading."
+
+  defp media_error(:unsupported_media, _action), do: "Use a JPEG, PNG, WebP or GIF."
+  defp media_error(:too_large, _action), do: "Each attachment must be 5 MB or smaller."
+  defp media_error({:store_failed, _reason}, _action), do: "We couldn't store that attachment."
+  defp media_error(_reason, "queue"), do: "We couldn't queue that post."
+  defp media_error(_reason, "open"), do: "We couldn't open that draft."
 end

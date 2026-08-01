@@ -60,6 +60,36 @@ defmodule SuperX.ContentTest do
 
       assert "is required to schedule a post" in errors_on(changeset).scheduled_at
     end
+
+    test "rejects more media than X accepts on one segment", %{user: user, account: account} do
+      media_ids = Enum.map(1..5, &"00000000-0000-0000-0000-00000000000#{&1}.jpg")
+
+      assert {:error, changeset} =
+               Content.create_post(user, account, %{
+                 segments: [%{"text" => "too many", "media_ids" => media_ids}],
+                 status: "draft"
+               })
+
+      assert "post 1 has more than 4 attachments" in errors_on(changeset).segments
+    end
+
+    test "rejects a GIF mixed with other media", %{user: user, account: account} do
+      assert {:error, changeset} =
+               Content.create_post(user, account, %{
+                 segments: [
+                   %{
+                     "text" => "mixed",
+                     "media_ids" => [
+                       "00000000-0000-0000-0000-000000000001.gif",
+                       "00000000-0000-0000-0000-000000000002.jpg"
+                     ]
+                   }
+                 ],
+                 status: "draft"
+               })
+
+      assert "post 1 must attach a GIF on its own" in errors_on(changeset).segments
+    end
   end
 
   describe "next_open_slot_at/2" do

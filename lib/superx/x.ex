@@ -97,6 +97,16 @@ defmodule SuperX.X do
 
   # --- Publishing ----------------------------------------------------------
 
+  @doc "Uploads local post media and returns the short-lived X media id."
+  def upload_media(access_token, media) do
+    with {:ok, media_id, processing} <- initialise_media(access_token, media),
+         :ok <- append_media(access_token, media_id, media),
+         {:ok, processing} <- finalise_media(access_token, media_id, processing),
+         :ok <- await_media(access_token, media_id, processing, 0) do
+      {:ok, media_id}
+    end
+  end
+
   @doc """
   Publishes a single post. Pass `reply_to` to attach it to an existing
   post, which is how threads are built.
@@ -151,6 +161,87 @@ defmodule SuperX.X do
   defp maybe_put_media(body, nil), do: body
   defp maybe_put_media(body, []), do: body
   defp maybe_put_media(body, ids), do: Map.put(body, "media", %{"media_ids" => ids})
+
+  defp initialise_media(access_token, media) do
+    fields = [
+      command: "INIT",
+      total_bytes: media.size,
+      media_type: media.content_type,
+      media_category: media_category(media.content_type)
+    ]
+
+    case request(:post, "/media/upload", form_multipart: fields, token: access_token) do
+      {:ok, %{"data" => %{"id" => id} = data}} ->
+        {:ok, id, data["processing_info"]}
+
+      {:ok, other} ->
+        {:error, {:unexpected_response, other}}
+
+      error ->
+        error
+    end
+  end
+
+  defp append_media(access_token, media_id, media) do
+    fields = [
+      command: "APPEND",
+      media_id: media_id,
+      segment_index: 0,
+      media:
+        {File.stream!(media.path, [], 64_000),
+         filename: media.filename, content_type: media.content_type, size: media.size}
+    ]
+
+    case request(:post, "/media/upload", form_multipart: fields, token: access_token) do
+      {:ok, _body} -> :ok
+      error -> error
+    end
+  end
+
+  defp finalise_media(access_token, media_id, previous_processing) do
+    fields = [command: "FINALIZE", media_id: media_id]
+
+    case request(:post, "/media/upload", form_multipart: fields, token: access_token) do
+      {:ok, %{"data" => data}} -> {:ok, data["processing_info"] || previous_processing}
+      {:ok, other} -> {:error, {:unexpected_response, other}}
+      error -> error
+    end
+  end
+
+  defp await_media(_access_token, _media_id, nil, _attempt), do: :ok
+
+  defp await_media(_access_token, _media_id, %{"state" => "succeeded"}, _attempt),
+    do: :ok
+
+  defp await_media(_access_token, _media_id, %{"state" => "failed"} = processing, _attempt) do
+    {:error, {:media_processing_failed, processing["error"]}}
+  end
+
+  defp await_media(_access_token, _media_id, _processing, attempt) when attempt >= 12 do
+    {:error, :media_processing_timeout}
+  end
+
+  defp await_media(access_token, media_id, processing, attempt) do
+    seconds = processing |> Map.get("check_after_secs", 1) |> min(5) |> max(1)
+    Process.sleep(seconds * 1_000)
+
+    case request(:get, "/media/upload",
+           params: %{"command" => "STATUS", "media_id" => media_id},
+           token: access_token
+         ) do
+      {:ok, %{"data" => data}} ->
+        await_media(access_token, media_id, data["processing_info"], attempt + 1)
+
+      {:ok, other} ->
+        {:error, {:unexpected_response, other}}
+
+      error ->
+        error
+    end
+  end
+
+  defp media_category("image/gif"), do: "tweet_gif"
+  defp media_category(_image), do: "tweet_image"
 
   # --- Configuration -------------------------------------------------------
 
@@ -226,6 +317,8 @@ defmodule SuperX.X do
       |> put_opt(:params, opts[:params])
       |> put_opt(:json, opts[:json])
       |> put_opt(:form, opts[:form])
+      |> put_opt(:form_multipart, opts[:form_multipart])
+      |> put_opt(:plug, Application.get_env(:superx, :x_plug))
       |> put_auth(opts)
 
     case Req.request(req_opts) do

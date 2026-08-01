@@ -38,6 +38,7 @@ services:
       SUPERX_VAULT_KEY: ${SUPERX_VAULT_KEY:?generate with mix superx.gen.vault_key}
       PHX_HOST: ${PHX_HOST:-localhost}
       PORT: "4000"
+      SUPERX_UPLOADS_DIR: /app/uploads
 
       # X OAuth — required for sign-in and publishing.
       X_CLIENT_ID: ${X_CLIENT_ID}
@@ -79,6 +80,8 @@ services:
       HTTPS_PROXY: ${HTTPS_PROXY}
     ports:
       - "${BIND_ADDR:-127.0.0.1}:4000:4000"
+    volumes:
+      - uploads:/app/uploads
     healthcheck:
       test: ["CMD-SHELL", "/app/bin/superx rpc 'IO.puts(:ok)' || exit 1"]
       interval: 30s
@@ -88,3 +91,4 @@ services:
 
 volumes:
   pgdata:
+  uploads:

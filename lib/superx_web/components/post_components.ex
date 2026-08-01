@@ -14,6 +14,8 @@ defmodule SuperXWeb.PostComponents do
   use Phoenix.Component
   use SuperXWeb, :verified_routes
 
+  import SuperXWeb.CoreComponents, only: [icon: 1]
+
   alias SuperX.Content.{CorpusPost, Generation, Post}
   alias SuperXWeb.Layouts
 
@@ -28,6 +30,10 @@ defmodule SuperXWeb.PostComponents do
   attr :segments, :list, required: true
   attr :class, :any, default: nil
   attr :clamp, :integer, default: nil, doc: "cap the body at N lines, for scannable lists"
+  attr :media_uploads, :map, default: %{}
+  attr :media_owner_id, :string, default: nil
+  attr :media_remove_event, :string, default: nil
+  attr :media_cancel_event, :string, default: nil
   attr :rest, :global
 
   slot :meta, doc: "attribution or source line, above the actions"
@@ -39,6 +45,7 @@ defmodule SuperXWeb.PostComponents do
     <article class={["post", @class]} {@rest}>
       <div class="post-thread">
         <div :for={{segment, index} <- Enum.with_index(@segments)} class="post-seg">
+          <% upload = Map.get(@media_uploads, index) %>
           <div class="flex gap-2.5">
             <Layouts.avatar src={@author[:avatar_url]} size="size-6" class="mt-0.5" />
 
@@ -54,6 +61,14 @@ defmodule SuperXWeb.PostComponents do
               >
                 {segment["text"]}
               </p>
+              <.post_media
+                media_ids={segment["media_ids"] || []}
+                upload={upload}
+                owner_id={@media_owner_id}
+                segment_index={index}
+                remove_event={@media_remove_event}
+                cancel_event={@media_cancel_event}
+              />
             </div>
           </div>
         </div>
@@ -75,6 +90,102 @@ defmodule SuperXWeb.PostComponents do
     </article>
     """
   end
+
+  @doc "Attached post media, shared by cards and editable previews."
+  attr :media_ids, :list, default: []
+  attr :upload, :any, default: nil
+  attr :owner_id, :string, default: nil
+  attr :segment_index, :integer, default: nil
+  attr :remove_event, :string, default: nil
+  attr :cancel_event, :string, default: nil
+
+  def post_media(assigns) do
+    entries = if assigns.upload, do: assigns.upload.entries, else: []
+    count = length(assigns.media_ids) + length(entries)
+
+    assigns =
+      assigns
+      |> assign(:entries, entries)
+      |> assign(:count, count)
+      |> assign(:can_add?, can_add_media?(assigns.media_ids, entries, count))
+
+    ~H"""
+    <div :if={@count > 0} class="post-media-grid" data-count={@count}>
+      <div :for={media_id <- @media_ids} class="post-media-item">
+        <img
+          src={SuperX.Media.url(media_id)}
+          alt="Attached post media"
+          class="post-media-image"
+        />
+        <button
+          :if={@remove_event}
+          type="button"
+          phx-click={@remove_event}
+          phx-value-owner={@owner_id}
+          phx-value-index={@segment_index}
+          phx-value-media-id={media_id}
+          class="post-media-remove"
+          aria-label="Remove attachment"
+        >
+          <.icon name="hero-x-mark" class="size-3.5" />
+        </button>
+      </div>
+
+      <div :for={entry <- @entries} class="post-media-item">
+        <.live_img_preview entry={entry} class="post-media-image" />
+        <span
+          :if={!entry.done?}
+          class="nb-mono absolute bottom-2 left-2 bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground"
+        >
+          {entry.progress}%
+        </span>
+        <button
+          :if={@cancel_event}
+          type="button"
+          phx-click={@cancel_event}
+          phx-value-upload={@upload.name}
+          phx-value-ref={entry.ref}
+          class="post-media-remove"
+          aria-label="Cancel attachment"
+        >
+          <.icon name="hero-x-mark" class="size-3.5" />
+        </button>
+      </div>
+    </div>
+
+    <div :if={@upload} class="mt-2">
+      <label :if={@can_add?} class="act inline-flex cursor-pointer items-center gap-1.5 text-xs">
+        <.icon name="hero-photo" class="size-4" /> Add image or GIF
+        <.live_file_input upload={@upload} class="sr-only" />
+      </label>
+
+      <p
+        :for={error <- upload_errors(@upload)}
+        class="mt-1 text-[11px] text-destructive"
+      >
+        {upload_error(error)}
+      </p>
+      <p
+        :for={entry <- @entries}
+        :if={upload_errors(@upload, entry) != []}
+        class="mt-1 text-[11px] text-destructive"
+      >
+        {entry.client_name}: {upload_errors(@upload, entry) |> Enum.map_join(", ", &upload_error/1)}
+      </p>
+    </div>
+    """
+  end
+
+  defp can_add_media?(media_ids, entries, count) do
+    count < Post.max_media_per_segment() and
+      not Enum.any?(media_ids, &SuperX.Media.gif?/1) and
+      not Enum.any?(entries, &(&1.client_type == "image/gif"))
+  end
+
+  defp upload_error(:too_large), do: "Each attachment must be 5 MB or smaller."
+  defp upload_error(:too_many_files), do: "A post can carry up to four images."
+  defp upload_error(:not_accepted), do: "Use a JPEG, PNG, WebP or GIF."
+  defp upload_error(_error), do: "That attachment could not be uploaded."
 
   @doc """
   Engagement figures, always in the same order and the same units so two

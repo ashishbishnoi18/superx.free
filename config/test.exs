@@ -42,3 +42,4 @@ config :phoenix,
 # Stub the HTTP wire in tests rather than reaching the real APIs.
 config :superx, twitter_api_plug: {Req.Test, SuperX.TwitterAPI}
 config :superx, ai_plug: {Req.Test, SuperX.AI}
+config :superx, x_plug: {Req.Test, SuperX.X}

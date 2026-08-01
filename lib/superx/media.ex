@@ -1,0 +1,89 @@
+defmodule SuperX.Media do
+  @moduledoc """
+  Durable local media for posts waiting to publish.
+
+  Segment maps keep opaque keys rather than absolute paths. That keeps the
+  database portable across development, Docker and releases while one
+  configurable directory remains the source of both browser previews and
+  publish-time uploads to X.
+  """
+
+  @max_file_size 5_000_000
+  @key_pattern ~r/\A[0-9a-f-]{36}\.(gif|jpe?g|png|webp)\z/
+
+  def max_file_size, do: @max_file_size
+
+  def path do
+    Application.get_env(:superx, __MODULE__, [])[:path] ||
+      Application.app_dir(:superx, "priv/uploads")
+  end
+
+  @doc "Stores a completed LiveView upload and returns its opaque local key."
+  def store_upload(%{path: temporary_path}) do
+    with {:ok, %{size: size}} when size <= @max_file_size <- File.stat(temporary_path),
+         {:ok, extension, _content_type} <- identify(temporary_path),
+         :ok <- File.mkdir_p(path()) do
+      key = "#{Ecto.UUID.generate()}.#{extension}"
+
+      case File.cp(temporary_path, Path.join(path(), key)) do
+        :ok -> {:ok, key}
+        {:error, reason} -> {:error, {:store_failed, reason}}
+      end
+    else
+      {:ok, %{size: _size}} -> {:error, :too_large}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Resolves a local key to the file metadata needed by previews and X."
+  def file(key) when is_binary(key) do
+    with true <- Regex.match?(@key_pattern, key),
+         path = Path.join(path(), key),
+         {:ok, %{type: :regular, size: size}} <- File.stat(path),
+         {:ok, extension, content_type} <- identify(path),
+         true <- Path.extname(key) == ".#{extension}" do
+      {:ok, %{path: path, filename: key, content_type: content_type, size: size}}
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  def file(_key), do: {:error, :not_found}
+
+  def url(key), do: "/uploads/#{URI.encode(key)}"
+
+  def gif?(key) when is_binary(key), do: Path.extname(key) == ".gif"
+  def gif?(_key), do: false
+
+  defp identify(path) do
+    with {:ok, header} <- read_header(path) do
+      identify_header(header)
+    end
+  end
+
+  defp read_header(path) do
+    with {:ok, file} <- File.open(path, [:read, :binary]) do
+      result = IO.binread(file, 12)
+      File.close(file)
+
+      case result do
+        header when is_binary(header) -> {:ok, header}
+        _ -> {:error, :unsupported_media}
+      end
+    end
+  end
+
+  defp identify_header(<<0xFF, 0xD8, 0xFF, _rest::binary>>),
+    do: {:ok, "jpg", "image/jpeg"}
+
+  defp identify_header(<<0x89, "PNG\r\n", 0x1A, "\n", _rest::binary>>),
+    do: {:ok, "png", "image/png"}
+
+  defp identify_header(<<"GIF87a", _rest::binary>>), do: {:ok, "gif", "image/gif"}
+  defp identify_header(<<"GIF89a", _rest::binary>>), do: {:ok, "gif", "image/gif"}
+
+  defp identify_header(<<"RIFF", _size::little-32, "WEBP", _rest::binary>>),
+    do: {:ok, "webp", "image/webp"}
+
+  defp identify_header(_header), do: {:error, :unsupported_media}
+end
