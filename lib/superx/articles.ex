@@ -2,9 +2,16 @@ defmodule SuperX.Articles do
   @moduledoc """
   Long-form work owned by one connected account.
 
-  The context stops at composition and review. `record_published/2` is the
-  persistence seam for a future X client: it records a confirmed external
-  outcome but never attempts the network operation itself.
+  The context stops at composition and review, and not for want of
+  effort: X's API has no long-form endpoint. `POST /2/tweets` accepts
+  text, media, polls, replies, quotes and a dozen niche flags, and
+  nothing for an Article. There is no supported way to publish one
+  programmatically, so anything here that claimed to would be pushing the
+  user through the web composer by hand under another name.
+
+  `record_published/2` is therefore the whole seam: it writes down an
+  outcome that happened elsewhere and never attempts the network call. If
+  X ever ships the endpoint, that is the function to grow.
   """
 
   import Ecto.Query

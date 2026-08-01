@@ -21,9 +21,38 @@ defmodule SuperX.Workers.CorpusRefresh do
   alias SuperX.{Repo, TwitterAPI}
   alias SuperX.Workers.CorpusIngest
 
-  # Topics per run. At ~40 posts each this is ~800 records a day, which is
-  # a real but predictable spend.
-  @topics_per_run 20
+  # Topics per run, and posts fetched per topic.
+  #
+  # These are the nightly bill, not a throughput setting. The provider
+  # charges per record — roughly 15 credits a post on search — so the
+  # defaults below buy about 800 posts, near enough 12,000 credits, every
+  # night. Divide your balance by that to get your runway in nights.
+  #
+  # They were originally sized for the free tier, where a call took eleven
+  # seconds and the risk was a loop emptying the account before anyone
+  # noticed. On a paid plan the pacing no longer binds and the only real
+  # question is how fast you want to spend, which is the operator's call
+  # rather than ours — hence the environment variables.
+  @default_topics_per_run 20
+  @default_posts_per_topic 40
+
+  @doc "Topics fetched per nightly run."
+  def topics_per_run do
+    env_int("SUPERX_CORPUS_TOPICS_PER_RUN", @default_topics_per_run)
+  end
+
+  @doc "Posts fetched per topic. Multiply by `topics_per_run/0` for the bill."
+  def posts_per_topic do
+    env_int("SUPERX_CORPUS_POSTS_PER_TOPIC", @default_posts_per_topic)
+  end
+
+  defp env_int(name, default) do
+    case System.get_env(name) do
+      nil -> default
+      "" -> default
+      value -> String.to_integer(value)
+    end
+  end
 
   # How much of a run users' own subjects may claim. The remainder goes to
   # the seed set, so the library keeps broadening instead of narrowing to
@@ -71,10 +100,10 @@ defmodule SuperX.Workers.CorpusRefresh do
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
     if TwitterAPI.configured?() do
-      chosen = topics_for_run(args["limit_topics"] || @topics_per_run)
+      chosen = topics_for_run(args["limit_topics"] || topics_per_run())
 
       CorpusIngest.enqueue_topics(chosen,
-        limit: args["limit"] || 40,
+        limit: args["limit"] || posts_per_topic(),
         min_likes: args["min_likes"] || 500,
         spacing_seconds: args["spacing_seconds"] || 120
       )
@@ -95,7 +124,8 @@ defmodule SuperX.Workers.CorpusRefresh do
   them still covers the whole list over time, rather than re-fetching the
   same head every night.
   """
-  def topics_for_run(count \\ @topics_per_run) do
+  def topics_for_run(count \\ nil) do
+    count = count || topics_per_run()
     user_topics = Enum.take(active_topics(), min(@user_topics_per_run, count))
 
     (user_topics ++ rotated_seeds())

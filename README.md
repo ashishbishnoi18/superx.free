@@ -180,8 +180,18 @@ Two things to know before turning it on:
 
 **It bills per record**, roughly 15 credits per tweet on search. Every
 paging helper here takes a mandatory ceiling for that reason — a loop that
-pages "until done" can spend a month of budget in a minute. Corpus
-ingestion is capped at 20 topics a day.
+pages "until done" can spend a month of budget in a minute.
+
+The nightly corpus refresh is the standing cost. It defaults to 20 topics
+at 40 posts each: about 800 posts, near enough 12,000 credits, every
+night. Divide your balance by that for your runway in nights, and set
+`SUPERX_CORPUS_TOPICS_PER_RUN` and `SUPERX_CORPUS_POSTS_PER_TOPIC` to buy
+a library faster or slower. Check what you have actually spent with
+`SuperX.ApiCache.spend_report/1` rather than guessing.
+
+Note that on the free tier the binding constraint is speed — one call per
+eleven seconds — and on a paid plan it is money. Raising these on a slow
+plan buys nothing but a queue.
 
 **Every response is kept.** Reads go through `SuperX.ApiCache`, which
 stores each call's raw body keyed by endpoint and parameters, so an

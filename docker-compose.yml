@@ -60,6 +60,10 @@ services:
       TWITTERAPI_IO_KEY: ${TWITTERAPI_IO_KEY}
       TWITTERAPI_IO_MIN_INTERVAL_MS: ${TWITTERAPI_IO_MIN_INTERVAL_MS:-6000}
 
+      # How much corpus the nightly refresh buys. See README for the sums.
+      SUPERX_CORPUS_TOPICS_PER_RUN: ${SUPERX_CORPUS_TOPICS_PER_RUN:-20}
+      SUPERX_CORPUS_POSTS_PER_TOPIC: ${SUPERX_CORPUS_POSTS_PER_TOPIC:-40}
+
       # Tier for accounts without a paid subscription.
       SUPERX_DEFAULT_TIER: ${SUPERX_DEFAULT_TIER:-free}
 
