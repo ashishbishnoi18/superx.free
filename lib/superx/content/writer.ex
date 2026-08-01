@@ -66,20 +66,25 @@ defmodule SuperX.Content.Writer do
           pick_source(account, voice, topic)
         end
 
-      write(user, account, voice, topic, kind, source, 1)
+      inspiration = Voice.inspiration_posts(voice)
+
+      write(user, account, voice, topic, kind, source, inspiration, 1)
     end
   end
 
-  # Attempts is bounded at two: one with the source, one without it. A
-  # model that has already latched onto the reference's phrasing tends to
-  # keep doing so, so the retry removes the reference rather than asking
-  # more politely.
-  defp write(user, account, voice, topic, kind, source, attempt) do
+  # Attempts are bounded at two. A model that has latched onto reference
+  # phrasing tends to keep doing so, so a derivative draft spends the last
+  # attempt without any reference material rather than asking more politely.
+  defp write(user, account, voice, topic, kind, source, inspiration, attempt) do
+    voice_examples = Voice.examples(account, voice)
+
     prompt =
       case source do
-        nil -> Prompts.write_from_topic(topic, Voice.examples(account, voice))
-        post -> Prompts.rewrite_from_corpus(post, topic, Voice.examples(account, voice))
+        nil -> Prompts.write_from_topic(topic, voice_examples, inspiration)
+        post -> Prompts.rewrite_from_corpus(post, topic, voice_examples, inspiration)
       end
+
+    reference_texts = reference_texts(source, inspiration)
 
     case AI.structured(prompt, Prompts.post_schema(),
            system: Prompts.writer_system(voice, account),
@@ -97,14 +102,24 @@ defmodule SuperX.Content.Writer do
 
         cond do
           text == "" ->
-            retry_or_fail(user, account, voice, topic, kind, source, attempt, :blank)
+            retry_or_fail(
+              user,
+              account,
+              voice,
+              topic,
+              kind,
+              source,
+              inspiration,
+              attempt,
+              :blank
+            )
 
-          source && attempt == 1 && derivative?(text, source.text) ->
-            # The whole premise is borrowing shape, not words. A post that
-            # reuses the reference's phrasing would publish someone else's
-            # line under this user's name.
-            Logger.info("Discarding derivative draft; rewriting without the reference")
-            write(user, account, voice, topic, kind, nil, attempt + 1)
+          derivative_from_any?(text, reference_texts) ->
+            # Named creators make phrase lifting more likely, so their posts
+            # go through the same guard as corpus references. The clean retry
+            # removes both kinds of material before the model sees them again.
+            Logger.info("Discarding derivative draft; rewriting without reference material")
+            retry_without_references(user, account, voice, topic, kind, attempt)
 
           true ->
             store(user, account, kind, source, segments)
@@ -123,6 +138,7 @@ defmodule SuperX.Content.Writer do
           topic,
           kind,
           source,
+          inspiration,
           attempt,
           {:empty_generation, other}
         )
@@ -131,18 +147,57 @@ defmodule SuperX.Content.Writer do
       # tool. Transient, so it gets the same retry as an empty call rather
       # than costing the user a credit for nothing.
       {:error, {:no_tool_use, _} = reason} ->
-        retry_or_fail(user, account, voice, topic, kind, source, attempt, reason)
+        retry_or_fail(
+          user,
+          account,
+          voice,
+          topic,
+          kind,
+          source,
+          inspiration,
+          attempt,
+          reason
+        )
 
       {:error, reason} ->
         {:error, reason}
     end
   end
 
-  defp retry_or_fail(user, account, voice, topic, kind, source, attempt, reason) do
+  defp retry_or_fail(
+         user,
+         account,
+         voice,
+         topic,
+         kind,
+         source,
+         inspiration,
+         attempt,
+         reason
+       ) do
     if attempt < 2 do
-      write(user, account, voice, topic, kind, source, attempt + 1)
+      write(user, account, voice, topic, kind, source, inspiration, attempt + 1)
     else
       {:error, reason}
+    end
+  end
+
+  defp reference_texts(source, inspiration) do
+    corpus = if source, do: [source.text], else: []
+    creator_posts = Enum.flat_map(inspiration, & &1.posts)
+
+    corpus ++ creator_posts
+  end
+
+  defp derivative_from_any?(text, references) do
+    Enum.any?(references, &derivative?(text, &1))
+  end
+
+  defp retry_without_references(user, account, voice, topic, kind, attempt) do
+    if attempt < 2 do
+      write(user, account, voice, topic, kind, nil, [], attempt + 1)
+    else
+      {:error, :derivative}
     end
   end
 

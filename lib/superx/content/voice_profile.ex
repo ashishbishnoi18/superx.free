@@ -1,11 +1,11 @@
 defmodule SuperX.Content.VoiceProfile do
   @moduledoc """
-  The learned writing voice for one account.
+  The writing identity and response preferences for one account.
 
-  This is what makes generated posts sound like the user rather than like
-  an assistant. It is derived from the account's own posts and bio, then
-  editable by hand — `rules` is always appended verbatim to the writer
-  prompt so a user can override anything the model inferred.
+  Voice evidence comes only from the account's own posts and bio. Selected
+  creators live here as handles rather than style examples so writing can
+  draw on their ideas without confusing their register for the user's.
+  `rules` remains user-authored and survives every regeneration.
   """
 
   use SuperX.Schema
@@ -25,8 +25,11 @@ defmodule SuperX.Content.VoiceProfile do
     # User-authored overrides, never touched by regeneration.
     field :rules, :string
 
-    field :favorite_voices, {:array, :string}, default: []
+    field :inspiration_handles, {:array, :string}, default: []
     field :use_own_posts, :boolean, default: true
+
+    field :reply_length, :string
+    field :reply_question_policy, :string
 
     field :source_post_ids, {:array, :string}, default: []
     field :generated_at, :utc_datetime
@@ -45,8 +48,10 @@ defmodule SuperX.Content.VoiceProfile do
       :questions,
       :style_notes,
       :rules,
-      :favorite_voices,
+      :inspiration_handles,
       :use_own_posts,
+      :reply_length,
+      :reply_question_policy,
       :source_post_ids,
       :generated_at,
       :version
@@ -54,13 +59,17 @@ defmodule SuperX.Content.VoiceProfile do
     |> validate_required([:x_account_id])
     |> validate_length(:about, max: 4000)
     |> validate_length(:rules, max: 4000)
-    |> normalize_favorite_voices()
+    |> normalize_inspiration_handles()
+    |> validate_length(:inspiration_handles, max: 3)
+    |> validate_inspiration_handles()
+    |> validate_inclusion(:reply_length, ~w(short medium long))
+    |> validate_inclusion(:reply_question_policy, ~w(ask never))
     |> unique_constraint(:x_account_id)
   end
 
   # Accept handles typed as "@name", "name", or a full profile URL.
-  defp normalize_favorite_voices(changeset) do
-    update_change(changeset, :favorite_voices, fn handles ->
+  defp normalize_inspiration_handles(changeset) do
+    update_change(changeset, :inspiration_handles, fn handles ->
       handles
       |> Enum.map(fn handle ->
         handle
@@ -69,9 +78,20 @@ defmodule SuperX.Content.VoiceProfile do
         |> String.trim_leading("@")
         |> String.split("/", parts: 2)
         |> hd()
+        |> String.downcase()
       end)
       |> Enum.reject(&(&1 == ""))
       |> Enum.uniq()
+    end)
+  end
+
+  defp validate_inspiration_handles(changeset) do
+    validate_change(changeset, :inspiration_handles, fn :inspiration_handles, handles ->
+      if Enum.all?(handles, &Regex.match?(~r/^[A-Za-z0-9_]{1,15}$/, &1)) do
+        []
+      else
+        [inspiration_handles: "must contain valid X handles"]
+      end
     end)
   end
 
