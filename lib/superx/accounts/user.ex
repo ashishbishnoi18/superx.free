@@ -24,6 +24,7 @@ defmodule SuperX.Accounts.User do
 
     belongs_to :default_x_account, XAccount
     has_many :x_accounts, XAccount, preload_order: [asc: :inserted_at]
+    has_many :content_workers, SuperX.Workers.ContentWorker
 
     has_one :subscription, SuperX.Billing.Subscription
 

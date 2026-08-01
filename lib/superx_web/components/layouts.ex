@@ -68,6 +68,10 @@ defmodule SuperXWeb.Layouts do
           <.nav_link navigate={~p"/engage"} active={@active == :engage}>Engage</.nav_link>
         </.nav_section>
 
+        <.nav_section label="Create">
+          <.nav_link navigate={~p"/workers"} active={@active == :workers}>Workers</.nav_link>
+        </.nav_section>
+
         <.nav_section label="Research">
           <.nav_link navigate={~p"/inspiration"} active={@active == :inspiration}>
             Inspiration

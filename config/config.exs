@@ -65,6 +65,8 @@ config :superx, Oban,
        {"0 1 * * *", SuperX.Workers.CorpusRefresh},
        # Top up each user's Ready to Post shelf overnight.
        {"30 2 * * *", SuperX.Workers.ShelfTopUp},
+       # Dispatch user-configured content batches in their local time.
+       {"* * * * *", SuperX.Workers.ContentWorkerDispatcher},
        # Poll mentions so the Engage inbox is current each morning.
        {"*/20 * * * *", SuperX.Workers.MentionSync},
        # Run the Signals watches that are due.

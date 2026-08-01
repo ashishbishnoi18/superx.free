@@ -41,6 +41,7 @@ defmodule SuperX.Accounts.XAccount do
     has_one :voice_profile, SuperX.Content.VoiceProfile
     has_many :schedule_slots, SuperX.Content.ScheduleSlot
     has_many :posts, SuperX.Content.Post
+    has_many :content_workers, SuperX.Workers.ContentWorker
 
     timestamps(type: :utc_datetime)
   end

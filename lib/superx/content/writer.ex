@@ -59,7 +59,13 @@ defmodule SuperX.Content.Writer do
     if is_nil(topic) do
       {:error, :no_topics}
     else
-      source = opts[:source] || pick_source(account, voice, topic)
+      source =
+        if Keyword.has_key?(opts, :source) do
+          opts[:source]
+        else
+          pick_source(account, voice, topic)
+        end
+
       write(user, account, voice, topic, kind, source, 1)
     end
   end
