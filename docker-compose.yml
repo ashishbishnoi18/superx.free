@@ -45,9 +45,21 @@ services:
       X_REDIRECT_URI: ${X_REDIRECT_URI:-https://${PHX_HOST}/auth/x/callback}
 
       # LLM — required for voice profiles and drafting.
+      SUPERX_LLM_PROVIDER: ${SUPERX_LLM_PROVIDER:-anthropic}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      SUPERX_WRITER_MODEL: ${SUPERX_WRITER_MODEL}
+      SUPERX_UTILITY_MODEL: ${SUPERX_UTILITY_MODEL}
       # Optional: without it, corpus search falls back to full text.
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+
+      # twitterapi.io — the read side. Unset means no corpus, mentions,
+      # feeds or Signals.
+      TWITTERAPI_IO_KEY: ${TWITTERAPI_IO_KEY}
+      TWITTERAPI_IO_MIN_INTERVAL_MS: ${TWITTERAPI_IO_MIN_INTERVAL_MS:-6000}
+
+      # Tier for accounts without a paid subscription.
+      SUPERX_DEFAULT_TIER: ${SUPERX_DEFAULT_TIER:-free}
 
       # Billing — optional. Unset means every account keeps free limits.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
