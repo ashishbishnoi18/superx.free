@@ -84,10 +84,9 @@ config :superx, SuperX.X,
   api_base: "https://api.twitter.com/2",
   oauth_authorize_url: "https://twitter.com/i/oauth2/authorize",
   oauth_token_url: "https://api.twitter.com/2/oauth2/token",
-  # Only what the product actually uses. Asking for a scope the X app
-  # isn't permitted for fails the whole authorisation, so the DM scopes
-  # stay out until there is a DM feature and the app carries the
-  # matching permission tier.
+  # Asking for a scope the X app isn't permitted for fails the whole
+  # authorisation. runtime.exs adds the DM scopes only when the operator
+  # has deliberately enabled the matching permission tier.
   scopes: ~w(tweet.read tweet.write users.read offline.access follows.read like.read)
 
 # Configure esbuild (the version is required)

@@ -24,7 +24,7 @@ defmodule SuperX.Fixtures do
           token_expires_at:
             attrs[:token_expires_at] ||
               DateTime.utc_now() |> DateTime.add(7200) |> DateTime.truncate(:second),
-          scopes: ["tweet.read", "tweet.write"]
+          scopes: attrs[:scopes] || ["tweet.read", "tweet.write"]
         }
       )
 
@@ -48,6 +48,33 @@ defmodule SuperX.Fixtures do
 
     %SuperX.Content.CorpusPost{}
     |> SuperX.Content.CorpusPost.changeset(attrs)
+    |> SuperX.Repo.insert!()
+  end
+
+  def dm_conversation_fixture(account, attrs \\ %{}) do
+    defaults = %{
+      participant_x_user_id: System.unique_integer([:positive]) |> Integer.to_string(),
+      participant_handle: "someone",
+      participant_name: "Someone",
+      last_message_text: "A private message",
+      last_message_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    }
+
+    {:ok, conversation} = SuperX.DMs.upsert_conversation(account, Map.merge(defaults, attrs))
+    conversation
+  end
+
+  def dm_message_fixture(account, conversation, attrs \\ %{}) do
+    defaults = %{
+      x_message_id: "message-#{System.unique_integer([:positive])}",
+      sender_x_user_id: conversation.participant_x_user_id,
+      direction: "inbound",
+      text: "A private message",
+      sent_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    }
+
+    %SuperX.DMs.Message{x_account_id: account.id, conversation_id: conversation.id}
+    |> SuperX.DMs.Message.changeset(Map.merge(defaults, attrs))
     |> SuperX.Repo.insert!()
   end
 end

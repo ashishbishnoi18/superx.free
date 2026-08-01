@@ -151,6 +151,16 @@ defmodule SuperX.TwitterAPI do
     paginate("/twitter/list/tweets_timeline", %{"listId" => list_id}, opts[:max] || 40, "tweets")
   end
 
+  @doc """
+  Seam for the authenticated user's Direct Message inbox.
+
+  twitterapi.io publishes only a per-participant history endpoint. It
+  requires the user's login cookies and a proxy, and cannot enumerate an
+  OAuth user's conversations. Those credentials do not belong in SuperX,
+  so there is no safe provider request to put through `SuperX.ApiCache`.
+  """
+  def direct_messages(_x_user_id), do: {:error, :dm_read_unavailable}
+
   # --- Normalisation -------------------------------------------------------
 
   @doc """

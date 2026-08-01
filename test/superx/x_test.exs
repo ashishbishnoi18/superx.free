@@ -1,42 +1,125 @@
 defmodule SuperX.XTest do
-  use ExUnit.Case, async: true
+  @moduledoc """
+  The write side. Media ids and DM sends are the two calls here that fail
+  publicly when wrong, so both are pinned against the wire format.
+  """
+
+  # Not async: the scope tests swap application config.
+  use ExUnit.Case, async: false
 
   alias SuperX.X
 
-  test "uses X's chunked GIF workflow and returns the fresh media id" do
-    path = temporary_file(<<"GIF89a", 0, 0, 0, 0, 0, 0>>)
-    counter = start_supervised!({Agent, fn -> 0 end})
+  setup do
+    previous = Application.get_env(:superx, X, [])
 
-    Req.Test.stub(X, fn conn ->
-      request = Agent.get_and_update(counter, &{&1 + 1, &1 + 1})
-      {body, conn} = read_body(conn)
+    Application.put_env(
+      :superx,
+      X,
+      Keyword.merge(previous,
+        api_base: "https://api.x.com/2",
+        client_id: "client-id",
+        client_secret: "client-secret",
+        redirect_uri: "https://superx.test/auth/x/callback",
+        scopes: ~w(tweet.read tweet.write users.read offline.access)
+      )
+    )
 
-      case request do
-        1 ->
-          assert body =~ ~s(name="command"\r\n\r\nINIT)
-          assert body =~ ~s(name="media_category"\r\n\r\ntweet_gif)
-          json(conn, 200, %{"data" => %{"id" => "x-media-1"}})
+    on_exit(fn -> Application.put_env(:superx, X, previous) end)
+    :ok
+  end
 
-        2 ->
-          assert body =~ ~s(name="command"\r\n\r\nAPPEND)
-          assert body =~ "GIF89a"
-          Plug.Conn.send_resp(conn, 204, "")
+  describe "upload_media/2" do
+    test "uses X's chunked GIF workflow and returns the fresh media id" do
+      path = temporary_file(<<"GIF89a", 0, 0, 0, 0, 0, 0>>)
+      counter = start_supervised!({Agent, fn -> 0 end})
 
-        3 ->
-          assert body =~ ~s(name="command"\r\n\r\nFINALIZE)
-          json(conn, 200, %{"data" => %{"id" => "x-media-1"}})
-      end
-    end)
+      Req.Test.stub(X, fn conn ->
+        request = Agent.get_and_update(counter, &{&1 + 1, &1 + 1})
+        {body, conn} = read_body(conn)
 
-    media = %{
-      path: path,
-      filename: "local.gif",
-      content_type: "image/gif",
-      size: File.stat!(path).size
-    }
+        case request do
+          1 ->
+            assert body =~ ~s(name="command"\r\n\r\nINIT)
+            assert body =~ ~s(name="media_category"\r\n\r\ntweet_gif)
+            json(conn, 200, %{"data" => %{"id" => "x-media-1"}})
 
-    assert {:ok, "x-media-1"} = X.upload_media("access-token", media)
-    assert Agent.get(counter, & &1) == 3
+          2 ->
+            assert body =~ ~s(name="command"\r\n\r\nAPPEND)
+            assert body =~ "GIF89a"
+            Plug.Conn.send_resp(conn, 204, "")
+
+          3 ->
+            assert body =~ ~s(name="command"\r\n\r\nFINALIZE)
+            json(conn, 200, %{"data" => %{"id" => "x-media-1"}})
+        end
+      end)
+
+      media = %{
+        path: path,
+        filename: "local.gif",
+        content_type: "image/gif",
+        size: File.stat!(path).size
+      }
+
+      assert {:ok, "x-media-1"} = X.upload_media("access-token", media)
+      assert Agent.get(counter, & &1) == 3
+    end
+  end
+
+  describe "DM OAuth gating" do
+    test "keeps the existing OAuth scopes when the flag is off" do
+      configure_dms(false)
+
+      assert oauth_scopes() == ~w(tweet.read tweet.write users.read offline.access)
+    end
+
+    test "adds both required DM scopes only when the flag is on" do
+      configure_dms(true)
+
+      assert oauth_scopes() ==
+               ~w(tweet.read tweet.write users.read offline.access dm.read dm.write)
+    end
+  end
+
+  describe "create_dm/3" do
+    test "uses X's OAuth one-to-one endpoint and normalises its ids" do
+      Req.Test.stub(X, fn conn ->
+        assert conn.method == "POST"
+        assert conn.request_path == "/2/dm_conversations/with/7788/messages"
+        assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer user-token"]
+
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        assert Jason.decode!(body) == %{"text" => "A considered reply"}
+
+        response = %{
+          "data" => %{
+            "dm_conversation_id" => "11-7788",
+            "dm_event_id" => "event-1"
+          }
+        }
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(201, Jason.encode!(response))
+      end)
+
+      assert {:ok, %{conversation_id: "11-7788", message_id: "event-1"}} =
+               X.create_dm("user-token", "7788", "A considered reply")
+    end
+  end
+
+  defp configure_dms(enabled) do
+    config = Application.get_env(:superx, X, [])
+    Application.put_env(:superx, X, Keyword.put(config, :dm_enabled, enabled))
+  end
+
+  defp oauth_scopes do
+    X.authorize_url("state", "challenge")
+    |> URI.parse()
+    |> Map.fetch!(:query)
+    |> URI.decode_query()
+    |> Map.fetch!("scope")
+    |> String.split()
   end
 
   defp temporary_file(contents) do

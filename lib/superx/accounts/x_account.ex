@@ -42,6 +42,8 @@ defmodule SuperX.Accounts.XAccount do
     has_many :schedule_slots, SuperX.Content.ScheduleSlot
     has_many :posts, SuperX.Content.Post
     has_many :content_workers, SuperX.Workers.ContentWorker
+    has_many :dm_conversations, SuperX.DMs.Conversation
+    has_many :dm_messages, SuperX.DMs.Message
 
     timestamps(type: :utc_datetime)
   end

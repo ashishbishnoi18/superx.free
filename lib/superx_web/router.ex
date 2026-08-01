@@ -75,6 +75,7 @@ defmodule SuperXWeb.Router do
       live "/inspiration", InspirationLive, :index
       live "/signals", SignalsLive, :index
       live "/contacts", ContactsLive, :index
+      live "/dms", DMsLive, :index
       live "/analytics", AnalyticsLive, :index
 
       live "/voice", VoiceLive, :index

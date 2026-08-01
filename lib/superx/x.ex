@@ -3,9 +3,9 @@ defmodule SuperX.X do
   Client for the X API v2.
 
   Scope is deliberately narrow: **writes only** — OAuth, publishing, and
-  DMs. Bulk reads (the corpus, watch agents) go through the scraper
-  instead, because API read quotas make them impossible at any workable
-  price.
+  DMs. Bulk reads (the corpus, inboxes, watch agents) go through
+  twitterapi.io instead, because API read quotas make them impossible at
+  any workable price.
 
   Every call takes an access token rather than an account struct, so this
   module stays free of database concerns. `SuperX.X.Tokens` handles
@@ -21,7 +21,7 @@ defmodule SuperX.X do
         "response_type" => "code",
         "client_id" => config(:client_id),
         "redirect_uri" => config(:redirect_uri),
-        "scope" => Enum.join(config(:scopes), " "),
+        "scope" => Enum.join(scopes(), " "),
         "state" => state,
         "code_challenge" => code_challenge,
         "code_challenge_method" => "S256"
@@ -162,6 +162,32 @@ defmodule SuperX.X do
   defp maybe_put_media(body, []), do: body
   defp maybe_put_media(body, ids), do: Map.put(body, "media", %{"media_ids" => ids})
 
+  # --- Direct Messages -----------------------------------------------------
+
+  @doc "Sends a one-to-one Direct Message to an X user id."
+  def create_dm(access_token, participant_id, text) do
+    path = "/dm_conversations/with/#{URI.encode_www_form(participant_id)}/messages"
+
+    case request(:post, path, json: %{"text" => text}, token: access_token) do
+      {:ok,
+       %{
+         "data" => %{
+           "dm_conversation_id" => conversation_id,
+           "dm_event_id" => message_id
+         }
+       }} ->
+        {:ok, %{conversation_id: conversation_id, message_id: message_id}}
+
+      {:ok, other} ->
+        {:error, {:unexpected_response, other}}
+
+      error ->
+        error
+    end
+  end
+
+  # --- Media ---------------------------------------------------------------
+
   defp initialise_media(access_token, media) do
     fields = [
       command: "INIT",
@@ -251,6 +277,16 @@ defmodule SuperX.X do
       is_binary(config(:client_secret)) and config(:client_secret) != ""
   end
 
+  @doc "Whether the operator deliberately enabled DM OAuth scopes."
+  def dms_enabled?, do: config(:dm_enabled) == true
+
+  @doc "The scopes requested by a new OAuth handshake."
+  def scopes do
+    (config(:scopes) || [])
+    |> Kernel.++(if(dms_enabled?(), do: ~w(dm.read dm.write), else: []))
+    |> Enum.uniq()
+  end
+
   defp config(key) do
     Application.get_env(:superx, __MODULE__, [])[key]
   end
@@ -318,8 +354,8 @@ defmodule SuperX.X do
       |> put_opt(:json, opts[:json])
       |> put_opt(:form, opts[:form])
       |> put_opt(:form_multipart, opts[:form_multipart])
-      |> put_opt(:plug, Application.get_env(:superx, :x_plug))
       |> put_auth(opts)
+      |> Kernel.++(test_plug())
 
     case Req.request(req_opts) do
       {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
@@ -348,6 +384,15 @@ defmodule SuperX.X do
       token = opts[:token] -> Keyword.put(req_opts, :auth, {:bearer, token})
       auth = opts[:auth] -> Keyword.put(req_opts, :auth, auth)
       true -> req_opts
+    end
+  end
+
+  # Test requests still exercise headers, encoding and response handling;
+  # only the socket is replaced.
+  defp test_plug do
+    case Application.get_env(:superx, :x_plug) do
+      nil -> []
+      plug -> [plug: plug]
     end
   end
 

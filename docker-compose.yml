@@ -44,6 +44,7 @@ services:
       X_CLIENT_ID: ${X_CLIENT_ID}
       X_CLIENT_SECRET: ${X_CLIENT_SECRET}
       X_REDIRECT_URI: ${X_REDIRECT_URI:-https://${PHX_HOST}/auth/x/callback}
+      SUPERX_ENABLE_DMS: ${SUPERX_ENABLE_DMS:-false}
 
       # LLM — required for voice profiles and drafting.
       SUPERX_LLM_PROVIDER: ${SUPERX_LLM_PROVIDER:-anthropic}
