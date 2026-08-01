@@ -19,6 +19,7 @@ defmodule SuperXWeb.Router do
 
   pipeline :authenticated_api do
     plug SuperXWeb.ApiAuth
+    plug SuperXWeb.ApiRateLimit
   end
 
   # --- Public --------------------------------------------------------------
@@ -52,6 +53,7 @@ defmodule SuperXWeb.Router do
       layout: {SuperXWeb.Layouts, :app} do
       live "/connect", ConnectLive, :index
       live "/accounts", AccountsLive, :index
+      live "/api", ApiDocsLive, :index
       live "/upgrade", UpgradeLive, :index
     end
   end
@@ -106,6 +108,9 @@ defmodule SuperXWeb.Router do
     get "/queue", ApiController, :queue
     get "/shelf", ApiController, :shelf
     get "/analytics", ApiController, :analytics
+    post "/posts", ApiController, :create_post
+    post "/posts/:id/schedule", ApiController, :schedule_post
+    delete "/posts/:id", ApiController, :delete_post
   end
 
   if Application.compile_env(:superx, :dev_routes) do

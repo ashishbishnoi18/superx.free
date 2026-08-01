@@ -1,6 +1,6 @@
 defmodule SuperX.Accounts.ApiToken do
   @moduledoc """
-  A revocable credential for the read-only API.
+  A revocable credential for the programmatic API.
 
   The database keeps a short random identifier for lookup and a hash of a
   separately generated secret. Keeping those pieces independent means the

@@ -29,6 +29,7 @@ defmodule SuperXWeb.ShellHook do
     SuperXWeb.VoiceLive => :voice,
     SuperXWeb.SettingsLive => :settings,
     SuperXWeb.AccountsLive => :accounts,
+    SuperXWeb.ApiDocsLive => :accounts,
     SuperXWeb.UpgradeLive => :upgrade,
     SuperXWeb.ConnectLive => :accounts
   }

@@ -246,9 +246,10 @@ endpoint when the provider exposes one.
 
 ## Programmatic access
 
-Create a token under **Accounts → API access**. Its secret is shown once;
-SuperX stores only a readable prefix and a SHA-256 hash of the remaining
-secret. Revoking the token takes effect on the next request.
+The in-app reference lives at `/api`. Create a token under **Accounts → API
+access**. Its secret is shown once; SuperX stores only a readable prefix and a
+SHA-256 hash of the remaining secret. Revoking the token takes effect on the
+next request.
 
 Send the token as a Bearer credential:
 
@@ -257,17 +258,37 @@ curl -H 'Authorization: Bearer sx_example.secret' \
   https://your-host/api/queue
 ```
 
-The API is read-only and uses the X account currently selected under
-**Accounts**.
+The API uses the X account currently selected under **Accounts**. Its write
+surface ends at the queue: it can create a draft and schedule approved copy,
+but it has no endpoint that publishes directly or calls X.
 
 | Endpoint | Response |
 |---|---|
 | `GET /api/queue` | Scheduled posts by default. Pass `status=draft`, `scheduled`, `publishing`, `posted`, `failed`, or `cancelled` to read another lifecycle state. |
 | `GET /api/shelf` | Drafts waiting on Ready to Post, plus the same per-kind counts shown in the app. |
 | `GET /api/analytics` | The analytics summary for 30 days. Pass `days=7`, `30`, or `90` to choose a range. |
+| `POST /api/posts` | Create a draft. Send `segments` as an ordered list of `{text, media_ids}` objects and optional `tags`. A supplied lifecycle status is ignored. |
+| `POST /api/posts/:id/schedule` | Schedule an owned draft into the next open recurring slot. Send `{"at":"2030-08-02T09:30:00Z"}` to choose an unoccupied future time instead. |
+| `DELETE /api/posts/:id` | Delete an owned post from SuperX. This does not delete an already-published post from X. |
 
-All three endpoints return `401` for a missing, invalid, or revoked token.
-They return `409` when the user has no connected X account.
+Successful creation returns `201`; scheduling returns `200`; deletion returns
+`204`. Content validation returns `422` with the same field messages as the
+composer:
+
+```json
+{"errors":{"segments":["post 1 is over 280 characters"]}}
+```
+
+Other failures use `{"error":"message"}`. Missing, invalid, and revoked tokens
+return `401`; an unknown or unowned post returns `404`; queue conflicts return
+`409`; invalid parameters return `422`; and rate limits return `429`.
+
+Rate limits come from the plan definitions and are shared by every token a user
+owns: Free 15, Pro 60, Advanced 120, and Ultra 300 requests per minute. Every
+authenticated response includes `RateLimit-Limit`, `RateLimit-Remaining`, and
+`RateLimit-Reset`; a `429` also includes `Retry-After`. Accounts shows the
+current UTC-day request count. Counters are kept on the single application node
+and start fresh after a restart.
 
 ## Operating notes
 
