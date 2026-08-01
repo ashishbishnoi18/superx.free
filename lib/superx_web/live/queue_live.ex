@@ -300,7 +300,11 @@ defmodule SuperXWeb.QueueLive do
           </p>
 
           <div class="mt-3 flex flex-wrap items-center gap-5 text-xs">
-            <.link :if={post.status in ["draft", "scheduled"]} patch={~p"/queue/#{post.id}"} class="act-key">
+            <.link
+              :if={post.status in ["draft", "scheduled"]}
+              patch={~p"/queue/#{post.id}"}
+              class="act-key"
+            >
               Edit
             </.link>
             <button
@@ -311,7 +315,12 @@ defmodule SuperXWeb.QueueLive do
             >
               Move to drafts
             </button>
-            <button :if={post.status == "failed"} phx-click="retry" phx-value-id={post.id} class="act-key">
+            <button
+              :if={post.status == "failed"}
+              phx-click="retry"
+              phx-value-id={post.id}
+              class="act-key"
+            >
               Try again
             </button>
             <a
@@ -382,8 +391,7 @@ defmodule SuperXWeb.QueueLive do
     ~H"""
     <div :if={@week.rows == []} class="border-y border-border py-14 text-center">
       <p class="text-muted-foreground">
-        No posting times yet.
-        <.link navigate={~p"/settings"} class="act-key">Pick some</.link>
+        No posting times yet. <.link navigate={~p"/settings"} class="act-key">Pick some</.link>
         and the week fills in.
       </p>
     </div>

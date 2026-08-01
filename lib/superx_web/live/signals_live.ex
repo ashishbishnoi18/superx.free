@@ -48,7 +48,8 @@ defmodule SuperXWeb.SignalsLive do
       true ->
         case Signals.create_agent(socket.assigns.current_x_account, attrs) do
           {:ok, _agent} ->
-            {:noreply, socket |> put_flash(:info, "Agent created. First run is within the hour.") |> load()}
+            {:noreply,
+             socket |> put_flash(:info, "Agent created. First run is within the hour.") |> load()}
 
           {:error, changeset} ->
             {:noreply, put_flash(socket, :error, error_message(changeset))}

@@ -132,7 +132,8 @@ defmodule SuperXWeb.Layouts do
     assigns =
       assign(assigns,
         credits: credits,
-        pct: if(credits.limit > 0, do: min(round(credits.used / credits.limit * 100), 100), else: 0)
+        pct:
+          if(credits.limit > 0, do: min(round(credits.used / credits.limit * 100), 100), else: 0)
       )
 
     ~H"""

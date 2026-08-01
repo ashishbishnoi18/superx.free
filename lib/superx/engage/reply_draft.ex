@@ -33,7 +33,8 @@ defmodule SuperX.Engage.ReplyDraft do
     |> cast(attrs, [:engagement_id, :user_id, :text, :status, :model, :credits_cost])
     |> validate_required([:engagement_id, :user_id, :text])
     |> validate_inclusion(:status, @statuses)
-    |> validate_length(:text, max: 280,
+    |> validate_length(:text,
+      max: 280,
       message: "is over the character limit"
     )
   end

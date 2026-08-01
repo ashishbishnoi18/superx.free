@@ -68,7 +68,9 @@ defmodule SuperX.AITest do
         assert length(body["tools"]) == 1
 
         json(conn, %{
-          "content" => [%{"type" => "tool_use", "name" => "respond", "input" => %{"colour" => "blue"}}]
+          "content" => [
+            %{"type" => "tool_use", "name" => "respond", "input" => %{"colour" => "blue"}}
+          ]
         })
       end)
 
@@ -123,7 +125,9 @@ defmodule SuperX.AITest do
 
   describe "errors" do
     test "a tool call that never arrives is an error, not a silent nil" do
-      stub(fn conn -> json(conn, %{"content" => [%{"type" => "text", "text" => "I'd rather chat"}]}) end)
+      stub(fn conn ->
+        json(conn, %{"content" => [%{"type" => "text", "text" => "I'd rather chat"}]})
+      end)
 
       assert {:error, {:no_tool_use, _}} = AI.structured("pick", %{type: "object"})
     end

@@ -18,7 +18,8 @@ defmodule SuperX.Signals do
     |> Repo.all()
   end
 
-  def get_agent(%XAccount{} = account, id), do: Repo.get_by(Agent, id: id, x_account_id: account.id)
+  def get_agent(%XAccount{} = account, id),
+    do: Repo.get_by(Agent, id: id, x_account_id: account.id)
 
   def create_agent(%XAccount{} = account, attrs) do
     %Agent{}

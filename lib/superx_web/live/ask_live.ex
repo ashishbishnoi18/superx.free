@@ -53,7 +53,11 @@ defmodule SuperXWeb.AskLive do
 
       # Show the question immediately rather than after the round trip —
       # a turn can take ten seconds with tools.
-      pending = %SuperX.Ask.Message{role: "user", content: question, inserted_at: DateTime.utc_now()}
+      pending = %SuperX.Ask.Message{
+        role: "user",
+        content: question,
+        inserted_at: DateTime.utc_now()
+      }
 
       parent = self()
 
@@ -129,8 +133,7 @@ defmodule SuperXWeb.AskLive do
     </div>
 
     <p :if={!@ai_configured} class="mt-8 max-w-[60ch] text-muted-foreground">
-      Set <code class="nb-mono text-[12px] text-foreground">ANTHROPIC_API_KEY</code>
-      to use this.
+      Set <code class="nb-mono text-[12px] text-foreground">ANTHROPIC_API_KEY</code> to use this.
     </p>
 
     <div :if={@ai_configured} class="mt-8">

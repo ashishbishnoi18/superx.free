@@ -73,7 +73,9 @@ defmodule SuperX.Workers.MentionSync do
           |> Enum.map(&to_engagement(&1, feed.x_account, "feed", feed.id))
           |> Enum.reject(&is_nil/1)
           # Your own posts showing up in your own discovery feed is noise.
-          |> Enum.reject(&(String.downcase(&1.author_handle) == String.downcase(feed.x_account.handle)))
+          |> Enum.reject(
+            &(String.downcase(&1.author_handle) == String.downcase(feed.x_account.handle))
+          )
           |> store(feed.x_account)
 
           Engage.touch_feed(feed)

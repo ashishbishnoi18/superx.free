@@ -150,7 +150,12 @@ defmodule SuperX.Billing do
     {window_start, window_end} = Quota.window_for(quota.key)
 
     quota
-    |> Quota.changeset(%{used: 0, limit: limit, window_start: window_start, window_end: window_end})
+    |> Quota.changeset(%{
+      used: 0,
+      limit: limit,
+      window_start: window_start,
+      window_end: window_end
+    })
     |> Repo.update!()
   end
 

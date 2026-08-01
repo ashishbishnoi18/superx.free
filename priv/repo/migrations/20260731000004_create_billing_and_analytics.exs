@@ -34,6 +34,7 @@ defmodule SuperX.Repo.Migrations.CreateBillingAndAnalytics do
 
     # One active subscription row per user.
     create unique_index(:subscriptions, [:user_id])
+
     create unique_index(:subscriptions, [:provider_subscription_id],
              where: "provider_subscription_id IS NOT NULL"
            )

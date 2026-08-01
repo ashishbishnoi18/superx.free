@@ -86,15 +86,25 @@ defmodule SuperX.TwitterAPI do
     full_query = build_query(query, opts)
     max = opts[:max] || 40
 
-    paginate("/twitter/tweet/advanced_search", %{
-      "query" => full_query,
-      "queryType" => opts[:type] || "Top"
-    }, max, "tweets")
+    paginate(
+      "/twitter/tweet/advanced_search",
+      %{
+        "query" => full_query,
+        "queryType" => opts[:type] || "Top"
+      },
+      max,
+      "tweets"
+    )
   end
 
   @doc "Recent posts by one account — used to derive a voice profile."
   def user_tweets(handle, opts \\ []) do
-    paginate("/twitter/user/last_tweets", %{"userName" => strip(handle)}, opts[:max] || 40, "tweets")
+    paginate(
+      "/twitter/user/last_tweets",
+      %{"userName" => strip(handle)},
+      opts[:max] || 40,
+      "tweets"
+    )
   end
 
   @doc """
@@ -219,7 +229,7 @@ defmodule SuperX.TwitterAPI do
             {:ok, Enum.take(acc, max)}
 
           body["has_next_page"] == true and is_binary(body["next_cursor"]) and
-              body["next_cursor"] != "" and extract(body, key) != [] ->
+            body["next_cursor"] != "" and extract(body, key) != [] ->
             paginate(path, params, max, key, acc, body["next_cursor"])
 
           true ->
@@ -257,14 +267,14 @@ defmodule SuperX.TwitterAPI do
             url: @base <> path,
             params: params,
             headers: [{"x-api-key", api_key()}],
-          receive_timeout: 45_000,
-          retry: :transient,
-          max_retries: 3,
-          # Req's retries do not pass back through the rate limiter, so
-          # without this they fire milliseconds apart and re-trip the very
-          # 429 they're retrying. Spacing them at the plan interval is what
-          # actually makes the backoff work.
-          retry_delay: fn attempt -> interval_ms() * (attempt + 1) end
+            receive_timeout: 45_000,
+            retry: :transient,
+            max_retries: 3,
+            # Req's retries do not pass back through the rate limiter, so
+            # without this they fire milliseconds apart and re-trip the very
+            # 429 they're retrying. Spacing them at the plan interval is what
+            # actually makes the backoff work.
+            retry_delay: fn attempt -> interval_ms() * (attempt + 1) end
           ] ++ test_plug(:twitter_api_plug)
         )
 
@@ -324,8 +334,18 @@ defmodule SuperX.TwitterAPI do
   defp strip(handle), do: handle |> to_string() |> String.trim_leading("@")
 
   @months %{
-    "Jan" => 1, "Feb" => 2, "Mar" => 3, "Apr" => 4, "May" => 5, "Jun" => 6,
-    "Jul" => 7, "Aug" => 8, "Sep" => 9, "Oct" => 10, "Nov" => 11, "Dec" => 12
+    "Jan" => 1,
+    "Feb" => 2,
+    "Mar" => 3,
+    "Apr" => 4,
+    "May" => 5,
+    "Jun" => 6,
+    "Jul" => 7,
+    "Aug" => 8,
+    "Sep" => 9,
+    "Oct" => 10,
+    "Nov" => 11,
+    "Dec" => 12
   }
 
   # The API emits X's own format, "Wed Oct 10 20:19:24 +0000 2018", which

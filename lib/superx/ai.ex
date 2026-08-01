@@ -206,16 +206,16 @@ defmodule SuperX.AI do
           [
             url: messages_url(),
             json: body,
-          headers: [
-            {"x-api-key", llm_key()},
-            # DeepSeek ignores this; Anthropic requires it. Sending it
-            # always is cheaper than branching on provider.
-            {"anthropic-version", @anthropic_version}
-          ],
-          # Generation can legitimately take a while; the caller is a job.
-          receive_timeout: 120_000,
-          retry: :transient,
-          max_retries: 2
+            headers: [
+              {"x-api-key", llm_key()},
+              # DeepSeek ignores this; Anthropic requires it. Sending it
+              # always is cheaper than branching on provider.
+              {"anthropic-version", @anthropic_version}
+            ],
+            # Generation can legitimately take a while; the caller is a job.
+            receive_timeout: 120_000,
+            retry: :transient,
+            max_retries: 2
           ] ++ test_plug()
         )
 
@@ -266,6 +266,7 @@ defmodule SuperX.AI do
       plug -> [plug: plug]
     end
   end
+
   defp voyage_key, do: config(:voyage_api_key)
 
   defp messages_url do

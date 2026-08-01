@@ -18,14 +18,28 @@ defmodule SuperXWeb.WelcomeLive do
 
   @presets [
     {"weekday_mornings", "Weekday mornings",
-     [{1, ~T[09:00:00]}, {2, ~T[09:00:00]}, {3, ~T[09:00:00]}, {4, ~T[09:00:00]},
-      {5, ~T[09:00:00]}]},
+     [
+       {1, ~T[09:00:00]},
+       {2, ~T[09:00:00]},
+       {3, ~T[09:00:00]},
+       {4, ~T[09:00:00]},
+       {5, ~T[09:00:00]}
+     ]},
     {"three_a_week", "Three times a week",
      [{1, ~T[10:00:00]}, {3, ~T[10:00:00]}, {5, ~T[10:00:00]}]},
     {"twice_daily", "Twice a day, weekdays",
-     [{1, ~T[09:00:00]}, {1, ~T[16:00:00]}, {2, ~T[09:00:00]}, {2, ~T[16:00:00]},
-      {3, ~T[09:00:00]}, {3, ~T[16:00:00]}, {4, ~T[09:00:00]}, {4, ~T[16:00:00]},
-      {5, ~T[09:00:00]}, {5, ~T[16:00:00]}]}
+     [
+       {1, ~T[09:00:00]},
+       {1, ~T[16:00:00]},
+       {2, ~T[09:00:00]},
+       {2, ~T[16:00:00]},
+       {3, ~T[09:00:00]},
+       {3, ~T[16:00:00]},
+       {4, ~T[09:00:00]},
+       {4, ~T[16:00:00]},
+       {5, ~T[09:00:00]},
+       {5, ~T[16:00:00]}
+     ]}
   ]
 
   @impl true
@@ -80,7 +94,8 @@ defmodule SuperXWeb.WelcomeLive do
     {:noreply, socket |> assign(:voice, voice) |> assign(:step, :schedule)}
   end
 
-  def handle_event("skip_voice", _params, socket), do: {:noreply, assign(socket, :step, :schedule)}
+  def handle_event("skip_voice", _params, socket),
+    do: {:noreply, assign(socket, :step, :schedule)}
 
   def handle_event("back", _params, socket), do: {:noreply, assign(socket, :step, :voice)}
 

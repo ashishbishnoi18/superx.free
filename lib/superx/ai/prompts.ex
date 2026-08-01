@@ -85,7 +85,10 @@ defmodule SuperX.AI.Prompts do
           type: "array",
           items: %{type: "string"},
           description:
-            "The post text. One element for a single post; several for a thread, each under 280 characters."
+            "The post text, split into the posts it will publish as: one element " <>
+              "for a single post, one element per post for a thread, each under 280 " <>
+              "characters. Do not number them or write \"a thread\" — that text would " <>
+              "publish verbatim."
         },
         reasoning: %{
           type: "string",
@@ -130,6 +133,9 @@ defmodule SuperX.AI.Prompts do
       post you were shown as inspiration.
     - Stay under 280 characters per segment. Prefer a single post unless the
       idea genuinely needs several.
+    - A thread is several segments, not one long segment describing itself.
+      Never write "1/", "2/5", "a thread:", or "🧵" — the posts are chained
+      for you, and those markers publish as literal text.
 
     #{rules_block(voice)}
     """

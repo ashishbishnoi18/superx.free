@@ -50,8 +50,14 @@ defmodule SuperXWeb.StripeWebhookControllerTest do
               metadata: %{user_id: user.id},
               items: %{
                 data: [
-                  %{price: %{id: "price_test", unit_amount: 2900, currency: "usd",
-                             recurring: %{interval: "month"}}}
+                  %{
+                    price: %{
+                      id: "price_test",
+                      unit_amount: 2900,
+                      currency: "usd",
+                      recurring: %{interval: "month"}
+                    }
+                  }
                 ]
               }
             },

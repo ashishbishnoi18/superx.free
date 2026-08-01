@@ -10,6 +10,32 @@ defmodule SuperX.Content.WriterTest do
 
   alias SuperX.Content.Writer
 
+  describe "strip_thread_markers/1" do
+    test "removes numbering the model wrote for itself" do
+      # Observed in production: the whole thread in one segment, with the
+      # marker publishing as literal text.
+      assert Writer.strip_thread_markers("finally fixed that drawer - a thread: 1/4") ==
+               "finally fixed that drawer"
+
+      assert Writer.strip_thread_markers("1/ the part nobody mentions") ==
+               "the part nobody mentions"
+
+      assert Writer.strip_thread_markers("the part nobody mentions (2/5)") ==
+               "the part nobody mentions"
+
+      assert Writer.strip_thread_markers("what I'd do differently 🧵") ==
+               "what I'd do differently"
+    end
+
+    test "leaves a fraction that is part of the sentence" do
+      assert Writer.strip_thread_markers("3/4 of users never open it twice") ==
+               "3/4 of users never open it twice"
+
+      assert Writer.strip_thread_markers("we shipped it in half the time") ==
+               "we shipped it in half the time"
+    end
+  end
+
   describe "derivative?/2" do
     test "catches the substitution failure seen in real output" do
       # swyx's post, 8.4K likes, and what the writer produced from it.

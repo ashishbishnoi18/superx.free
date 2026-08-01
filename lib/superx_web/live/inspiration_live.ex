@@ -8,8 +8,12 @@ defmodule SuperXWeb.InspirationLive do
 
   alias SuperX.Content.{Corpus, VoiceProfile, Writer}
 
-  @ranges [{"day", "Past 24 hours", 1}, {"week", "Past week", 7}, {"month", "Past month", 30},
-           {"all", "All time", nil}]
+  @ranges [
+    {"day", "Past 24 hours", 1},
+    {"week", "Past week", 7},
+    {"month", "Past month", 30},
+    {"all", "All time", nil}
+  ]
 
   @impl true
   def mount(_params, _session, socket) do

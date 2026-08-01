@@ -67,7 +67,11 @@ defmodule SuperXWeb.AccountsLive do
         >
           Connect another
         </.link>
-        <.link :if={length(@accounts) >= @account_limit} navigate={~p"/upgrade"} class="act whitespace-nowrap">
+        <.link
+          :if={length(@accounts) >= @account_limit}
+          navigate={~p"/upgrade"}
+          class="act whitespace-nowrap"
+        >
           Upgrade for more
         </.link>
       </:action>

@@ -29,7 +29,8 @@ defmodule SuperX.Engage do
     |> Repo.all()
   end
 
-  defp drafts_query, do: from(d in ReplyDraft, where: d.status == "shelf", order_by: [desc: d.inserted_at])
+  defp drafts_query,
+    do: from(d in ReplyDraft, where: d.status == "shelf", order_by: [desc: d.inserted_at])
 
   defp filter_kind(query, nil), do: query
   defp filter_kind(query, kind), do: where(query, kind: ^kind)
@@ -71,7 +72,8 @@ defmodule SuperX.Engage do
 
     Repo.insert_all(Engagement, rows,
       on_conflict:
-        {:replace, [:likes, :reposts, :replies, :author_followers, :priority, :priority_reason, :updated_at]},
+        {:replace,
+         [:likes, :reposts, :replies, :author_followers, :priority, :priority_reason, :updated_at]},
       conflict_target: [:x_account_id, :x_post_id]
     )
   end

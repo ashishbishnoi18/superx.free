@@ -56,8 +56,12 @@ defmodule SuperXWeb.HomeLive do
 
   def handle_event("dismiss", %{"id" => id}, socket) do
     case Content.get_generation(socket.assigns.current_user, id) do
-      nil -> {:noreply, socket}
-      generation -> {:ok, _} = Content.dismiss_generation(generation); {:noreply, load(socket)}
+      nil ->
+        {:noreply, socket}
+
+      generation ->
+        {:ok, _} = Content.dismiss_generation(generation)
+        {:noreply, load(socket)}
     end
   end
 
@@ -74,7 +78,9 @@ defmodule SuperXWeb.HomeLive do
             {if @voice_ready, do: "done", else: "todo"}
           </span>
           <span class="flex-1">Teach SuperX how you write</span>
-          <.link :if={!@voice_ready} navigate={~p"/voice"} class="act-key text-xs">Set up voice</.link>
+          <.link :if={!@voice_ready} navigate={~p"/voice"} class="act-key text-xs">
+            Set up voice
+          </.link>
         </li>
         <li class="flex items-baseline gap-3">
           <span class={["nb-mono text-[11px]", @has_slots && "text-success"]}>
@@ -137,7 +143,9 @@ defmodule SuperXWeb.HomeLive do
             <span class="nb-mono text-[11px] text-muted-foreground">
               {short_when(post.scheduled_at, @current_user.timezone)}
             </span>
-            <p class="max-w-[58ch] whitespace-pre-wrap leading-[1.55]"><%= truncate(SuperX.Content.Post.preview_text(post), 220) %></p>
+            <p class="max-w-[58ch] whitespace-pre-wrap leading-[1.55]">
+              {truncate(SuperX.Content.Post.preview_text(post), 220)}
+            </p>
           </div>
         </div>
       </section>

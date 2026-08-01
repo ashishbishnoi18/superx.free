@@ -95,10 +95,10 @@ defmodule SuperX.Scraper do
   end
 
   defp open(%State{binary: binary} = state) do
+    # Stream mode (the default): chunks arrive arbitrarily split, so we
+    # reassemble lines ourselves. A packet mode would cap line length,
+    # and timeline cursors are long.
     port =
-      # Stream mode (the default): chunks arrive arbitrarily split, so we
-      # reassemble lines ourselves. A packet mode would cap line length,
-      # and timeline cursors are long.
       Port.open({:spawn_executable, binary}, [
         :binary,
         :exit_status,
@@ -186,8 +186,12 @@ defmodule SuperX.Scraper do
 
   defp handle_line(line, state) do
     case Jason.decode(line) do
-      {:ok, message} -> dispatch(message, state)
-      {:error, _} -> Logger.warning("Scraper emitted non-JSON: #{inspect(line)}"); state
+      {:ok, message} ->
+        dispatch(message, state)
+
+      {:error, _} ->
+        Logger.warning("Scraper emitted non-JSON: #{inspect(line)}")
+        state
     end
   end
 

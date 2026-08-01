@@ -43,7 +43,10 @@ defmodule SuperX.Workers.SignalSweep do
             :ok
 
           {:error, :quota_exceeded, _details} ->
-            Logger.info("@#{agent.x_account.handle} is over its daily lead quota; pausing #{agent.name}")
+            Logger.info(
+              "@#{agent.x_account.handle} is over its daily lead quota; pausing #{agent.name}"
+            )
+
             Signals.update_agent(agent, %{enabled: false, last_error: "Daily lead quota reached"})
         end
 

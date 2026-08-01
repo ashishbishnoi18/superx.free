@@ -46,7 +46,9 @@ defmodule SuperX.TwitterAPITest do
 
   describe "response envelopes" do
     test "reads tweets from the top level, as advanced_search returns them" do
-      stub(fn conn -> json(conn, %{"tweets" => [tweet("1"), tweet("2")], "has_next_page" => false}) end)
+      stub(fn conn ->
+        json(conn, %{"tweets" => [tweet("1"), tweet("2")], "has_next_page" => false})
+      end)
 
       assert {:ok, [%{"id" => "1"}, %{"id" => "2"}]} = TwitterAPI.search("elixir")
     end

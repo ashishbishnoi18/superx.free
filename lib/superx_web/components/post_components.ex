@@ -51,7 +51,9 @@ defmodule SuperXWeb.PostComponents do
                 class={["post-body", index == 0 && "mt-0.5"]}
                 data-clamp={@clamp && "true"}
                 style={@clamp && "--clamp-lines: #{@clamp}"}
-              >{segment["text"]}</p>
+              >
+                {segment["text"]}
+              </p>
             </div>
           </div>
         </div>

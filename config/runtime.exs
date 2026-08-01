@@ -33,8 +33,7 @@ env = fn name, default ->
   end
 end
 
-config :superx, SuperXWeb.Endpoint,
-  http: [port: String.to_integer(env.("PORT", "4000"))]
+config :superx, SuperXWeb.Endpoint, http: [port: String.to_integer(env.("PORT", "4000"))]
 
 # --- Secrets shared by every environment -----------------------------------
 

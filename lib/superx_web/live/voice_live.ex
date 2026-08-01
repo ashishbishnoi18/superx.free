@@ -139,8 +139,13 @@ defmodule SuperXWeb.VoiceLive do
         label="About you"
         hint="Written in first person. This anchors everything SuperX writes."
       >
-        <textarea id="voice_profile_about" name="voice_profile[about]" rows="5" class="textarea"
-          placeholder="I write about…">{@form[:about].value}</textarea>
+        <textarea
+          id="voice_profile_about"
+          name="voice_profile[about]"
+          rows="5"
+          class="textarea"
+          placeholder="I write about…"
+        >{@form[:about].value}</textarea>
       </.field>
 
       <.field
@@ -149,9 +154,14 @@ defmodule SuperXWeb.VoiceLive do
         label="Topics"
         hint="Comma-separated. These steer which posts SuperX learns from."
       >
-        <input type="text" id="voice_profile_topics" name="voice_profile[topics]"
-          value={@form[:topics].value} class="input"
-          placeholder="startups, writing, product design" />
+        <input
+          type="text"
+          id="voice_profile_topics"
+          name="voice_profile[topics]"
+          value={@form[:topics].value}
+          class="input"
+          placeholder="startups, writing, product design"
+        />
       </.field>
 
       <.field
@@ -160,9 +170,13 @@ defmodule SuperXWeb.VoiceLive do
         label="How you write"
         hint="Mechanics: sentence length, capitalisation, punctuation, emoji."
       >
-        <textarea id="voice_profile_style_notes" name="voice_profile[style_notes]" rows="4"
+        <textarea
+          id="voice_profile_style_notes"
+          name="voice_profile[style_notes]"
+          rows="4"
           class="textarea"
-          placeholder="Short declarative sentences. Lowercase openings. No emoji.">{@form[:style_notes].value}</textarea>
+          placeholder="Short declarative sentences. Lowercase openings. No emoji."
+        >{@form[:style_notes].value}</textarea>
       </.field>
 
       <.field
@@ -171,8 +185,13 @@ defmodule SuperXWeb.VoiceLive do
         label="Your rules"
         hint="Instructions that override everything else. Kept when you re-learn."
       >
-        <textarea id="voice_profile_rules" name="voice_profile[rules]" rows="4" class="textarea"
-          placeholder="Never use the word 'journey'. Never post before 9am.">{@form[:rules].value}</textarea>
+        <textarea
+          id="voice_profile_rules"
+          name="voice_profile[rules]"
+          rows="4"
+          class="textarea"
+          placeholder="Never use the word 'journey'. Never post before 9am."
+        >{@form[:rules].value}</textarea>
       </.field>
 
       <.field
@@ -181,8 +200,12 @@ defmodule SuperXWeb.VoiceLive do
         label="Questions you can answer"
         hint="One per line. Used as writing prompts."
       >
-        <textarea id="voice_profile_questions" name="voice_profile[questions]" rows="4"
-          class="textarea">{Enum.join(@form[:questions].value || [], "\n")}</textarea>
+        <textarea
+          id="voice_profile_questions"
+          name="voice_profile[questions]"
+          rows="4"
+          class="textarea"
+        >{Enum.join(@form[:questions].value || [], "\n")}</textarea>
       </.field>
 
       <.field
@@ -191,14 +214,22 @@ defmodule SuperXWeb.VoiceLive do
         label="Voices you admire"
         hint="One handle per line. SuperX leans toward how they structure a post."
       >
-        <textarea id="voice_profile_favorite_voices" name="voice_profile[favorite_voices]" rows="3"
-          class="textarea" placeholder="@paulg">{Enum.join(@form[:favorite_voices].value || [], "\n")}</textarea>
+        <textarea
+          id="voice_profile_favorite_voices"
+          name="voice_profile[favorite_voices]"
+          rows="3"
+          class="textarea"
+          placeholder="@paulg"
+        >{Enum.join(@form[:favorite_voices].value || [], "\n")}</textarea>
 
         <label class="mt-4 flex items-center gap-2.5">
           <input type="hidden" name="voice_profile[use_own_posts]" value="false" />
-          <input type="checkbox" name="voice_profile[use_own_posts]" value="true"
-            checked={@form[:use_own_posts].value} />
-          Show SuperX my published posts as examples
+          <input
+            type="checkbox"
+            name="voice_profile[use_own_posts]"
+            value="true"
+            checked={@form[:use_own_posts].value}
+          /> Show SuperX my published posts as examples
         </label>
       </.field>
 

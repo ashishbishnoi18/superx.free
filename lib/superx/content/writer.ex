@@ -109,7 +109,17 @@ defmodule SuperX.Content.Writer do
       # surfacing as a failed generation the user paid for.
       {:ok, other} ->
         Logger.debug("Writer returned no segments: #{inspect(other)}")
-        retry_or_fail(user, account, voice, topic, kind, source, attempt, {:empty_generation, other})
+
+        retry_or_fail(
+          user,
+          account,
+          voice,
+          topic,
+          kind,
+          source,
+          attempt,
+          {:empty_generation, other}
+        )
 
       # A reasoning model that spent its turn thinking and never called the
       # tool. Transient, so it gets the same retry as an empty call rather
@@ -134,7 +144,11 @@ defmodule SuperX.Content.Writer do
     Content.create_generation(%{
       user_id: user.id,
       x_account_id: account.id,
-      segments: Enum.map(segments, &%{"text" => String.trim(to_string(&1)), "media_ids" => []}),
+      segments:
+        Enum.map(
+          segments,
+          &%{"text" => &1 |> to_string() |> strip_thread_markers(), "media_ids" => []}
+        ),
       kind: kind,
       source_corpus_post_id: source && source.id,
       source_likes: source && source.likes,
@@ -142,6 +156,37 @@ defmodule SuperX.Content.Writer do
       credits_cost: @credit_cost,
       score: source && source.engagement_score
     })
+  end
+
+  # Segments are chained into a thread by the publisher, so any numbering
+  # the model writes itself publishes as literal text — a post that ends
+  # "- a thread: 1/4". Instructing against it in the prompt is not a
+  # guarantee, and the failure is visible to the user's followers, so the
+  # markers come off here as well.
+  #
+  # Deliberately narrow. "3/4 of users never open it twice" is prose, so a
+  # bare fraction is only treated as a counter when it is bracketed, has no
+  # denominator ("1/"), or sits against a separator — which is how thread
+  # numbering is actually written.
+  @thread_markers [
+    # Leading: "(1/4) ", "[1/4] ", "1/ ", "1/4 — "
+    ~r/^\s*[\(\[]\d{1,2}\s*\/\s*\d{0,2}[\)\]]\s*/u,
+    ~r/^\s*\d{1,2}\s*\/\s*(?=\D|$)/u,
+    ~r/^\s*\d{1,2}\s*\/\s*\d{1,2}\s*[:.\-–—|]\s*/u,
+    # Trailing: " (2/5)", " - 1/4", " 1/"
+    ~r/\s*[\(\[]\d{1,2}\s*\/\s*\d{0,2}[\)\]]\s*$/u,
+    ~r/\s*[:\-–—|]\s*\d{1,2}\s*\/\s*\d{0,2}\s*$/u,
+    ~r/\s*\d{1,2}\s*\/\s*$/u,
+    # " - a thread:" / " a thread"
+    ~r/\s*[:\-–—|]*\s*\b(a\s+)?thread\s*:?\s*$/iu,
+    ~r/\x{1F9F5}/u
+  ]
+
+  @doc false
+  def strip_thread_markers(text) do
+    @thread_markers
+    |> Enum.reduce(text, &Regex.replace(&1, &2, ""))
+    |> String.trim()
   end
 
   # Shared runs of six words are the signature of template substitution:

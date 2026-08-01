@@ -30,7 +30,11 @@ defmodule SuperXWeb.UpgradeLive do
   end
 
   def handle_event("checkout", %{"tier" => tier}, socket) do
-    case Billing.Checkout.create_session(socket.assigns.current_user, tier, socket.assigns.interval) do
+    case Billing.Checkout.create_session(
+           socket.assigns.current_user,
+           tier,
+           socket.assigns.interval
+         ) do
       {:ok, url} ->
         {:noreply, redirect(socket, external: url)}
 

@@ -206,8 +206,13 @@ defmodule SuperXWeb.AnalyticsLive do
 
     ~H"""
     <div class="mt-4">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="h-32 w-full" role="img"
-           aria-label={"Follower trend from #{@min} to #{@max}"}>
+      <svg
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        class="h-32 w-full"
+        role="img"
+        aria-label={"Follower trend from #{@min} to #{@max}"}
+      >
         <defs>
           <linearGradient id="follower-fade" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.16" />

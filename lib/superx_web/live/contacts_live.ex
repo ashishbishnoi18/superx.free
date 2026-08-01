@@ -38,8 +38,12 @@ defmodule SuperXWeb.ContactsLive do
   @impl true
   def handle_event("set_status", %{"id" => id, "status" => status}, socket) do
     case Signals.get_lead(socket.assigns.current_x_account, id) do
-      nil -> {:noreply, socket}
-      lead -> {:ok, _} = Signals.set_lead_status(lead, status); {:noreply, load(socket)}
+      nil ->
+        {:noreply, socket}
+
+      lead ->
+        {:ok, _} = Signals.set_lead_status(lead, status)
+        {:noreply, load(socket)}
     end
   end
 
@@ -89,8 +93,7 @@ defmodule SuperXWeb.ContactsLive do
 
     <div :if={@leads == []} class="py-16 text-center">
       <p class="text-muted-foreground">
-        Nothing here yet.
-        <.link navigate={~p"/signals"} class="act-key">Set up an agent</.link>
+        Nothing here yet. <.link navigate={~p"/signals"} class="act-key">Set up an agent</.link>
         and it fills in as matches are found.
       </p>
     </div>

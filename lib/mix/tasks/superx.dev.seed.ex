@@ -65,7 +65,8 @@ defmodule Mix.Tasks.Superx.Dev.Seed do
             %{
               access_token: "demo-access-token",
               refresh_token: "demo-refresh-token",
-              token_expires_at: DateTime.utc_now() |> DateTime.add(7200) |> DateTime.truncate(:second),
+              token_expires_at:
+                DateTime.utc_now() |> DateTime.add(7200) |> DateTime.truncate(:second),
               scopes: ["tweet.read", "tweet.write", "users.read"]
             }
           )
@@ -96,25 +97,35 @@ defmodule Mix.Tasks.Superx.Dev.Seed do
   end
 
   @corpus [
-    {"swyx", "The best engineers I know are aggressively boring in their tool choices and aggressively creative in their problem framing. Most people get this exactly backwards.",
+    {"swyx",
+     "The best engineers I know are aggressively boring in their tool choices and aggressively creative in their problem framing. Most people get this exactly backwards.",
      8400, 1200, 210, 92_000},
-    {"patio11", "A thing nobody tells you about pricing: the number is not the product. The story you tell about the number is the product.",
+    {"patio11",
+     "A thing nobody tells you about pricing: the number is not the product. The story you tell about the number is the product.",
      12_800, 2100, 340, 140_000},
-    {"shreyas", "Strategy is a set of choices. If your strategy doesn't rule anything out, it isn't strategy, it's a list of things you like.",
+    {"shreyas",
+     "Strategy is a set of choices. If your strategy doesn't rule anything out, it isn't strategy, it's a list of things you like.",
      15_200, 3400, 280, 210_000},
-    {"jasonfried", "We shipped a feature nobody asked for and removed one everybody used. Took us six months to admit which one was the mistake.",
+    {"jasonfried",
+     "We shipped a feature nobody asked for and removed one everybody used. Took us six months to admit which one was the mistake.",
      6700, 890, 410, 78_000},
-    {"dhh", "Every abstraction you add is a bet that the thing underneath won't change. Most of those bets lose, and you pay the interest forever.",
+    {"dhh",
+     "Every abstraction you add is a bet that the thing underneath won't change. Most of those bets lose, and you pay the interest forever.",
      9300, 1600, 520, 105_000},
-    {"levelsio", "Made $0 for 3 years. Then $100/mo. Then $1000/mo. The compounding is real but the first part is brutal and nobody posts about it.",
+    {"levelsio",
+     "Made $0 for 3 years. Then $100/mo. Then $1000/mo. The compounding is real but the first part is brutal and nobody posts about it.",
      22_000, 3900, 610, 340_000},
-    {"eshear", "The hardest management lesson: the problem is almost never that people don't know what to do. It's that they don't believe it will matter.",
+    {"eshear",
+     "The hardest management lesson: the problem is almost never that people don't know what to do. It's that they don't believe it will matter.",
      11_400, 2300, 190, 130_000},
-    {"rauchg", "Latency is a feature. Every 100ms you shave is a decision someone doesn't have to reconsider.",
+    {"rauchg",
+     "Latency is a feature. Every 100ms you shave is a decision someone doesn't have to reconsider.",
      7800, 1400, 160, 88_000},
-    {"amasad", "Hired for pedigree twice. Both times it went badly. Now I hire for whether someone has finished something hard on their own.",
+    {"amasad",
+     "Hired for pedigree twice. Both times it went badly. Now I hire for whether someone has finished something hard on their own.",
      14_100, 2800, 470, 190_000},
-    {"gergelyorosz", "Most 'we rewrote it in X and it's 10x faster' posts are really 'we finally understood the problem and rewrote it.' The language rarely mattered.",
+    {"gergelyorosz",
+     "Most 'we rewrote it in X and it's 10x faster' posts are really 'we finally understood the problem and rewrote it.' The language rarely mattered.",
      18_600, 4100, 380, 240_000}
   ]
 
@@ -187,7 +198,8 @@ defmodule Mix.Tasks.Superx.Dev.Seed do
         x_account_id: account.id,
         status: "posted",
         segments: [%{"text" => "A post published #{offset + 1} day(s) ago.", "media_ids" => []}],
-        published_at: now |> DateTime.add(-offset * 86_400, :second) |> DateTime.truncate(:second),
+        published_at:
+          now |> DateTime.add(-offset * 86_400, :second) |> DateTime.truncate(:second),
         x_post_ids: ["seed-post-#{offset}"],
         permalink: "https://x.com/i/status/seed-post-#{offset}",
         source: "manual",

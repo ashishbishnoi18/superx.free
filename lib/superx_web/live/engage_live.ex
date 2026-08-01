@@ -87,15 +87,23 @@ defmodule SuperXWeb.EngageLive do
 
   def handle_event("dismiss_draft", %{"draft_id" => draft_id}, socket) do
     case Engage.get_draft(socket.assigns.current_user, draft_id) do
-      nil -> {:noreply, socket}
-      draft -> {:ok, _} = Engage.dismiss_draft(draft); {:noreply, load(socket)}
+      nil ->
+        {:noreply, socket}
+
+      draft ->
+        {:ok, _} = Engage.dismiss_draft(draft)
+        {:noreply, load(socket)}
     end
   end
 
   def handle_event("ignore", %{"id" => id}, socket) do
     case Engage.get_engagement(socket.assigns.current_x_account, id) do
-      nil -> {:noreply, socket}
-      engagement -> {:ok, _} = Engage.ignore(engagement); {:noreply, load(socket)}
+      nil ->
+        {:noreply, socket}
+
+      engagement ->
+        {:ok, _} = Engage.ignore(engagement)
+        {:noreply, load(socket)}
     end
   end
 
@@ -111,7 +119,12 @@ defmodule SuperXWeb.EngageLive do
   end
 
   def handle_event("add_suggested", %{"query" => query, "name" => name}, socket) do
-    Engage.create_feed(socket.assigns.current_x_account, %{query: query, name: name, min_likes: 30})
+    Engage.create_feed(socket.assigns.current_x_account, %{
+      query: query,
+      name: name,
+      min_likes: 30
+    })
+
     {:noreply, load(socket)}
   end
 
@@ -174,8 +187,7 @@ defmodule SuperXWeb.EngageLive do
         <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "mention", 0)}</span>
       </.link>
       <.link patch={~p"/engage?kind=feed"} class="tab" aria-selected={@kind == "feed"}>
-        Feeds
-        <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "feed", 0)}</span>
+        Feeds <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "feed", 0)}</span>
       </.link>
     </div>
 
@@ -195,11 +207,13 @@ defmodule SuperXWeb.EngageLive do
     <div class="flex flex-col gap-3">
       <div :for={engagement <- @engagements}>
         <.post
-          author={%{
-            name: engagement.author_name,
-            handle: engagement.author_handle,
-            avatar_url: engagement.author_avatar_url
-          }}
+          author={
+            %{
+              name: engagement.author_name,
+              handle: engagement.author_handle,
+              avatar_url: engagement.author_avatar_url
+            }
+          }
           segments={[%{"text" => engagement.text}]}
           clamp={8}
         >

@@ -131,7 +131,12 @@ defmodule SuperX.EngageTest do
       # Not a claim that the small account wins outright — only that effort
       # and traction move the number enough to matter.
       assert Engagement.heuristic_priority(small_substantive) >
-               Engagement.heuristic_priority(%{small_substantive | text: "ok", likes: 0, reposts: 0})
+               Engagement.heuristic_priority(%{
+                 small_substantive
+                 | text: "ok",
+                   likes: 0,
+                   reposts: 0
+               })
 
       assert Engagement.heuristic_priority(whale_one_word) < 100
     end
