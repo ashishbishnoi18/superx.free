@@ -87,7 +87,12 @@ config :superx, SuperX.X,
   # Asking for a scope the X app isn't permitted for fails the whole
   # authorisation. runtime.exs adds the DM scopes only when the operator
   # has deliberately enabled the matching permission tier.
-  scopes: ~w(tweet.read tweet.write users.read offline.access follows.read like.read)
+  #
+  # media.write is separate from tweet.write: attaching an image needs its
+  # own upload call first, and without this scope that call 403s while
+  # posting text carries on working — so the gap only appears on the first
+  # post that has an attachment.
+  scopes: ~w(tweet.read tweet.write users.read offline.access follows.read like.read media.write)
 
 # Configure esbuild (the version is required)
 config :esbuild,
