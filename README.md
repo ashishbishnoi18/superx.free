@@ -176,6 +176,21 @@ paging helper here takes a mandatory ceiling for that reason — a loop that
 pages "until done" can spend a month of budget in a minute. Corpus
 ingestion is capped at 20 topics a day.
 
+A run spends up to twelve of those topics on what your users actually
+write about and the rest on a rotating built-in list, so a fresh instance
+has a library on day one and an established one keeps broadening. Topics
+that name a posture rather than a subject — "life", "personal thoughts" —
+are skipped: as *queries* they return whatever went viral that day, and
+news has no shape worth borrowing. Those accounts lose nothing, because
+the writer already falls back to any strong post.
+
+Not everything ingested is offered to the writer. Ranked lists, link
+dumps, one-liners, news alerts and posts promising a list they never
+deliver are all filtered out — the last because the corpus stores a
+thread's opening post and its payload lives in replies that were never
+captured. Expect roughly a third of the library to be usable as
+templates.
+
 **The free tier is slow.** Advertised at 0.2 QPS and measured tighter;
 calls are serialised behind one clock for the whole node and retries back
 off at the same interval. Expect roughly one call per 11 seconds until you
