@@ -9,9 +9,13 @@ defmodule SuperXWeb.Layouts do
 
   use SuperXWeb, :html
 
+  alias SuperX.Accounts
   alias SuperX.Billing.Subscription
 
   embed_templates "layouts/*"
+
+  defp root_theme(nil), do: "system"
+  defp root_theme(user), do: Accounts.theme(user)
 
   @doc """
   The signed-in shell: fixed sidebar, scrolling content.

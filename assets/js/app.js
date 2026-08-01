@@ -32,6 +32,15 @@ const liveSocket = new LiveSocket("/live", Socket, {
   hooks: {...colocatedHooks},
 })
 
+// The server-rendered attribute handles first paint. This only keeps the
+// document root in step after LiveView persists a change without a reload.
+window.addEventListener("phx:set-theme", ({detail}) => {
+  const root = document.documentElement
+  const dark = root.dataset.theme === "dark" ||
+    (root.dataset.theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+  root.dataset.theme = detail?.theme ?? (dark ? "light" : "dark")
+})
+
 // Show progress bar on live navigation and form submits
 // The loading bar is the one moving thing in the UI, so it uses the ember
 // accent like every other "this is live" signal.
@@ -82,4 +91,3 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
-

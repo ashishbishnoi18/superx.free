@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full">
+<html lang="en" class="h-full" data-theme={root_theme(assigns[:current_user])}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,32 +9,6 @@
     </.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
-    </script>
-    <script>
-      // Applied before first paint so the page never flashes the wrong theme.
-      (() => {
-        const stored = localStorage.getItem("superx:theme");
-        const dark = stored
-          ? stored === "dark"
-          : window.matchMedia("(prefers-color-scheme: dark)").matches;
-
-        document.documentElement.classList.toggle("dark", dark);
-        document.documentElement.style.colorScheme = dark ? "dark" : "light";
-
-        window.addEventListener("phx:set-theme", (e) => {
-          const next = e.detail?.theme ?? (document.documentElement.classList.contains("dark") ? "light" : "dark");
-          localStorage.setItem("superx:theme", next);
-          document.documentElement.classList.toggle("dark", next === "dark");
-          document.documentElement.style.colorScheme = next;
-        });
-
-        // Follow the OS only while the user hasn't expressed a preference.
-        window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-          if (localStorage.getItem("superx:theme")) return;
-          document.documentElement.classList.toggle("dark", e.matches);
-          document.documentElement.style.colorScheme = e.matches ? "dark" : "light";
-        });
-      })();
     </script>
   </head>
   <body class="h-full">

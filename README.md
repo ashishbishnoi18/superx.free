@@ -244,6 +244,31 @@ client. SuperX will not collect passwords or browser cookies to work around
 that. The `/dms` storage and sync seam are ready for a compatible API-key
 endpoint when the provider exposes one.
 
+## Programmatic access
+
+Create a token under **Accounts → API access**. Its secret is shown once;
+SuperX stores only a readable prefix and a SHA-256 hash of the remaining
+secret. Revoking the token takes effect on the next request.
+
+Send the token as a Bearer credential:
+
+```bash
+curl -H 'Authorization: Bearer sx_example.secret' \
+  https://your-host/api/queue
+```
+
+The API is read-only and uses the X account currently selected under
+**Accounts**.
+
+| Endpoint | Response |
+|---|---|
+| `GET /api/queue` | Scheduled posts by default. Pass `status=draft`, `scheduled`, `publishing`, `posted`, `failed`, or `cancelled` to read another lifecycle state. |
+| `GET /api/shelf` | Drafts waiting on Ready to Post, plus the same per-kind counts shown in the app. |
+| `GET /api/analytics` | The analytics summary for 30 days. Pass `days=7`, `30`, or `90` to choose a range. |
+
+All three endpoints return `401` for a missing, invalid, or revoked token.
+They return `409` when the user has no connected X account.
+
 ## Operating notes
 
 **Scheduled publishing** ticks every minute. A post is claimed with a
