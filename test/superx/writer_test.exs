@@ -54,6 +54,31 @@ defmodule SuperX.Content.WriterTest do
       refute Writer.derivative?(draft, source)
     end
 
+    test "catches a distinctive opening with one noun swapped" do
+      # Observed in production: @kirkxxs at 14.6K likes, and what the
+      # writer returned. No six-word run is shared, so the n-gram guard
+      # alone let it through, but the opening is recognisably his.
+      source =
+        "the crux of twitter is that your personal thoughts can go viral " <>
+          "and suddenly you have to deal w/ hundreds of people projecting"
+
+      draft =
+        "the crux of life is that you spend decades trying to become " <>
+          "someone and suddenly you realise nobody was keeping score"
+
+      assert Writer.derivative?(draft, source)
+    end
+
+    test "an opening of pure idiom is not a lift, however much of it matches" do
+      # All five opening words coincide, but every one of them is
+      # boilerplate — this is two people writing English, not one copying
+      # the other.
+      source = "One of the things that surprised me was how little the language mattered."
+      draft = "One of the things that took longest was admitting the schema was wrong."
+
+      refute Writer.derivative?(draft, source)
+    end
+
     test "ignores case and punctuation, which substitution changes freely" do
       assert Writer.derivative?(
                "most people get this exactly backwards",

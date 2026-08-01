@@ -154,22 +154,63 @@ defmodule SuperX.Content.Writer do
   # clause rather than a lifted phrase.
   @ngram 6
 
+  # How much of the opening may coincide before it reads as a knock-off.
+  # A shared run of six words anywhere is the obvious case, but the model
+  # also likes to keep a distinctive opening and swap one noun — "the crux
+  # of twitter is that…" becomes "the crux of life is that…", which shares
+  # no six-word run and is still recognisably someone else's line.
+  @opening_words 5
+  @opening_allowed_matches 3
+
   @doc false
   def derivative?(text, source_text) do
     theirs = ngrams(source_text)
 
-    text
-    |> ngrams()
-    |> Enum.any?(&MapSet.member?(theirs, &1))
+    Enum.any?(ngrams(text), &MapSet.member?(theirs, &1)) or
+      opening_lifted?(text, source_text)
+  end
+
+  # Function words and the handful of nouns vague enough to behave like
+  # them. An opening built only from these is English, not authorship:
+  # "one of the things that" is shared by unrelated posts constantly.
+  @common ~w(
+    the a an of to in on at as by for from with about into over after
+    is are was were be been being am do does did have has had can could
+    will would should may might must
+    i me my we our you your he she it its they them their this that these
+    those there here what which who whom how why when where
+    and or but if so than then not no all any every some most both each
+    one two three first last next new old good best better
+    thing things people way ways time times day days year years life
+  )
+
+  defp opening_lifted?(text, source_text) do
+    mine = text |> words() |> Enum.take(@opening_words)
+    theirs = source_text |> words() |> Enum.take(@opening_words)
+
+    shared =
+      mine
+      |> Enum.zip(theirs)
+      |> Enum.filter(fn {a, b} -> a == b end)
+      |> Enum.map(&elem(&1, 0))
+
+    length(mine) == @opening_words and
+      length(shared) > @opening_allowed_matches and
+      Enum.any?(shared, &(&1 not in @common))
   end
 
   defp ngrams(text) do
     text
+    |> words()
+    |> Enum.chunk_every(@ngram, 1, :discard)
+    |> MapSet.new()
+  end
+
+  defp words(text) do
+    text
     |> String.downcase()
     |> String.replace(~r/[^\w\s]/u, " ")
     |> String.split(~r/\s+/, trim: true)
-    |> Enum.chunk_every(@ngram, 1, :discard)
-    |> MapSet.new()
   end
 
   # Rotate through the user's topics rather than always taking the first,
