@@ -9,7 +9,8 @@ defmodule SuperX.AskTest do
 
   import SuperX.Fixtures
 
-  alias SuperX.{Ask, Billing}
+  alias SuperX.{Ask, Billing, Content}
+  alias SuperX.Ask.Tools
 
   setup do
     previous = Application.get_env(:superx, SuperX.AI, [])
@@ -170,6 +171,37 @@ defmodule SuperX.AskTest do
     test "title is derived from the opening question" do
       title = Ask.title_from("How is my account doing this month and what should I post about")
       assert title == "How is my account doing this month"
+    end
+  end
+
+  describe "get_shelf" do
+    test "reads the shelf rather than inferring it from the queue", %{
+      user: user,
+      account: account
+    } do
+      # Without this tool the model answered questions about drafts from
+      # get_queue, which only sees posts — and confidently reported an
+      # empty shelf while eighteen drafts were sitting on it.
+      {:ok, _generation} =
+        Content.create_generation(%{
+          user_id: user.id,
+          x_account_id: account.id,
+          segments: [%{"text" => "a draft waiting for review", "media_ids" => []}],
+          kind: "for_you",
+          source_likes: 4200
+        })
+
+      ctx = %{user: user, account: account}
+      {body, summary} = Tools.run("get_shelf", %{}, ctx)
+
+      assert body =~ "a draft waiting for review"
+      assert body =~ "4200 likes"
+      assert summary =~ "shelf"
+    end
+
+    test "says so plainly when the shelf is empty", %{user: user, account: account} do
+      assert {"The shelf is empty.", _} =
+               Tools.run("get_shelf", %{}, %{user: user, account: account})
     end
   end
 end

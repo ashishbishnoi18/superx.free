@@ -80,6 +80,14 @@ defmodule SuperX.Ask.Tools do
         }
       },
       %{
+        name: "get_shelf",
+        description:
+          "Drafts waiting on the Ready to Post shelf. These are written but not yet " <>
+            "approved, and are separate from the queue — a question about drafts, the " <>
+            "shelf, or what is waiting for review is answered here, not by get_queue.",
+        input_schema: %{type: "object", properties: %{}}
+      },
+      %{
         name: "get_engagements",
         description: "Mentions and feed items waiting for a reply, highest priority first.",
         input_schema: %{type: "object", properties: %{}}
@@ -157,6 +165,23 @@ defmodule SuperX.Ask.Tools do
       end
 
     {body, "Read the #{status} queue"}
+  end
+
+  def run("get_shelf", _input, ctx) do
+    generations = Content.list_shelf(ctx.account, limit: 15)
+
+    body =
+      if generations == [] do
+        "The shelf is empty."
+      else
+        Enum.map_join(generations, "\n\n", fn g ->
+          text = g.segments |> Enum.map_join(" / ", &(&1["text"] || "")) |> String.slice(0, 200)
+          source = if g.source_likes, do: " (from a post with #{g.source_likes} likes)", else: ""
+          "#{g.kind}#{source}: #{text}"
+        end)
+      end
+
+    {body, "Read the Ready to Post shelf"}
   end
 
   def run("search_inspiration", %{"query" => query} = input, _ctx) do
