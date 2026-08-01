@@ -21,6 +21,7 @@ defmodule SuperXWeb.EngageLive do
      |> assign(:drafting, MapSet.new())
      |> assign(:ai_configured, SuperX.AI.configured?())
      |> assign(:api_configured, SuperX.TwitterAPI.configured?())
+     |> assign(:feed_form, feed_form())
      |> load()}
   end
 
@@ -32,11 +33,17 @@ defmodule SuperXWeb.EngageLive do
 
   defp load(socket) do
     account = socket.assigns.current_x_account
+    feeds = Engage.list_feeds(account)
+    queries = feeds |> Enum.map(& &1.query) |> MapSet.new()
+
+    starter_feeds =
+      Enum.map(Feed.suggestions(), &Map.put(&1, :added, MapSet.member?(queries, &1.query)))
 
     socket
     |> assign(:engagements, Engage.list_engagements(account, kind: socket.assigns.kind))
     |> assign(:counts, Engage.counts(account))
-    |> assign(:feeds, Engage.list_feeds(account))
+    |> assign(:feeds, feeds)
+    |> assign(:starter_feeds, starter_feeds)
   end
 
   # --- Replying ------------------------------------------------------------
@@ -109,28 +116,43 @@ defmodule SuperXWeb.EngageLive do
 
   # --- Feeds ---------------------------------------------------------------
 
-  def handle_event("add_feed", %{"query" => query} = params, socket) do
-    attrs = %{query: String.trim(query), name: params["name"], min_likes: 50}
+  def handle_event("add_feed", %{"feed" => %{"query" => query}}, socket) do
+    attrs = %{query: String.trim(query), min_likes: 50}
 
     case Engage.create_feed(socket.assigns.current_x_account, attrs) do
-      {:ok, _feed} -> {:noreply, socket |> put_flash(:info, "Feed added.") |> load()}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "That feed already exists.")}
+      {:ok, _feed} ->
+        {:noreply,
+         socket
+         |> assign(:feed_form, feed_form())
+         |> put_flash(:info, "Feed added.")
+         |> load()}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "That feed already exists.")}
     end
   end
 
   def handle_event("add_suggested", %{"query" => query, "name" => name}, socket) do
-    Engage.create_feed(socket.assigns.current_x_account, %{
-      query: query,
-      name: name,
-      min_likes: 30
-    })
-
-    {:noreply, load(socket)}
+    case Engage.create_feed(socket.assigns.current_x_account, %{
+           query: query,
+           name: name,
+           min_likes: 30
+         }) do
+      {:ok, _feed} -> {:noreply, load(socket)}
+      {:error, _changeset} -> {:noreply, socket}
+    end
   end
 
   def handle_event("toggle_feed", %{"id" => id}, socket) do
     Engage.toggle_feed(socket.assigns.current_x_account, id)
     {:noreply, load(socket)}
+  end
+
+  def handle_event("set_feed_ranking", %{"id" => id, "ranking" => ranking}, socket) do
+    case Engage.set_feed_ranking(socket.assigns.current_x_account, id, ranking) do
+      {:ok, _feed} -> {:noreply, load(socket)}
+      {:error, _reason} -> {:noreply, put_flash(socket, :error, "We couldn't change that feed.")}
+    end
   end
 
   def handle_event("delete_feed", %{"id" => id}, socket) do
@@ -191,7 +213,12 @@ defmodule SuperXWeb.EngageLive do
       </.link>
     </div>
 
-    <.feed_manager :if={@kind == "feed"} feeds={@feeds} />
+    <.feed_manager
+      :if={@kind == "feed"}
+      feeds={@feeds}
+      starter_feeds={@starter_feeds}
+      feed_form={@feed_form}
+    />
 
     <div :if={@engagements == []} class="py-16 text-center">
       <p class="text-muted-foreground">
@@ -274,59 +301,120 @@ defmodule SuperXWeb.EngageLive do
   end
 
   attr :feeds, :list, required: true
+  attr :starter_feeds, :list, required: true
+  attr :feed_form, :map, required: true
 
   defp feed_manager(assigns) do
     ~H"""
     <section class="mb-8 border-b border-border pb-6">
       <p class="nb-eyebrow mb-3">Your feeds</p>
 
-      <ul :if={@feeds != []} class="mb-4 flex flex-col">
+      <ul :if={@feeds != []} id="topic-feeds" class="mb-6 flex flex-col">
         <li
           :for={feed <- @feeds}
-          class="flex items-baseline gap-4 border-b border-border py-2 first:border-t"
+          id={"topic-feed-#{feed.id}"}
+          class="border-b border-border py-3 first:border-t"
         >
-          <span class={["flex-1", !feed.enabled && "text-faint line-through"]}>
-            {feed.name}
-            <span class="nb-mono ml-2 text-[11px] text-faint">{feed.query}</span>
-          </span>
-          <button phx-click="toggle_feed" phx-value-id={feed.id} class="act text-xs">
-            {if feed.enabled, do: "Pause", else: "Resume"}
-          </button>
-          <button phx-click="delete_feed" phx-value-id={feed.id} class="act-danger text-xs">
-            Remove
-          </button>
+          <div class="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+            <span class={["min-w-0 flex-1", !feed.enabled && "text-faint line-through"]}>
+              {feed.name}
+              <span class="nb-mono ml-2 text-[11px] text-faint">{feed.query}</span>
+            </span>
+
+            <div class="flex items-center gap-3 text-xs">
+              <span class="nb-eyebrow">Rank</span>
+              <button
+                id={"feed-#{feed.id}-relevance"}
+                phx-click="set_feed_ranking"
+                phx-value-id={feed.id}
+                phx-value-ranking="relevance"
+                class={if(feed.ranking == "relevance", do: "act-key", else: "act")}
+                aria-pressed={feed.ranking == "relevance"}
+              >
+                Relevance
+              </button>
+              <button
+                id={"feed-#{feed.id}-newest"}
+                phx-click="set_feed_ranking"
+                phx-value-id={feed.id}
+                phx-value-ranking="newest"
+                class={if(feed.ranking == "newest", do: "act-key", else: "act")}
+                aria-pressed={feed.ranking == "newest"}
+              >
+                Newest
+              </button>
+            </div>
+
+            <div class="flex items-center gap-4 text-xs">
+              <button
+                id={"feed-#{feed.id}-toggle"}
+                phx-click="toggle_feed"
+                phx-value-id={feed.id}
+                class="act"
+              >
+                {if feed.enabled, do: "Pause", else: "Resume"}
+              </button>
+              <button
+                id={"feed-#{feed.id}-remove"}
+                phx-click="delete_feed"
+                phx-value-id={feed.id}
+                class="act-danger"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
         </li>
       </ul>
 
-      <div :if={@feeds == []} class="mb-4 flex flex-wrap gap-4 text-xs">
-        <span class="text-faint">Try:</span>
-        <button
-          :for={s <- Feed.suggestions()}
-          phx-click="add_suggested"
-          phx-value-query={s.query}
-          phx-value-name={s.name}
-          class="act"
-        >
-          {s.name}
-        </button>
+      <div id="feed-starters" class="mb-6">
+        <p class="nb-eyebrow mb-1.5">Ready-made feeds</p>
+        <p class="mb-3 max-w-[60ch] text-xs text-muted-foreground">
+          Add a subject in one click. You can tune how each feed is ranked afterwards.
+        </p>
+
+        <div class="grid border-t border-border sm:grid-cols-2 sm:gap-x-6">
+          <button
+            :for={feed <- @starter_feeds}
+            id={"starter-#{starter_id(feed.name)}"}
+            phx-click="add_suggested"
+            phx-value-query={feed.query}
+            phx-value-name={feed.name}
+            disabled={feed.added}
+            class={[
+              "flex items-center justify-between border-b border-border py-2 text-left text-xs",
+              if(feed.added, do: "text-faint", else: "act-key")
+            ]}
+          >
+            <span>{feed.name}</span>
+            <span :if={feed.added} class="nb-mono text-[10px]">Added</span>
+          </button>
+        </div>
       </div>
 
-      <form phx-submit="add_feed" class="flex items-end gap-4">
-        <div class="flex-1">
-          <label class="label" for="feed_query">Add a feed</label>
-          <input
-            type="text"
-            id="feed_query"
-            name="query"
-            class="input"
-            placeholder='"build in public" OR indie hacker'
+      <.form for={@feed_form} id="feed-search-form" phx-submit="add_feed" class="flex items-end gap-4">
+        <div class="min-w-0 flex-1">
+          <.input
+            field={@feed_form[:query]}
+            type="search"
+            label="Search your own"
+            placeholder='"developer experience" OR devex'
             required
           />
         </div>
         <button type="submit" class="act-key pb-2 text-xs">Add</button>
-      </form>
+      </.form>
     </section>
     """
+  end
+
+  defp feed_form, do: to_form(%{"query" => ""}, as: :feed)
+
+  defp starter_id(name) do
+    name
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
   end
 
   # Priority is the reason the inbox is ordered the way it is, so it earns

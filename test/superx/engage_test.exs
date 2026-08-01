@@ -4,7 +4,7 @@ defmodule SuperX.EngageTest do
   import SuperX.Fixtures
 
   alias SuperX.Engage
-  alias SuperX.Engage.Engagement
+  alias SuperX.Engage.{Engagement, Feed}
 
   setup do
     user_fixture()
@@ -143,6 +143,30 @@ defmodule SuperX.EngageTest do
   end
 
   describe "feeds" do
+    test "offers the complete ready-made set with search queries distinct from its labels" do
+      suggestions = Feed.suggestions()
+
+      assert Enum.map(suggestions, & &1.name) == [
+               "Artificial Intelligence",
+               "Build in Public",
+               "Startups",
+               "Technology",
+               "Design",
+               "Software Development",
+               "Marketing",
+               "Business & Finance",
+               "Personal Finance",
+               "Cryptocurrency",
+               "Science",
+               "Health & Fitness",
+               "Career",
+               "Memes"
+             ]
+
+      assert Enum.all?(suggestions, &(&1.query != &1.name))
+      assert suggestions |> Enum.map(& &1.query) |> Enum.uniq() |> length() == 14
+    end
+
     test "the same query cannot be added twice", %{account: account} do
       assert {:ok, _} = Engage.create_feed(account, %{query: "build in public"})
       assert {:error, changeset} = Engage.create_feed(account, %{query: "build in public"})
@@ -152,6 +176,42 @@ defmodule SuperX.EngageTest do
     test "names itself from the query when unnamed", %{account: account} do
       assert {:ok, feed} = Engage.create_feed(account, %{query: "indie hackers"})
       assert feed.name == "indie hackers"
+    end
+
+    test "defaults to relevance and persists newest-first per feed", %{account: account} do
+      assert {:ok, feed} = Engage.create_feed(account, %{query: "software founders"})
+      assert feed.ranking == "relevance"
+      assert Feed.search_type(feed) == "Top"
+
+      assert {:ok, feed} = Engage.set_feed_ranking(account, feed.id, "newest")
+      assert feed.ranking == "newest"
+      assert Feed.search_type(feed) == "Latest"
+    end
+
+    test "rejects unknown ranking modes", %{account: account} do
+      assert {:ok, feed} = Engage.create_feed(account, %{query: "product design"})
+      assert {:error, changeset} = Engage.set_feed_ranking(account, feed.id, "popular")
+      assert "is invalid" in errors_on(changeset).ranking
+    end
+
+    test "does not change a feed belonging to another account", %{account: account} do
+      %{account: other_account} = user_fixture()
+      assert {:ok, feed} = Engage.create_feed(other_account, %{query: "career advice"})
+
+      assert {:error, :not_found} = Engage.set_feed_ranking(account, feed.id, "newest")
+    end
+
+    test "quality floor requires both established reach and visible engagement" do
+      good = %{
+        "likeCount" => 3,
+        "retweetCount" => 1,
+        "replyCount" => 1,
+        "author" => %{"followers" => 100}
+      }
+
+      assert Feed.passes_quality_floor?(good)
+      refute Feed.passes_quality_floor?(put_in(good, ["author", "followers"], 99))
+      refute Feed.passes_quality_floor?(%{good | "likeCount" => 2, "retweetCount" => 0})
     end
 
     test "feeds_due excludes recently synced ones", %{account: account} do

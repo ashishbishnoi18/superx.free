@@ -193,6 +193,13 @@ defmodule SuperX.Engage do
     end
   end
 
+  def set_feed_ranking(%XAccount{} = account, id, ranking) do
+    case Repo.get_by(Feed, id: id, x_account_id: account.id) do
+      nil -> {:error, :not_found}
+      feed -> feed |> Feed.changeset(%{ranking: ranking}) |> Repo.update()
+    end
+  end
+
   def touch_feed(%Feed{} = feed) do
     feed
     |> Feed.changeset(%{last_synced_at: DateTime.utc_now() |> DateTime.truncate(:second)})

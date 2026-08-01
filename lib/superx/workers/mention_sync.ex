@@ -15,7 +15,7 @@ defmodule SuperX.Workers.MentionSync do
   require Logger
 
   alias SuperX.Accounts.XAccount
-  alias SuperX.Engage.Replier
+  alias SuperX.Engage.{Feed, Replier}
   alias SuperX.{Engage, Repo, TwitterAPI}
 
   @mentions_per_account 25
@@ -66,10 +66,11 @@ defmodule SuperX.Workers.MentionSync do
              min_likes: feed.min_likes,
              max: @feed_posts_per_feed,
              lang: "en",
-             type: "Latest"
+             type: Feed.search_type(feed)
            ) do
         {:ok, tweets} ->
           tweets
+          |> Enum.filter(&Feed.passes_quality_floor?/1)
           |> Enum.map(&to_engagement(&1, feed.x_account, "feed", feed.id))
           |> Enum.reject(&is_nil/1)
           # Your own posts showing up in your own discovery feed is noise.

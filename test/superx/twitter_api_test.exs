@@ -130,6 +130,16 @@ defmodule SuperX.TwitterAPITest do
   end
 
   describe "request shape" do
+    test "passes the selected search ranking to the provider" do
+      stub(fn conn ->
+        params = Plug.Conn.fetch_query_params(conn).query_params
+        assert params["queryType"] == "Latest"
+        json(conn, %{"tweets" => []})
+      end)
+
+      assert {:ok, []} = TwitterAPI.search("elixir", type: "Latest")
+    end
+
     test "mentions sends userName, not the screen_name the docs claim" do
       stub(fn conn ->
         params = Plug.Conn.fetch_query_params(conn).query_params
