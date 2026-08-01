@@ -14,6 +14,7 @@ defmodule SuperXWeb.SignalsLive do
      socket
      |> assign(page_title: "Signals")
      |> assign(:running, MapSet.new())
+     |> assign(:agent_form, new_agent_form())
      |> assign(:api_configured, SuperX.TwitterAPI.configured?())
      |> assign(:ai_configured, SuperX.AI.configured?())
      |> load()}
@@ -25,17 +26,25 @@ defmodule SuperXWeb.SignalsLive do
 
     socket
     |> assign(:agents, agents)
+    |> assign(
+      :agent_list_forms,
+      Map.new(agents, fn agent ->
+        {agent.id, to_form(%{"contact_list_id" => agent.contact_list_id}, as: :filing)}
+      end)
+    )
+    |> assign(:contact_lists, Signals.manual_contact_lists(account))
     |> assign(:limit, Signals.agent_limit(socket.assigns.current_user))
     |> assign(:lead_counts, Signals.lead_counts(account))
   end
 
   @impl true
-  def handle_event("create", params, socket) do
+  def handle_event("create", %{"agent" => params}, socket) do
     attrs = %{
       kind: params["kind"],
       target: params["target"],
       ideal_customer: params["ideal_customer"],
-      min_score: String.to_integer(params["min_score"] || "60")
+      min_score: String.to_integer(params["min_score"] || "60"),
+      contact_list_id: params["contact_list_id"]
     }
 
     cond do
@@ -49,10 +58,16 @@ defmodule SuperXWeb.SignalsLive do
         case Signals.create_agent(socket.assigns.current_x_account, attrs) do
           {:ok, _agent} ->
             {:noreply,
-             socket |> put_flash(:info, "Agent created. First run is within the hour.") |> load()}
+             socket
+             |> assign(:agent_form, new_agent_form())
+             |> put_flash(:info, "Agent created. First run is within the hour.")
+             |> load()}
 
           {:error, changeset} ->
-            {:noreply, put_flash(socket, :error, error_message(changeset))}
+            {:noreply,
+             socket
+             |> assign(:agent_form, to_form(changeset))
+             |> put_flash(:error, error_message(changeset))}
         end
     end
   end
@@ -60,6 +75,19 @@ defmodule SuperXWeb.SignalsLive do
   def handle_event("toggle", %{"id" => id}, socket) do
     Signals.toggle_agent(socket.assigns.current_x_account, id)
     {:noreply, load(socket)}
+  end
+
+  def handle_event(
+        "set_contact_list",
+        %{"agent-id" => id, "filing" => %{"contact_list_id" => contact_list_id}},
+        socket
+      ) do
+    with %Agent{} = agent <- Signals.get_agent(socket.assigns.current_x_account, id),
+         {:ok, _agent} <- Signals.update_agent(agent, %{contact_list_id: contact_list_id}) do
+      {:noreply, load(socket)}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "That list is not available.")}
+    end
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
@@ -159,6 +187,22 @@ defmodule SuperXWeb.SignalsLive do
             <span :if={!agent.last_run_at}>not run yet</span>
           </p>
 
+          <.form
+            for={Map.fetch!(@agent_list_forms, agent.id)}
+            id={"agent-list-form-#{agent.id}"}
+            phx-change="set_contact_list"
+            phx-value-agent-id={agent.id}
+            class="mt-2 flex items-baseline gap-2 text-[11px] text-faint"
+          >
+            File matches in
+            <.input
+              field={Map.fetch!(@agent_list_forms, agent.id)[:contact_list_id]}
+              type="select"
+              options={Enum.map(@contact_lists, &{&1.name, &1.id})}
+              class="select w-auto py-0 text-[11px]"
+            />
+          </.form>
+
           <p :if={agent.last_error} class="mt-1 text-[12px] text-destructive">{agent.last_error}</p>
         </div>
 
@@ -189,56 +233,66 @@ defmodule SuperXWeb.SignalsLive do
     <section class="mt-10 border-t border-border pt-6">
       <p class="nb-eyebrow mb-4">New agent</p>
 
-      <form phx-submit="create" class="flex flex-col gap-5">
+      <.form for={@agent_form} id="signal-agent-form" phx-submit="create" class="flex flex-col gap-5">
         <div class="grid grid-cols-1 gap-5 sm:grid-cols-[12rem_minmax(0,1fr)]">
-          <div>
-            <label class="label" for="kind">Watch</label>
-            <select id="kind" name="kind" class="select">
-              <option value="keyword">Posts matching a search</option>
-              <option value="follower">Followers of an account</option>
-              <option value="profile">People replying to an account</option>
-              <option value="list">Members of a list</option>
-            </select>
-          </div>
+          <.input
+            field={@agent_form[:kind]}
+            type="select"
+            label="Watch"
+            options={[
+              {"Posts matching a search", "keyword"},
+              {"Followers of an account", "follower"},
+              {"People replying to an account", "profile"},
+              {"Members of a list", "list"}
+            ]}
+            class="select"
+          />
 
-          <div>
-            <label class="label" for="target">Target</label>
-            <input
-              type="text"
-              id="target"
-              name="target"
-              class="input"
-              placeholder="a search query, @handle, or list id"
-              required
-            />
-          </div>
+          <.input
+            field={@agent_form[:target]}
+            type="text"
+            label="Target"
+            placeholder="a search query, @handle, or list id"
+            class="input"
+            required
+          />
         </div>
 
         <div>
-          <label class="label" for="ideal_customer">Who counts as a good match</label>
+          <label class="label" for={@agent_form[:ideal_customer].id}>
+            Who counts as a good match
+          </label>
           <p class="mb-2 text-[12px] text-faint">
             Plain language. This is the whole configuration — the model reads it and judges
             each person against it.
           </p>
-          <textarea
-            id="ideal_customer"
-            name="ideal_customer"
+          <.input
+            field={@agent_form[:ideal_customer]}
+            type="textarea"
             rows="3"
             class="textarea"
             placeholder="Founders or engineers at small software companies who are frustrated with their current scheduling tool. Not agencies, not people selling growth services."
-          ></textarea>
+          />
         </div>
 
         <div class="flex flex-wrap items-end gap-5">
-          <div>
-            <label class="label" for="min_score">Minimum score</label>
-            <select id="min_score" name="min_score" class="select w-auto pr-6">
-              <option :for={n <- [40, 50, 60, 70, 80]} value={n} selected={n == 60}>{n}</option>
-            </select>
-          </div>
+          <.input
+            field={@agent_form[:min_score]}
+            type="select"
+            label="Minimum score"
+            options={[40, 50, 60, 70, 80]}
+            class="select w-auto pr-6"
+          />
+          <.input
+            field={@agent_form[:contact_list_id]}
+            type="select"
+            label="File matches in"
+            options={Enum.map(@contact_lists, &{&1.name, &1.id})}
+            class="select w-auto pr-6"
+          />
           <button type="submit" class="act-key pb-2 text-xs">Create agent</button>
         </div>
-      </form>
+      </.form>
     </section>
     """
   end
@@ -247,5 +301,18 @@ defmodule SuperXWeb.SignalsLive do
     changeset
     |> Ecto.Changeset.traverse_errors(fn {msg, _} -> msg end)
     |> Enum.map_join("; ", fn {field, msgs} -> "#{field} #{Enum.join(msgs, ", ")}" end)
+  end
+
+  defp new_agent_form do
+    to_form(
+      %{
+        "kind" => "keyword",
+        "target" => "",
+        "ideal_customer" => "",
+        "min_score" => "60",
+        "contact_list_id" => ""
+      },
+      as: :agent
+    )
   end
 end
