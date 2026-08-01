@@ -28,6 +28,7 @@ defmodule SuperX.Analytics.Snapshot do
     field :replies, :integer, default: 0
     field :reposts, :integer, default: 0
     field :profile_clicks, :integer, default: 0
+    field :source, :string, default: "collected"
 
     timestamps(type: :utc_datetime)
   end
@@ -46,9 +47,11 @@ defmodule SuperX.Analytics.Snapshot do
       :likes,
       :replies,
       :reposts,
-      :profile_clicks
+      :profile_clicks,
+      :source
     ])
     |> validate_required([:x_account_id, :date])
+    |> validate_inclusion(:source, ~w(collected imported))
     |> unique_constraint([:x_account_id, :date])
   end
 end
