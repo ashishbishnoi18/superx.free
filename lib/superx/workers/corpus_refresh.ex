@@ -25,33 +25,80 @@ defmodule SuperX.Workers.CorpusRefresh do
   # a real but predictable spend.
   @topics_per_run 20
 
+  # How much of a run users' own subjects may claim. The remainder goes to
+  # the seed set, so the library keeps broadening instead of narrowing to
+  # whatever the current handful of accounts happen to write about.
+  @user_topics_per_run 12
+
+  # What the library is seeded with. A corpus that only fetches topics
+  # someone already asked for is empty on day one and stays narrow after
+  # that — and the writer borrows *structure*, which transfers across
+  # subjects, so breadth here is worth more than precision.
+  @seed_topics [
+    "building in public",
+    "indie hacking",
+    "startup lessons",
+    "bootstrapping a business",
+    "SaaS growth",
+    "AI agents",
+    "LLM applications",
+    "developer tools",
+    "software engineering career",
+    "engineering leadership",
+    "product design",
+    "marketing strategy",
+    "content marketing",
+    "personal branding",
+    "writing online",
+    "productivity systems",
+    "remote work",
+    "fundraising advice",
+    "growth experiments",
+    "customer research"
+  ]
+
   @impl Oban.Worker
-  def perform(_job) do
-    cond do
-      not TwitterAPI.configured?() ->
-        Logger.info("Skipping corpus refresh: twitterapi.io not configured")
-        :ok
+  def perform(%Oban.Job{args: args}) do
+    if TwitterAPI.configured?() do
+      chosen = topics_for_run(args["limit_topics"] || @topics_per_run)
 
-      topics = active_topics() ->
-        chosen = Enum.take(topics, @topics_per_run)
+      CorpusIngest.enqueue_topics(chosen,
+        limit: args["limit"] || 40,
+        min_likes: args["min_likes"] || 500,
+        spacing_seconds: args["spacing_seconds"] || 120
+      )
 
-        if chosen == [] do
-          Logger.info("Skipping corpus refresh: no voice profiles have topics yet")
-        else
-          CorpusIngest.enqueue_topics(chosen, limit: 40, min_likes: 500)
-
-          Logger.info(
-            "Queued corpus refresh for #{length(chosen)} topic(s)" <>
-              if(length(topics) > @topics_per_run,
-                do: " (#{length(topics) - @topics_per_run} deferred to tomorrow)",
-                else: ""
-              )
-          )
-        end
-
-        :ok
+      Logger.info("Queued corpus refresh for #{length(chosen)} topic(s)")
+    else
+      Logger.info("Skipping corpus refresh: twitterapi.io not configured")
     end
+
+    :ok
   end
+
+  @doc """
+  The topics one run should fetch: users' own subjects first, then as much
+  of the seed set as there is room for.
+
+  The seed set is rotated by day so a run that only has room for a few of
+  them still covers the whole list over time, rather than re-fetching the
+  same head every night.
+  """
+  def topics_for_run(count \\ @topics_per_run) do
+    user_topics = Enum.take(active_topics(), min(@user_topics_per_run, count))
+
+    (user_topics ++ rotated_seeds())
+    |> Enum.uniq_by(&String.downcase/1)
+    |> Enum.take(count)
+  end
+
+  defp rotated_seeds do
+    offset = rem(Date.day_of_year(Date.utc_today()), length(@seed_topics))
+    Enum.drop(@seed_topics, offset) ++ Enum.take(@seed_topics, offset)
+  end
+
+  @doc "The built-in topic list, for tests and operator tooling."
+  def seed_topics, do: @seed_topics
 
   @doc """
   Distinct topics across all voice profiles, least-recently-fetched first

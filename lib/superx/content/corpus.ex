@@ -31,20 +31,34 @@ defmodule SuperX.Content.Corpus do
       |> Enum.reject(&is_nil/1)
 
     Repo.insert_all(CorpusPost, rows,
-      on_conflict:
-        {:replace,
-         [
-           :likes,
-           :reposts,
-           :replies,
-           :quotes,
-           :bookmarks,
-           :impressions,
-           :engagement_score,
-           :author_followers,
-           :updated_at
-         ]},
+      on_conflict: refresh_query(),
       conflict_target: [:x_post_id]
+    )
+  end
+
+  # Topics are unioned rather than replaced: the same post surfacing under
+  # two searches is genuinely about both, and replacing would let whichever
+  # ingest ran last decide what the post is about.
+  defp refresh_query do
+    from(c in CorpusPost,
+      update: [
+        set: [
+          likes: fragment("EXCLUDED.likes"),
+          reposts: fragment("EXCLUDED.reposts"),
+          replies: fragment("EXCLUDED.replies"),
+          quotes: fragment("EXCLUDED.quotes"),
+          bookmarks: fragment("EXCLUDED.bookmarks"),
+          impressions: fragment("EXCLUDED.impressions"),
+          engagement_score: fragment("EXCLUDED.engagement_score"),
+          author_followers: fragment("EXCLUDED.author_followers"),
+          updated_at: fragment("EXCLUDED.updated_at"),
+          topics:
+            fragment(
+              "ARRAY(SELECT DISTINCT unnest(COALESCE(?, ARRAY[]::varchar[]) || COALESCE(EXCLUDED.topics, ARRAY[]::varchar[])))",
+              c.topics
+            )
+        ]
+      ]
     )
   end
 

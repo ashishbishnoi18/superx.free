@@ -64,17 +64,27 @@ defmodule SuperX.Workers.CorpusIngest do
     cond do
       TwitterAPI.configured?() ->
         case TwitterAPI.search(topic, min_likes: min_likes, max: limit, lang: "en") do
-          {:ok, tweets} -> {:ok, Enum.map(tweets, &TwitterAPI.to_corpus_attrs/1)}
+          {:ok, tweets} -> {:ok, tag(Enum.map(tweets, &TwitterAPI.to_corpus_attrs/1), topic)}
           error -> error
         end
 
       Scraper.configured?() ->
-        Scraper.search(topic, min_likes: min_likes, limit: limit)
+        case Scraper.search(topic, min_likes: min_likes, limit: limit) do
+          {:ok, posts} -> {:ok, tag(posts, topic)}
+          error -> error
+        end
 
       true ->
         {:error, :not_configured}
     end
   end
+
+  # The search query is the only signal we have for what a post is about,
+  # and neither source returns topics of its own. Without this every post
+  # lands with an empty topic array, `Corpus.candidates_for/3` can never
+  # match a user's subjects, and the writer silently falls back to picking
+  # any strong post at all.
+  defp tag(posts, topic), do: Enum.map(posts, &Map.put(&1, :topics, [topic]))
 
   @doc """
   Enqueues ingestion for a list of topics.
