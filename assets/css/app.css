@@ -471,6 +471,48 @@
     background: var(--border);
   }
 
+  .post-media-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    margin-top: 0.75rem;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--border);
+  }
+  .post-media-grid[data-count="1"] { grid-template-columns: minmax(0, 1fr); }
+
+  .post-media-item {
+    position: relative;
+    min-width: 0;
+    overflow: hidden;
+    background: var(--card);
+  }
+
+  .post-media-image {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: contain;
+  }
+
+  .post-media-remove {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    background: var(--card);
+    color: var(--muted-foreground);
+    transition: color 0.12s ease, border-color 0.12s ease;
+  }
+  .post-media-remove:hover { color: var(--destructive); border-color: var(--line-strong); }
+
   /* Engagement figures. Always mono and tabular so numbers line up
      between cards, which is the whole point of showing them. */
   .metrics {

@@ -19,6 +19,7 @@ defmodule SuperX.Content.Post do
   # X's limit for a standard account. Premium allows more, but writing to
   # the lower bound keeps posts publishable from any connected account.
   @max_segment_length 280
+  @max_media_per_segment 4
 
   schema "posts" do
     belongs_to :user, User
@@ -47,6 +48,7 @@ defmodule SuperX.Content.Post do
 
   def statuses, do: @statuses
   def max_segment_length, do: @max_segment_length
+  def max_media_per_segment, do: @max_media_per_segment
 
   @doc false
   def changeset(post, attrs) do
@@ -67,6 +69,7 @@ defmodule SuperX.Content.Post do
     |> validate_inclusion(:source, @sources)
     |> normalize_segments()
     |> validate_segments()
+    |> validate_media()
     |> validate_scheduled_at()
   end
 
@@ -154,6 +157,31 @@ defmodule SuperX.Content.Post do
       _ ->
         changeset
     end
+  end
+
+  defp validate_media(changeset) do
+    segments = get_field(changeset, :segments) || []
+
+    cond do
+      index = Enum.find_index(segments, &(length(&1["media_ids"]) > @max_media_per_segment)) ->
+        add_error(
+          changeset,
+          :segments,
+          "post #{index + 1} has more than #{@max_media_per_segment} attachments"
+        )
+
+      index = Enum.find_index(segments, &mixed_gif?/1) ->
+        # X accepts four still images but a GIF must occupy the media slot
+        # alone, so accepting the mixture would guarantee a paid API failure.
+        add_error(changeset, :segments, "post #{index + 1} must attach a GIF on its own")
+
+      true ->
+        changeset
+    end
+  end
+
+  defp mixed_gif?(%{"media_ids" => media_ids}) do
+    length(media_ids) > 1 and Enum.any?(media_ids, &SuperX.Media.gif?/1)
   end
 
   @doc "Plain text of the whole thread, for previews and search."

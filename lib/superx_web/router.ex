@@ -38,6 +38,8 @@ defmodule SuperXWeb.Router do
   scope "/", SuperXWeb do
     pipe_through [:browser, :require_authenticated_user]
 
+    get "/uploads/:id", UploadController, :show
+
     live_session :authenticated,
       on_mount: [{SuperXWeb.UserAuth, :ensure_authenticated}, SuperXWeb.ShellHook],
       layout: {SuperXWeb.Layouts, :app} do

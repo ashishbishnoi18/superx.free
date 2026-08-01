@@ -17,7 +17,7 @@ defmodule SuperX.Workers.PublishPost do
 
   require Logger
 
-  alias SuperX.{Accounts, Content, Repo}
+  alias SuperX.{Accounts, Content, Media, Repo}
   alias SuperX.Content.Post
 
   @impl Oban.Worker
@@ -75,17 +75,58 @@ defmodule SuperX.Workers.PublishPost do
     end
   end
 
-  defp send_to_x(token, %Post{segments: [single]} = post) do
+  defp send_to_x(token, %Post{} = post) do
+    # X media ids expire, so segments retain durable local keys until the
+    # post is claimed. Uploading here keeps a draft scheduled days ahead
+    # from reaching X with an id that died before its slot arrived.
+    with {:ok, segments} <- upload_media(token, post.segments) do
+      publish_segments(token, post, segments)
+    end
+  end
+
+  defp upload_media(token, segments) do
+    Enum.reduce_while(segments, {:ok, []}, fn segment, {:ok, uploaded} ->
+      case upload_segment_media(token, segment["media_ids"] || []) do
+        {:ok, media_ids} ->
+          {:cont, {:ok, uploaded ++ [Map.put(segment, "media_ids", media_ids)]}}
+
+        {:error, reason} ->
+          # No post has been created yet, so ordinary retry semantics are
+          # still safe even when an earlier X upload in this batch succeeded.
+          {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp upload_segment_media(token, local_ids) do
+    Enum.reduce_while(local_ids, {:ok, []}, fn local_id, {:ok, x_ids} ->
+      with {:ok, media} <- media_file(local_id),
+           {:ok, x_id} <- SuperX.X.upload_media(token, media) do
+        {:cont, {:ok, x_ids ++ [x_id]}}
+      else
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp media_file(local_id) do
+    case Media.file(local_id) do
+      {:ok, media} -> {:ok, media}
+      {:error, :not_found} -> {:error, {:media_missing, local_id}}
+    end
+  end
+
+  defp publish_segments(token, post, [single]) do
     case SuperX.X.create_post(token, single["text"],
            reply_to: post.reply_to_x_post_id,
-           media_ids: single["media_ids"] || []
+           media_ids: single["media_ids"]
          ) do
       {:ok, id} -> {:ok, [id]}
       error -> error
     end
   end
 
-  defp send_to_x(token, %Post{segments: segments} = post) do
+  defp publish_segments(token, post, segments) do
     SuperX.X.create_thread(token, segments, reply_to: post.reply_to_x_post_id)
   end
 
@@ -103,6 +144,12 @@ defmodule SuperX.Workers.PublishPost do
   defp describe({:http_error, status, body}), do: "X returned #{status}: #{summarise(body)}"
   defp describe({:unauthorized, _}), do: "X rejected the request. Reconnect the account."
   defp describe({:transport_error, _}), do: "Could not reach X."
+  defp describe({:media_missing, _key}), do: "An attached file is missing from local storage."
+
+  defp describe({:media_processing_failed, _error}),
+    do: "X could not process an attached image or GIF."
+
+  defp describe(:media_processing_timeout), do: "X did not finish processing an attachment."
   defp describe(other) when is_binary(other), do: other
   defp describe(other), do: inspect(other)
 

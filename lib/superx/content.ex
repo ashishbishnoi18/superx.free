@@ -285,6 +285,10 @@ defmodule SuperX.Content do
     %Generation{} |> Generation.changeset(attrs) |> Repo.insert()
   end
 
+  def update_generation(%Generation{} = generation, attrs) do
+    generation |> Generation.changeset(attrs) |> Repo.update()
+  end
+
   def dismiss_generation(%Generation{} = generation) do
     generation |> Generation.changeset(%{status: "dismissed"}) |> Repo.update()
   end
