@@ -29,9 +29,9 @@ scores whoever it finds against a sentence describing who you're looking
 for, and files the keepers in **Contacts**.
 
 **DMs** — Keeps private conversations per connected account, drafts replies
-in the account's voice, and sends approved messages through X with the
-user's OAuth grant. Incoming sync is held at a documented provider seam;
-see [Direct Messages](#direct-messages) before enabling it.
+in the account's voice, and reads and sends messages through X with the
+user's OAuth grant. See [Direct Messages](#direct-messages) before enabling
+it.
 
 **Ask** — Chat with tools over your own data. It can read your analytics,
 queue, inbox, contacts, and the library, and draft or queue posts. It
@@ -52,7 +52,7 @@ browser
   → Postgres          (data, job queue, vector store, pub/sub)
   → Oban              (scheduling, publishing, ingestion, generation)
   → Go worker         (corpus reads, over a Port)
-  → X API v2          (publishing — writes only)
+  → X API v2          (publishing and private DMs)
 ```
 
 Deliberately no Redis, no separate queue service, no separate scheduler,
@@ -170,10 +170,11 @@ calling, which Ask's tool loop depends on.
 
 ## Reads
 
-Everything SuperX reads from X — the corpus, mentions, feeds, followers,
+Public data SuperX reads from X — the corpus, mentions, feeds, followers,
 lists — goes through [twitterapi.io](https://twitterapi.io), a commercial
-data API. Writes go through X's own API with your OAuth token, because
-posting as someone should use credentials they granted directly.
+data API. Writes and private DM reads go through X's own API with your OAuth
+token, because those actions and conversations belong behind credentials the
+user granted directly.
 
 Two things to know before turning it on:
 
@@ -236,13 +237,13 @@ Do these in order:
 2. Set `SUPERX_ENABLE_DMS=true` and restart SuperX.
 3. Open **Accounts** and reconnect every account that will use DMs.
 
-Sending uses X's supported OAuth endpoint and the user's encrypted access
-token. Incoming reads are not wired yet. twitterapi.io publishes a narrow
-history endpoint, but it requires the user's X login cookies, a proxy, and a
-counterparty id; it cannot enumerate the inbox using this app's API-key read
-client. SuperX will not collect passwords or browser cookies to work around
-that. The `/dms` storage and sync seam are ready for a compatible API-key
-endpoint when the provider exposes one.
+Reading and sending both use X's supported OAuth endpoints and the user's
+encrypted access token. A maintenance job checks each enabled account every
+five minutes, follows X's pagination, and stores the one-to-one message events
+X makes available from the previous 30 days. Stored event ids make overlapping
+runs idempotent. A 403 during setup means the app permission tier still needs
+to be upgraded; an account connected before DM access was enabled is marked for
+reconnection without making a DM request.
 
 ## Programmatic access
 

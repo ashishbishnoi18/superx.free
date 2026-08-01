@@ -1,12 +1,12 @@
 defmodule SuperX.TwitterAPI do
   @moduledoc """
-  Client for twitterapi.io — the read side of SuperX.
+  Client for twitterapi.io — the public-data read side of SuperX.
 
   This replaces self-scraping for everything the official X API can't
   afford: the corpus, mentions, replies, follower lists, and the watch
-  agents behind Signals. Writes still go through X's own API with the
-  user's OAuth token, because posting as someone should use credentials
-  they granted us directly.
+  agents behind Signals. Writes and private DM reads still go through X's
+  own API with the user's OAuth token because they require the grant made
+  directly to SuperX.
 
   Two things shape every call here:
 
@@ -150,16 +150,6 @@ defmodule SuperX.TwitterAPI do
   def list_timeline(list_id, opts \\ []) do
     paginate("/twitter/list/tweets_timeline", %{"listId" => list_id}, opts[:max] || 40, "tweets")
   end
-
-  @doc """
-  Seam for the authenticated user's Direct Message inbox.
-
-  twitterapi.io publishes only a per-participant history endpoint. It
-  requires the user's login cookies and a proxy, and cannot enumerate an
-  OAuth user's conversations. Those credentials do not belong in SuperX,
-  so there is no safe provider request to put through `SuperX.ApiCache`.
-  """
-  def direct_messages(_x_user_id), do: {:error, :dm_read_unavailable}
 
   # --- Normalisation -------------------------------------------------------
 

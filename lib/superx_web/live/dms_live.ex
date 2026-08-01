@@ -3,9 +3,9 @@ defmodule SuperXWeb.DMsLive do
   The private inbox: one-to-one conversations, their chronological thread,
   and replies sent with the connected account's OAuth grant.
 
-  The screen remains useful as a truthful capability surface while inbound
-  sync is unavailable: it explains the operator and provider requirements
-  instead of presenting an empty inbox as though polling had succeeded.
+  Availability remains explicit because enabling the feature flag, granting
+  the X app's permission tier, and reconnecting older accounts are separate
+  operator and user actions.
   """
 
   use SuperXWeb, :live_view
@@ -326,13 +326,13 @@ defmodule SuperXWeb.DMsLive do
     """
   end
 
-  defp availability_notice(assigns) do
+  defp availability_notice(%{availability: :ready} = assigns) do
     ~H"""
     <section id="dm-sync-status" class="mb-8 border-y border-border py-4">
-      <p class="font-medium">Incoming sync is waiting on the read provider.</p>
+      <p class="font-medium">Incoming sync is configured.</p>
       <p class="mt-1 max-w-[68ch] text-[12px] text-muted-foreground">
-        twitterapi.io has no API-key endpoint that can enumerate this OAuth account's inbox.
-        Stored conversations can be answered, but new inbound messages will not appear yet.
+        SuperX checks X every five minutes with this account's OAuth grant.
+        X exposes events from the previous 30 days; once stored here, they remain in the inbox.
       </p>
     </section>
     """
@@ -364,11 +364,11 @@ defmodule SuperXWeb.DMsLive do
   end
 
   defp empty_detail(:reauthorize) do
-    "Reconnect this account before sending. Incoming sync also needs a compatible provider endpoint."
+    "Reconnect this account before SuperX can read or send private messages."
   end
 
   defp empty_detail(:ready) do
-    "Incoming sync cannot start until twitterapi.io offers an API-key inbox endpoint."
+    "New conversations appear after the next scheduled sync. X exposes the previous 30 days."
   end
 
   defp send_error(:disabled), do: "DM access is disabled on this installation."

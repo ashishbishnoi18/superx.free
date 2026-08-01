@@ -1,7 +1,7 @@
 defmodule SuperX.XTest do
   @moduledoc """
-  The write side. Media ids and DM sends are the two calls here that fail
-  publicly when wrong, so both are pinned against the wire format.
+  The user-authenticated X boundary. Media ids and private message calls fail
+  publicly when their wire format drifts, so they are pinned here.
   """
 
   # Not async: the scope tests swap application config.
@@ -110,6 +110,28 @@ defmodule SuperX.XTest do
 
       assert {:ok, %{conversation_id: "11-7788", message_id: "event-1"}} =
                X.create_dm("user-token", "7788", "A considered reply")
+    end
+  end
+
+  describe "conversation event reads" do
+    test "uses both supported conversation lookup paths" do
+      Req.Test.stub(X, fn conn ->
+        assert conn.method == "GET"
+
+        assert conn.request_path in [
+                 "/2/dm_conversations/with/7788/dm_events",
+                 "/2/dm_conversations/11-7788/dm_events"
+               ]
+
+        assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer user-token"]
+        json(conn, 200, %{"meta" => %{"result_count" => 0}})
+      end)
+
+      assert {:ok, %{events: [], users: %{}}} =
+               X.get_dm_events_with_participant("user-token", "7788")
+
+      assert {:ok, %{events: [], users: %{}}} =
+               X.get_dm_conversation_events("user-token", "11-7788")
     end
   end
 

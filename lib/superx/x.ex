@@ -2,10 +2,11 @@ defmodule SuperX.X do
   @moduledoc """
   Client for the X API v2.
 
-  Scope is deliberately narrow: **writes only** — OAuth, publishing, and
-  DMs. Bulk reads (the corpus, inboxes, watch agents) go through
-  twitterapi.io instead, because API read quotas make them impossible at
-  any workable price.
+  Scope is deliberately narrow: OAuth, publishing, and private DMs. Bulk
+  public reads (the corpus, inboxes, watch agents) go through twitterapi.io
+  instead, because API read quotas make them impossible at any workable
+  price. DMs stay here because only the user's OAuth grant can see them and
+  their volume is small.
 
   Every call takes an access token rather than an account struct, so this
   module stays free of database concerns. `SuperX.X.Tokens` handles
@@ -164,6 +165,27 @@ defmodule SuperX.X do
 
   # --- Direct Messages -----------------------------------------------------
 
+  @dm_event_fields "created_at,dm_conversation_id,event_type,id,participant_ids,sender_id,text"
+  @dm_expansions "participant_ids,sender_id"
+  @dm_user_fields "id,name,profile_image_url,username"
+
+  @doc "Fetches all recent DM events visible to the authenticated user."
+  def get_dm_events(access_token, opts \\ []) do
+    fetch_dm_events(access_token, "/dm_events", opts)
+  end
+
+  @doc "Fetches recent events in the one-to-one thread with an X user id."
+  def get_dm_events_with_participant(access_token, participant_id, opts \\ []) do
+    participant_id = URI.encode_www_form(participant_id)
+    fetch_dm_events(access_token, "/dm_conversations/with/#{participant_id}/dm_events", opts)
+  end
+
+  @doc "Fetches recent events for an X DM conversation id."
+  def get_dm_conversation_events(access_token, conversation_id, opts \\ []) do
+    conversation_id = URI.encode_www_form(conversation_id)
+    fetch_dm_events(access_token, "/dm_conversations/#{conversation_id}/dm_events", opts)
+  end
+
   @doc "Sends a one-to-one Direct Message to an X user id."
   def create_dm(access_token, participant_id, text) do
     path = "/dm_conversations/with/#{URI.encode_www_form(participant_id)}/messages"
@@ -185,6 +207,95 @@ defmodule SuperX.X do
         error
     end
   end
+
+  defp fetch_dm_events(access_token, path, opts) do
+    params =
+      %{
+        "max_results" => opts[:max_results] || 100,
+        "dm_event.fields" => @dm_event_fields,
+        "expansions" => @dm_expansions,
+        "user.fields" => @dm_user_fields
+      }
+      |> maybe_put_param("event_types", comma_separated(opts[:event_types]))
+      |> maybe_put_param("pagination_token", opts[:pagination_token])
+
+    paginate_dm_events(access_token, path, params, [], %{}, MapSet.new())
+  end
+
+  defp paginate_dm_events(access_token, path, params, events, users, seen_tokens) do
+    case request(:get, path, params: params, token: access_token) do
+      {:ok, body} when is_map(body) ->
+        with {:ok, page_events} <- dm_page_events(body),
+             {:ok, page_users} <- dm_page_users(body) do
+          events = Enum.reverse(page_events, events)
+          users = Map.merge(users, page_users)
+
+          continue_dm_pagination(
+            access_token,
+            path,
+            params,
+            body,
+            events,
+            users,
+            seen_tokens
+          )
+        end
+
+      {:ok, other} ->
+        {:error, {:unexpected_response, other}}
+
+      error ->
+        error
+    end
+  end
+
+  defp continue_dm_pagination(access_token, path, params, body, events, users, seen_tokens) do
+    case get_in(body, ["meta", "next_token"]) do
+      token when is_binary(token) and token != "" ->
+        if MapSet.member?(seen_tokens, token) do
+          {:error, :repeated_pagination_token}
+        else
+          paginate_dm_events(
+            access_token,
+            path,
+            Map.put(params, "pagination_token", token),
+            events,
+            users,
+            MapSet.put(seen_tokens, token)
+          )
+        end
+
+      _no_next_page ->
+        {:ok, %{events: Enum.reverse(events), users: users}}
+    end
+  end
+
+  defp dm_page_events(body) do
+    case Map.get(body, "data", []) do
+      events when is_list(events) -> {:ok, events}
+      other -> {:error, {:unexpected_response, other}}
+    end
+  end
+
+  defp dm_page_users(body) do
+    case get_in(body, ["includes", "users"]) || [] do
+      users when is_list(users) ->
+        {:ok,
+         Map.new(users, fn user ->
+           {user["id"], user}
+         end)}
+
+      other ->
+        {:error, {:unexpected_response, other}}
+    end
+  end
+
+  defp comma_separated(nil), do: nil
+  defp comma_separated(values) when is_list(values), do: Enum.join(values, ",")
+  defp comma_separated(value), do: value
+
+  defp maybe_put_param(params, _key, nil), do: params
+  defp maybe_put_param(params, key, value), do: Map.put(params, key, value)
 
   # --- Media ---------------------------------------------------------------
 

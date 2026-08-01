@@ -1,7 +1,7 @@
 defmodule SuperX.Accounts.XAccount do
   @moduledoc """
-  A connected X account. Holds the OAuth2 tokens used for writes
-  (publishing, DMs) — reads come from the scraper, not from here.
+  A connected X account. Holds the OAuth2 tokens used for publishing and
+  private DMs. Bulk public reads come from twitterapi.io instead.
 
   Tokens are encrypted at rest via `SuperX.Vault.EncryptedBinary`.
   """

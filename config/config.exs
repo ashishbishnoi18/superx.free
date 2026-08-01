@@ -45,7 +45,7 @@ config :superx, Oban,
     generation: 10,
     # Corpus ingestion + watch agent polling, driven by the Go scraper.
     ingestion: 10,
-    # Analytics snapshots, token refresh, housekeeping.
+    # Private inboxes, analytics snapshots, token refresh, housekeeping.
     maintenance: 5
   ],
   plugins: [
@@ -69,6 +69,8 @@ config :superx, Oban,
        {"* * * * *", SuperX.Workers.ContentWorkerDispatcher},
        # Poll mentions so the Engage inbox is current each morning.
        {"*/20 * * * *", SuperX.Workers.MentionSync},
+       # Private inbox volume is small enough for X's user-auth read quota.
+       {"*/5 * * * *", SuperX.Workers.DMSync},
        # Run the Signals watches that are due.
        {"15 */2 * * *", SuperX.Workers.SignalSweep},
        # Roll monthly/daily quota windows.
@@ -79,7 +81,7 @@ config :superx, Oban,
 # LLM provider, base URL, keys and model names are all resolved at runtime
 # from the environment — see config/runtime.exs.
 
-# X (Twitter) API. Writes only — reads come from the scraper.
+# X (Twitter) API. Public reads come from twitterapi.io; private DMs stay here.
 config :superx, SuperX.X,
   api_base: "https://api.twitter.com/2",
   oauth_authorize_url: "https://twitter.com/i/oauth2/authorize",

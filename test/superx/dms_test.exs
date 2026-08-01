@@ -22,7 +22,7 @@ defmodule SuperX.DMsTest do
 
     on_exit(fn -> Application.put_env(:superx, X, previous) end)
 
-    user_fixture(scopes: ~w(tweet.read tweet.write dm.read dm.write))
+    user_fixture(x_user_id: "100", scopes: ~w(tweet.read tweet.write dm.read dm.write))
   end
 
   describe "account boundaries" do
@@ -118,8 +118,121 @@ defmodule SuperX.DMsTest do
     end
   end
 
-  test "sync stops at the documented provider seam", %{account: account} do
-    assert {:error, :dm_read_unavailable} = DMs.sync(account)
+  describe "sync/1" do
+    test "ingests paginated conversations idempotently and distinguishes direction", %{
+      account: account
+    } do
+      Req.Test.stub(X, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+
+        assert conn.method == "GET"
+        assert conn.request_path == "/2/dm_events"
+        assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer access-token"]
+        assert conn.query_params["max_results"] == "100"
+        assert conn.query_params["event_types"] == "MessageCreate"
+
+        assert conn.query_params["dm_event.fields"] ==
+                 "created_at,dm_conversation_id,event_type,id,participant_ids,sender_id,text"
+
+        assert conn.query_params["expansions"] == "participant_ids,sender_id"
+        assert conn.query_params["user.fields"] == "id,name,profile_image_url,username"
+
+        case conn.query_params["pagination_token"] do
+          nil ->
+            json(conn, 200, %{
+              "data" => [
+                %{
+                  "id" => "event-inbound",
+                  "event_type" => "MessageCreate",
+                  "text" => "The newer inbound message",
+                  "sender_id" => "200",
+                  "dm_conversation_id" => "100-200",
+                  "created_at" => "2026-08-01T09:05:00.123Z"
+                }
+              ],
+              "includes" => %{
+                "users" => [
+                  %{
+                    "id" => "200",
+                    "username" => "counterparty",
+                    "name" => "Counter Party",
+                    "profile_image_url" => "https://img.test/counterparty_normal.jpg"
+                  }
+                ]
+              },
+              "meta" => %{
+                "result_count" => 1,
+                "next_token" => "ABCDEFGHIJKLMNOP"
+              }
+            })
+
+          "ABCDEFGHIJKLMNOP" ->
+            json(conn, 200, %{
+              "data" => [
+                %{
+                  "id" => "event-outbound",
+                  "event_type" => "MessageCreate",
+                  "text" => "The older outbound message",
+                  "sender_id" => "100",
+                  "dm_conversation_id" => "100-200",
+                  "created_at" => "2026-08-01T09:00:00.456Z"
+                }
+              ],
+              "meta" => %{"result_count" => 1}
+            })
+        end
+      end)
+
+      assert {:ok, %{conversations: 1, messages: 2, skipped: 0}} = DMs.sync(account)
+
+      assert [conversation] = DMs.list_conversations(account)
+      assert conversation.x_conversation_id == "100-200"
+      assert conversation.participant_x_user_id == "200"
+      assert conversation.participant_handle == "counterparty"
+      assert conversation.participant_name == "Counter Party"
+      assert conversation.last_message_text == "The newer inbound message"
+      assert conversation.last_message_at == ~U[2026-08-01 09:05:00Z]
+
+      stored = DMs.get_conversation(account, conversation.id)
+
+      assert [
+               %{x_message_id: "event-outbound", direction: "outbound"},
+               %{x_message_id: "event-inbound", direction: "inbound"}
+             ] = stored.messages
+
+      assert {:ok, %{conversations: 1, messages: 2, skipped: 0}} = DMs.sync(account)
+      assert Repo.aggregate(Message, :count) == 2
+    end
+
+    test "marks an older OAuth grant for reconnection without calling X", %{account: account} do
+      account =
+        account |> Ecto.Changeset.change(scopes: ~w(tweet.read tweet.write)) |> Repo.update!()
+
+      Req.Test.stub(X, fn _conn ->
+        flunk("a known missing scope must not make an external read")
+      end)
+
+      assert {:error, :reauth_required} = DMs.sync(account)
+
+      account = Repo.reload(account)
+      assert account.reauth_needed
+      assert account.reauth_reason =~ "DM access was not granted"
+      assert account.access_token == nil
+      assert DMs.availability(account) == :reauthorize
+    end
+
+    test "keeps an app permission-tier 403 distinct from account reconnection", %{
+      account: account
+    } do
+      Req.Test.stub(X, fn conn ->
+        json(conn, 403, %{"title" => "Client Forbidden"})
+      end)
+
+      assert {:error, {:dm_permission_tier_required, %{"title" => "Client Forbidden"}}} =
+               DMs.sync(account)
+
+      refute Repo.reload(account).reauth_needed
+    end
   end
 
   test "drafts from the private thread with the shared voice writer", %{
@@ -185,5 +298,11 @@ defmodule SuperX.DMsTest do
   defp configure_dms(enabled) do
     config = Application.get_env(:superx, X, [])
     Application.put_env(:superx, X, Keyword.put(config, :dm_enabled, enabled))
+  end
+
+  defp json(conn, status, body) do
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(status, Jason.encode!(body))
   end
 end
