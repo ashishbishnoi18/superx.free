@@ -242,6 +242,16 @@ defmodule SuperX.Content.Corpus do
     |> where([c], fragment("(length(?) - length(replace(?, E'\\n', ''))) < 6", c.text, c.text))
     # Opens with "1." or "1)" — a ranked list, same problem.
     |> where([c], fragment("? !~ '^[[:space:]]*[0-9]+[.)][[:space:]]'", c.text))
+    # A news alert. These travel enormously and their shape is the event,
+    # not the writing, so imitating one produces a draft announcing
+    # nothing.
+    #
+    # Case-sensitive and anchored to the start of a line, because the
+    # marker is shouted and leads: matching "breaking" anywhere would
+    # throw away a post about breaking a paragraph in two. The `(?m)`
+    # flag isn't available here — Ecto reads `?` as a placeholder — so
+    # the newline is spelled out instead.
+    |> where([c], fragment("? !~ E'(^|\\n)[[:space:]]*(BREAKING|JUST IN|DEVELOPING)'", c.text))
   end
 
   @doc "Posts still missing an embedding, for the backfill job."

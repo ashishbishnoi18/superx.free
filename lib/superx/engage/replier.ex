@@ -79,7 +79,10 @@ defmodule SuperX.Engage.Replier do
            system: SuperX.AI.Prompts.writer_system(voice, account),
            model: AI.writer_model(),
            temperature: 0.9,
-           max_tokens: 400,
+           # Generous for a 280-character reply because the budget also has
+           # to cover a reasoning model's thinking; too tight and it returns
+           # without ever calling the tool.
+           max_tokens: 2000,
            tool_description: "Return the reply."
          ) do
       {:ok, %{"reply" => reply}} when is_binary(reply) ->

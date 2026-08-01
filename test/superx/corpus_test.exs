@@ -65,6 +65,52 @@ defmodule SuperX.CorpusTest do
     end
   end
 
+  describe "usable_as_template" do
+    test "keeps a post whose shape transfers" do
+      Corpus.upsert_many([attrs(%{})])
+      assert [_] = Corpus.candidates_for(Ecto.UUID.generate(), nil, min_likes: 0)
+    end
+
+    test "rejects a news alert, whose shape is the event rather than the writing" do
+      Corpus.upsert_many([
+        attrs(%{
+          text:
+            "BREAKING: a major announcement has just been made and everyone is " <>
+              "reacting to it across every timeline on the platform right now."
+        })
+      ])
+
+      assert [] == Corpus.candidates_for(Ecto.UUID.generate(), nil, min_likes: 0)
+    end
+
+    test "does not reject a post that merely contains the word breaking" do
+      Corpus.upsert_many([
+        attrs(%{
+          text:
+            "The habit that changed my writing was breaking every paragraph into " <>
+              "its own line until the argument had nowhere left to hide from me."
+        })
+      ])
+
+      assert [_] = Corpus.candidates_for(Ecto.UUID.generate(), nil, min_likes: 0)
+    end
+  end
+
+  describe "specific?/1" do
+    test "rejects topics that name a posture rather than a subject" do
+      refute CorpusRefresh.specific?("life")
+      refute CorpusRefresh.specific?("personal thoughts")
+      refute CorpusRefresh.specific?("everyday observations")
+      refute CorpusRefresh.specific?("random stuff")
+    end
+
+    test "keeps topics that name an actual subject" do
+      assert CorpusRefresh.specific?("AI agents")
+      assert CorpusRefresh.specific?("personal branding")
+      assert CorpusRefresh.specific?("my climbing life")
+    end
+  end
+
   describe "topics_for_run/1" do
     test "falls back to the seed set when no voice profile has topics" do
       chosen = CorpusRefresh.topics_for_run(20)

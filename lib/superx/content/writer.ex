@@ -79,7 +79,11 @@ defmodule SuperX.Content.Writer do
            system: Prompts.writer_system(voice, account),
            model: AI.writer_model(),
            temperature: 1.0,
-           max_tokens: 1200,
+           # The budget has to cover thinking *and* the tool call. A
+           # reasoning model given 1200 spends all of it working out the
+           # reference's shape and returns having never called the tool,
+           # which costs a retry and then fails the generation outright.
+           max_tokens: 4000,
            tool_description: "Return the written post."
          ) do
       {:ok, %{"segments" => segments}} when is_list(segments) and segments != [] ->

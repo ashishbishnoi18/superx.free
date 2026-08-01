@@ -101,8 +101,9 @@ defmodule SuperX.Workers.CorpusRefresh do
   def seed_topics, do: @seed_topics
 
   @doc """
-  Distinct topics across all voice profiles, least-recently-fetched first
-  so the tail of the list isn't starved by whatever sorts first.
+  Distinct topics across all voice profiles, most widely shared first.
+
+  Topics too vague to name a subject are dropped — see `specific?/1`.
   """
   def active_topics do
     VoiceProfile
@@ -110,6 +111,7 @@ defmodule SuperX.Workers.CorpusRefresh do
     |> select([v], v.topics)
     |> Repo.all()
     |> Enum.flat_map(&split_topics/1)
+    |> Enum.filter(&specific?/1)
     |> Enum.frequencies()
     # Topics several users share are worth more than a single user's niche.
     |> Enum.sort_by(fn {_topic, count} -> -count end)
@@ -121,5 +123,32 @@ defmodule SuperX.Workers.CorpusRefresh do
     |> String.split(~r/[,\n;]/)
     |> Enum.map(&String.trim/1)
     |> Enum.reject(&(&1 == "" or String.length(&1) < 3))
+  end
+
+  # Words that describe a posture rather than a subject.
+  @vague ~w(
+    life thoughts thought opinions opinion observations observation
+    everyday daily musings random stuff things thing ideas idea
+    updates personal my me general misc various
+  )
+
+  @doc """
+  Whether a topic is worth searching the corpus for.
+
+  "personal thoughts" and "life" are honest descriptions of what someone
+  writes about, but as *queries* they return whatever went viral that day
+  — breaking news, politics, sport — none of which has a shape worth
+  borrowing. A topic has to contain at least one word that names an actual
+  subject.
+
+  Nobody loses sources by this: the writer already falls back to any
+  strong post when a user's topics match nothing, so these accounts draw
+  on the curated seed set instead of the day's news cycle.
+  """
+  def specific?(topic) do
+    topic
+    |> String.downcase()
+    |> String.split(~r/[^\p{L}\p{N}]+/u, trim: true)
+    |> Enum.any?(&(&1 not in @vague))
   end
 end
