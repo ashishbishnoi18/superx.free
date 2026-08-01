@@ -192,7 +192,7 @@ defmodule SuperX.AskTest do
         })
 
       ctx = %{user: user, account: account}
-      {body, summary} = Tools.run("get_shelf", %{}, ctx)
+      {:ok, body, summary} = Tools.run("get_shelf", %{}, ctx)
 
       assert body =~ "a draft waiting for review"
       assert body =~ "4200 likes"
@@ -202,7 +202,7 @@ defmodule SuperX.AskTest do
     end
 
     test "says so plainly when the shelf is empty", %{user: user, account: account} do
-      assert {"The shelf is empty.", _} =
+      assert {:ok, "The shelf is empty.", _} =
                Tools.run("get_shelf", %{}, %{user: user, account: account})
     end
   end

@@ -3,7 +3,7 @@ defmodule SuperXWeb.ApiAuth do
   Bearer authentication for the programmatic API.
 
   API tokens identify a user, then the same selected-account resolution as
-  the browser decides which X account the read-only endpoints expose.
+  the browser decides which X account the request may act on.
   """
 
   import Phoenix.Controller, only: [json: 2]

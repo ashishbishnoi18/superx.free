@@ -10,8 +10,6 @@ defmodule SuperX.Ask do
 
   import Ecto.Query
 
-  require Logger
-
   alias SuperX.Accounts.{User, XAccount}
   alias SuperX.{AI, Billing, Repo}
   alias SuperX.Ask.{Chat, Message, Tools}
@@ -136,16 +134,16 @@ defmodule SuperX.Ask do
     content
     |> Enum.filter(&(&1["type"] == "tool_use"))
     |> Enum.map(fn %{"id" => id, "name" => name, "input" => input} ->
-      {result, summary} =
-        try do
-          Tools.run(name, input, ctx)
-        rescue
-          error ->
-            Logger.warning("Ask tool #{name} crashed: #{inspect(error)}")
-            {"That tool failed.", nil}
-        end
+      case Tools.run(name, input, ctx) do
+        {:ok, result, summary} ->
+          {%{type: "tool_result", tool_use_id: id, content: result}, summary}
 
-      {%{type: "tool_result", tool_use_id: id, content: result}, summary}
+        {:error, _reason, message} ->
+          {%{type: "tool_result", tool_use_id: id, content: message, is_error: true}, nil}
+
+        {:error, message} ->
+          {%{type: "tool_result", tool_use_id: id, content: message, is_error: true}, nil}
+      end
     end)
     |> Enum.unzip()
     |> then(fn {results, summaries} -> {results, Enum.reject(summaries, &is_nil/1)} end)

@@ -108,6 +108,17 @@ defmodule SuperXWeb.Router do
     get "/analytics", ApiController, :analytics
   end
 
+  # MCP clients advertise JSON and SSE together on POST, and SSE alone on
+  # GET. The ordinary API content negotiation would turn the required GET
+  # probe into a 406 before the controller can give its meaningful 405.
+  scope "/", SuperXWeb do
+    pipe_through :authenticated_api
+
+    get "/mcp", MCPController, :stream
+    post "/mcp", MCPController, :handle
+    delete "/mcp", MCPController, :close
+  end
+
   if Application.compile_env(:superx, :dev_routes) do
     import Phoenix.LiveDashboard.Router
 

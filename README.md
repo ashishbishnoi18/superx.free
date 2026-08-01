@@ -257,7 +257,7 @@ curl -H 'Authorization: Bearer sx_example.secret' \
   https://your-host/api/queue
 ```
 
-The API is read-only and uses the X account currently selected under
+The REST API is read-only and uses the X account currently selected under
 **Accounts**.
 
 | Endpoint | Response |
@@ -268,6 +268,22 @@ The API is read-only and uses the X account currently selected under
 
 All three endpoints return `401` for a missing, invalid, or revoked token.
 They return `409` when the user has no connected X account.
+
+### MCP clients
+
+The same token exposes SuperX's Ask tools over Streamable HTTP at `/mcp`.
+Tools read from the X account currently selected under **Accounts**. They
+can draft and queue posts, but they cannot publish to X.
+
+Add a self-hosted SuperX instance to Claude Code with:
+
+```bash
+claude mcp add --transport http superx https://your-host/mcp \
+  --header "Authorization: Bearer YOUR_API_KEY"
+```
+
+Replace `your-host` and `YOUR_API_KEY` with your instance hostname and the
+token shown under **Accounts → API access**.
 
 ## Operating notes
 

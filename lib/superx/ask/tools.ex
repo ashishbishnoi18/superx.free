@@ -12,6 +12,8 @@ defmodule SuperX.Ask.Tools do
       be talked into reading someone else's data.
   """
 
+  require Logger
+
   alias SuperX.{Analytics, Content, Signals}
   alias SuperX.Content.{Corpus, Writer}
   alias SuperX.Engage
@@ -22,11 +24,15 @@ defmodule SuperX.Ask.Tools do
       %{
         name: "draft_post",
         description:
-          "Write a post in the user's voice about a topic. Returns the draft text; does not save or publish it.",
+          "Write a post in the user's voice about a topic. Returns the draft text and saves it to Ready to Post; does not publish it.",
         input_schema: %{
           type: "object",
           properties: %{
-            topic: %{type: "string", description: "What the post should be about."}
+            topic: %{
+              type: "string",
+              description: "What the post should be about.",
+              minLength: 1
+            }
           },
           required: ["topic"]
         }
@@ -38,7 +44,12 @@ defmodule SuperX.Ask.Tools do
         input_schema: %{
           type: "object",
           properties: %{
-            text: %{type: "string", description: "The post text, under 280 characters."}
+            text: %{
+              type: "string",
+              description: "The post text, under 280 characters.",
+              minLength: 1,
+              maxLength: 280
+            }
           },
           required: ["text"]
         }
@@ -49,7 +60,11 @@ defmodule SuperX.Ask.Tools do
         input_schema: %{
           type: "object",
           properties: %{
-            days: %{type: "integer", description: "How many days back. Defaults to 30."}
+            days: %{
+              type: "integer",
+              description: "How many days back. Defaults to 30.",
+              minimum: 1
+            }
           }
         }
       },
@@ -61,7 +76,8 @@ defmodule SuperX.Ask.Tools do
           properties: %{
             status: %{
               type: "string",
-              description: "One of scheduled, draft, posted, failed. Defaults to scheduled."
+              description: "One of scheduled, draft, posted, failed. Defaults to scheduled.",
+              enum: ~w(scheduled draft posted failed)
             }
           }
         }
@@ -73,8 +89,8 @@ defmodule SuperX.Ask.Tools do
         input_schema: %{
           type: "object",
           properties: %{
-            query: %{type: "string"},
-            min_likes: %{type: "integer"}
+            query: %{type: "string", minLength: 1},
+            min_likes: %{type: "integer", minimum: 0}
           },
           required: ["query"]
         }
@@ -101,27 +117,37 @@ defmodule SuperX.Ask.Tools do
   end
 
   @doc """
-  Runs a tool. Returns `{result_string, summary}` — the string goes back to
-  the model, the summary is what the UI shows the user so they can see
-  what was actually done rather than taking the prose on trust.
+  Runs a tool after validating its arguments against the published schema.
+
+  Successful calls return `{:ok, result_string, summary}`. Execution failures
+  return `{:error, message}`, while an unknown name is kept distinct so a
+  transport can report it as a protocol error.
   """
-  def run(name, input, ctx)
-
-  def run("draft_post", %{"topic" => topic}, ctx) do
-    case Writer.generate(ctx.user, ctx.account, topic: topic) do
-      {:ok, generation} ->
-        text = SuperX.Content.Generation.text(generation)
-        {"Drafted:\n\n#{text}", "Wrote a draft"}
-
-      {:error, :quota_exceeded, _} ->
-        {"The user is out of AI credits for this window.", nil}
-
-      {:error, reason} ->
-        {"Drafting failed: #{inspect(reason)}", nil}
+  def run(name, input, ctx) do
+    with {:ok, definition} <- definition(name),
+         :ok <- validate_input(input, definition.input_schema) do
+      run_safely(name, input, ctx)
+    else
+      {:error, :unknown_tool} -> {:error, :unknown_tool, "Unknown tool: #{name}"}
+      {:error, message} -> {:error, message}
     end
   end
 
-  def run("queue_post", %{"text" => text}, ctx) do
+  defp do_run("draft_post", %{"topic" => topic}, ctx) do
+    case Writer.generate(ctx.user, ctx.account, topic: topic) do
+      {:ok, generation} ->
+        text = SuperX.Content.Generation.text(generation)
+        {:ok, "Drafted:\n\n#{text}", "Wrote a draft"}
+
+      {:error, :quota_exceeded, _} ->
+        {:error, "The user is out of AI credits for this window."}
+
+      {:error, reason} ->
+        {:error, "Drafting failed: #{inspect(reason)}"}
+    end
+  end
+
+  defp do_run("queue_post", %{"text" => text}, ctx) do
     with {:ok, post} <-
            Content.create_post(ctx.user, ctx.account, %{
              segments: [%{"text" => text, "media_ids" => []}],
@@ -130,28 +156,29 @@ defmodule SuperX.Ask.Tools do
            }),
          {:ok, scheduled} <- Content.schedule_post(post) do
       when_str = format_when(scheduled.scheduled_at, ctx.user.timezone)
-      {"Queued for #{when_str}.", "Queued a post for #{when_str}"}
+      {:ok, "Queued for #{when_str}.", "Queued a post for #{when_str}"}
     else
       {:error, :no_slots} ->
-        {"The user has no posting times configured, so nothing can be queued.", nil}
+        {:error, "The user has no posting times configured, so nothing can be queued."}
 
       {:error, changeset} ->
-        {"Could not queue: #{inspect(changeset.errors)}", nil}
+        {:error, "Could not queue: #{inspect(changeset.errors)}"}
     end
   end
 
-  def run("get_analytics", input, ctx) do
+  defp do_run("get_analytics", input, ctx) do
     days = input["days"] || 30
     s = Analytics.summary(ctx.account, days)
 
-    {"""
+    {:ok,
+     """
      Last #{days} days for @#{ctx.account.handle}:
      followers #{s.followers} (#{format_delta(s.followers_change)} in range)
      posts #{s.posts}, impressions #{s.impressions}, engagements #{s.engagements}
      """, "Read #{days}-day analytics"}
   end
 
-  def run("get_queue", input, ctx) do
+  defp do_run("get_queue", input, ctx) do
     status = input["status"] || "scheduled"
     posts = Content.list_posts(ctx.account, status, limit: 15)
 
@@ -164,12 +191,12 @@ defmodule SuperX.Ask.Tools do
         end)
       end
 
-    {body, "Read the #{status} queue"}
+    {:ok, body, "Read the #{status} queue"}
   end
 
   @shelf_shown 15
 
-  def run("get_shelf", _input, ctx) do
+  defp do_run("get_shelf", _input, ctx) do
     # shelf_counts/1 already carries the total under "all"; summing the
     # map's values would count it a second time.
     total = Content.shelf_counts(ctx.account)["all"] || 0
@@ -194,10 +221,10 @@ defmodule SuperX.Ask.Tools do
         "#{total} draft(s) on the shelf. Showing #{length(generations)}:\n\n#{listed}"
       end
 
-    {body, "Read the Ready to Post shelf"}
+    {:ok, body, "Read the Ready to Post shelf"}
   end
 
-  def run("search_inspiration", %{"query" => query} = input, _ctx) do
+  defp do_run("search_inspiration", %{"query" => query} = input, _ctx) do
     posts = Corpus.search(query: query, min_likes: input["min_likes"] || 500, limit: 8)
 
     body =
@@ -209,10 +236,10 @@ defmodule SuperX.Ask.Tools do
         end)
       end
 
-    {body, "Searched the library for #{inspect(query)}"}
+    {:ok, body, "Searched the library for #{inspect(query)}"}
   end
 
-  def run("get_engagements", _input, ctx) do
+  defp do_run("get_engagements", _input, ctx) do
     items = Engage.list_engagements(ctx.account, limit: 10)
 
     body =
@@ -224,10 +251,10 @@ defmodule SuperX.Ask.Tools do
         end)
       end
 
-    {body, "Read the engagement inbox"}
+    {:ok, body, "Read the engagement inbox"}
   end
 
-  def run("get_leads", _input, ctx) do
+  defp do_run("get_leads", _input, ctx) do
     leads = Signals.list_leads(ctx.account, limit: 10)
 
     body =
@@ -239,10 +266,90 @@ defmodule SuperX.Ask.Tools do
         end)
       end
 
-    {body, "Read the contact list"}
+    {:ok, body, "Read the contact list"}
   end
 
-  def run(name, _input, _ctx), do: {"Unknown tool: #{name}", nil}
+  defp do_run(name, _input, _ctx), do: {:error, "Unknown tool: #{name}"}
+
+  defp definition(name) do
+    case Enum.find(definitions(), &(&1.name == name)) do
+      nil -> {:error, :unknown_tool}
+      definition -> {:ok, definition}
+    end
+  end
+
+  defp validate_input(input, _schema) when not is_map(input),
+    do: {:error, "Invalid arguments: expected an object."}
+
+  defp validate_input(input, schema) do
+    with :ok <- validate_required(input, Map.get(schema, :required, [])),
+         :ok <- validate_properties(input, Map.get(schema, :properties, %{})) do
+      :ok
+    end
+  end
+
+  defp validate_required(input, required) do
+    case Enum.find(required, &(not Map.has_key?(input, &1))) do
+      nil -> :ok
+      name -> {:error, "Invalid arguments: #{name} is required."}
+    end
+  end
+
+  defp validate_properties(input, properties) do
+    Enum.reduce_while(properties, :ok, fn {name, schema}, :ok ->
+      key = to_string(name)
+
+      case Map.fetch(input, key) do
+        :error -> {:cont, :ok}
+        {:ok, value} -> validate_property(key, value, schema)
+      end
+    end)
+  end
+
+  defp validate_property(name, value, schema) do
+    case validate_type(value, schema.type) do
+      :ok -> validate_constraints(name, value, schema)
+      {:error, type} -> {:halt, {:error, "Invalid arguments: #{name} must be #{type}."}}
+    end
+  end
+
+  defp validate_type(value, "string") when is_binary(value), do: :ok
+  defp validate_type(value, "integer") when is_integer(value), do: :ok
+  defp validate_type(value, "object") when is_map(value), do: :ok
+  defp validate_type(_value, "string"), do: {:error, "a string"}
+  defp validate_type(_value, "integer"), do: {:error, "an integer"}
+  defp validate_type(_value, "object"), do: {:error, "an object"}
+  defp validate_type(_value, _type), do: :ok
+
+  defp validate_constraints(name, value, schema) do
+    cond do
+      schema[:enum] && value not in schema.enum ->
+        {:halt,
+         {:error, "Invalid arguments: #{name} must be one of #{Enum.join(schema.enum, ", ")}."}}
+
+      schema[:minimum] && value < schema.minimum ->
+        {:halt, {:error, "Invalid arguments: #{name} must be at least #{schema.minimum}."}}
+
+      schema[:minLength] && String.length(value) < schema.minLength ->
+        {:halt,
+         {:error, "Invalid arguments: #{name} must be at least #{schema.minLength} character."}}
+
+      schema[:maxLength] && String.length(value) > schema.maxLength ->
+        {:halt,
+         {:error, "Invalid arguments: #{name} must be at most #{schema.maxLength} characters."}}
+
+      true ->
+        {:cont, :ok}
+    end
+  end
+
+  defp run_safely(name, input, ctx) do
+    do_run(name, input, ctx)
+  rescue
+    error ->
+      Logger.warning("Ask tool #{name} crashed: #{inspect(error)}")
+      {:error, "That tool failed."}
+  end
 
   defp format_delta(n) when n > 0, do: "+#{n}"
   defp format_delta(n), do: to_string(n)

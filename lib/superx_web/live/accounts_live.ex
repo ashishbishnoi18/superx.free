@@ -422,7 +422,7 @@ defmodule SuperXWeb.AccountsLive do
         <div>
           <h2 class="text-[15px] font-semibold">API access</h2>
           <p class="mt-1 text-[12px] leading-[1.6] text-faint">
-            Read the selected account's queue, shelf, and analytics from a script.
+            Read account data from scripts, or let MCP clients draft and queue posts.
           </p>
         </div>
 
@@ -465,7 +465,7 @@ defmodule SuperXWeb.AccountsLive do
 
           <div id="api-token-list" phx-update="stream" class="mt-6 flex flex-col">
             <p id="api-tokens-empty" class="hidden py-4 text-muted-foreground only:block">
-              No API tokens yet. Create one when a script needs to read this account.
+              No API tokens yet. Create one when a script or MCP client needs this account.
             </p>
             <div
               :for={{id, api_token} <- @streams.api_tokens}
