@@ -7,21 +7,27 @@ defmodule SuperXWeb.UpgradeLive do
 
   alias SuperX.Billing
   alias SuperX.Billing.Plan
+  alias SuperX.Teams
 
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user
+    interval = :month
+    team_owner = Teams.owner_for(user)
+    seat_count = if team_owner, do: 0, else: Billing.seat_count(user)
 
     {:ok,
      socket
      |> assign(page_title: "Upgrade")
-     |> assign(:interval, :month)
+     |> assign(:interval, interval)
      |> assign(:plans, Plan.paid())
      |> assign(:tier, Billing.tier(user))
      |> assign(:subscription, Billing.get_subscription(user))
      |> assign(:billing_configured, Billing.Checkout.configured?())
      |> assign(:open_instance, Billing.open_instance?())
-     |> assign(:usage, Billing.quota_snapshot(user))}
+     |> assign(:usage, Billing.quota_snapshot(user))
+     |> assign(:team_owner, team_owner)
+     |> assign(:seat_count, seat_count)}
   end
 
   @impl true
@@ -41,6 +47,12 @@ defmodule SuperXWeb.UpgradeLive do
       {:error, :not_configured} ->
         {:noreply, put_flash(socket, :error, "Billing isn't configured on this server.")}
 
+      {:error, :team_member} ->
+        {:noreply, put_flash(socket, :error, "Your team owner manages this plan.")}
+
+      {:error, {:no_seat_price_for, _tier, _interval}} ->
+        {:noreply, put_flash(socket, :error, "Seat billing isn't configured for that plan.")}
+
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "We couldn't start checkout. Try again shortly.")}
     end
@@ -56,10 +68,19 @@ defmodule SuperXWeb.UpgradeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.page_header title="Plan" description={"You're on #{Plan.get(@tier).name}."}>
+    <Layouts.page_header
+      title="Plan"
+      description={
+        if(@team_owner,
+          do:
+            "#{@team_owner.name || "Your team owner"} supplies your #{Plan.get(@tier).name} entitlement.",
+          else: "You're on #{Plan.get(@tier).name}."
+        )
+      }
+    >
       <:action>
         <button
-          :if={@subscription && @subscription.provider_customer_id}
+          :if={!@team_owner && @subscription && @subscription.provider_customer_id}
           phx-click="manage"
           class="act whitespace-nowrap text-xs"
         >
@@ -82,6 +103,43 @@ defmodule SuperXWeb.UpgradeLive do
           label={label}
           usage={Map.get(@usage, key)}
         />
+      </div>
+    </section>
+
+    <section id="seat-pricing" class="mb-10 border-y border-border py-6">
+      <div class="grid grid-cols-1 gap-7 sm:grid-cols-[14rem_minmax(0,1fr)]">
+        <div>
+          <p class="nb-eyebrow">Team seats</p>
+          <p
+            id="seat-count"
+            data-seat-count={if(@team_owner, do: 1, else: @seat_count)}
+            data-discount={if(@team_owner, do: nil, else: Billing.seat_discount_percent(@seat_count))}
+            class="nb-display mt-2 text-[1.5rem] tabular-nums"
+          >
+            {if @team_owner, do: "1 managed seat", else: "#{@seat_count} #{seat_label(@seat_count)}"}
+          </p>
+        </div>
+
+        <div :if={@team_owner}>
+          <p class="text-muted-foreground">
+            Billing belongs to {@team_owner.name || @team_owner.email || "your team owner"}. Your
+            usage remains in your own quota rows and is not pooled with theirs.
+          </p>
+        </div>
+
+        <div :if={!@team_owner}>
+          <p :if={@seat_count == 0} class="text-muted-foreground">
+            No billed member seats yet. Accepted invitations from Accounts will appear here.
+          </p>
+          <p :if={@seat_count > 0} class="text-muted-foreground">
+            {@seat_count} accepted {seat_label(@seat_count)} use your tier. The current volume
+            reduction is <span class="nb-mono text-[12px] text-foreground">{Billing.seat_discount_percent(@seat_count)}%</span>.
+          </p>
+          <p class="nb-mono mt-3 text-[11px] leading-[1.7] text-faint">
+            1 member · list price<br /> 2–10 members · 25% off<br /> 11–50 members · 30% off<br />
+            51+ members · 35% off
+          </p>
+        </div>
       </div>
     </section>
 
@@ -127,6 +185,13 @@ defmodule SuperXWeb.UpgradeLive do
               /{if @interval == :month, do: "mo", else: "yr"}
             </span>
           </p>
+          <p
+            :if={!@team_owner && @seat_count > 0}
+            id={"#{plan.tier}-seat-price"}
+            class="nb-mono mt-2 text-[11px] leading-[1.6] text-faint"
+          >
+            {seat_price_line(plan, @interval, @seat_count)}
+          </p>
         </div>
 
         <div>
@@ -135,13 +200,25 @@ defmodule SuperXWeb.UpgradeLive do
           </ul>
 
           <button
-            :if={plan.tier != @tier and @billing_configured}
+            :if={
+              !@team_owner and plan.tier != @tier and
+                Billing.Checkout.configured_for?(plan.tier, @interval, @seat_count)
+            }
             phx-click="checkout"
             phx-value-tier={plan.tier}
             class="act-key mt-5 text-xs"
           >
             {if Plan.upgrade?(@tier, plan.tier), do: "Upgrade", else: "Switch"} to {plan.name}
           </button>
+          <p
+            :if={
+              !@team_owner and plan.tier != @tier and @billing_configured and @seat_count > 0 and
+                !Billing.Checkout.configured_for?(plan.tier, @interval, @seat_count)
+            }
+            class="mt-5 text-[12px] text-faint"
+          >
+            Seat billing is not configured for this plan and interval.
+          </p>
         </div>
       </section>
     </div>
@@ -178,4 +255,20 @@ defmodule SuperXWeb.UpgradeLive do
 
   defp price(plan, :month), do: div(plan.monthly_cents, 100)
   defp price(plan, :year), do: div(plan.yearly_cents, 100)
+
+  defp seat_price_line(plan, interval, seat_count) do
+    pricing = Billing.seat_pricing(plan.tier, interval, seat_count)
+    combined_cents = Plan.price(plan.tier, interval) + pricing.total_cents
+
+    "#{format_money(pricing.unit_cents)} each · #{format_money(combined_cents)} total with plan"
+  end
+
+  defp format_money(cents) do
+    dollars = div(cents, 100)
+    remainder = cents |> rem(100) |> Integer.to_string() |> String.pad_leading(2, "0")
+    "$#{dollars}.#{remainder}"
+  end
+
+  defp seat_label(1), do: "member"
+  defp seat_label(_count), do: "members"
 end

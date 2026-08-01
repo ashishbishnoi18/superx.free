@@ -128,6 +128,15 @@ config :superx, SuperX.Billing.Checkout,
       is_binary(id) and id != "",
       into: %{},
       do: {{tier, interval}, id}
+    ),
+  seat_price_ids:
+    for(
+      tier <- ~w(pro advanced ultra),
+      interval <- ~w(month year),
+      id = System.get_env("STRIPE_SEAT_PRICE_#{String.upcase(tier)}_#{String.upcase(interval)}"),
+      is_binary(id) and id != "",
+      into: %{},
+      do: {{tier, interval}, id}
     )
 
 # Token encryption key. Required in prod; in dev/test it falls back to a

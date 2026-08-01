@@ -23,9 +23,12 @@ defmodule SuperX.Accounts.User do
     field :last_seen_at, :utc_datetime
 
     belongs_to :default_x_account, XAccount
+    belongs_to :team_owner, __MODULE__
     has_many :x_accounts, XAccount, preload_order: [asc: :inserted_at]
     has_many :api_tokens, ApiToken
     has_many :content_workers, SuperX.Workers.ContentWorker
+    has_many :team_members, __MODULE__, foreign_key: :team_owner_id
+    has_many :team_invitations, SuperX.Teams.Invitation, foreign_key: :owner_id
 
     has_one :subscription, SuperX.Billing.Subscription
 

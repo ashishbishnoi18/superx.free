@@ -45,12 +45,35 @@ defmodule SuperX.Billing do
   @doc """
   The user's current tier, defaulting to free.
 
-  Always reads the subscription fresh rather than trusting a preloaded
-  association: a plan change arriving by webhook must take effect for a
-  session that loaded its user before the change, and a stale preload
-  would silently keep charging the old limits.
+  Always reads both membership and subscription fresh rather than trusting
+  preloaded associations: a removed seat or plan change arriving by webhook
+  must take effect for a session loaded before the change. A member resolves
+  exactly one owner hop; product data and quota rows still belong to the member.
   """
   def tier(%User{} = user) do
+    case entitlement_user(user) do
+      nil -> default_tier()
+      entitlement_user -> subscription_tier(entitlement_user)
+    end
+  end
+
+  defp entitlement_user(%User{} = user) do
+    case Repo.get(User, user.id) do
+      %User{team_owner_id: nil} = user ->
+        user
+
+      %User{team_owner_id: owner_id} ->
+        case Repo.get(User, owner_id) do
+          %User{team_owner_id: nil} = owner -> owner
+          _ -> nil
+        end
+
+      nil ->
+        nil
+    end
+  end
+
+  defp subscription_tier(user) do
     case get_subscription(user) do
       nil -> default_tier()
       sub -> effective_tier(sub)
@@ -76,6 +99,41 @@ defmodule SuperX.Billing do
 
   @doc "Whether this instance grants paid limits without payment."
   def open_instance?, do: default_tier() != "free"
+
+  # --- Seats ---------------------------------------------------------------
+
+  @doc "The number of members billed under an owner's subscription."
+  def seat_count(%User{} = owner) do
+    User
+    |> where(team_owner_id: ^owner.id)
+    |> select(count())
+    |> Repo.one()
+  end
+
+  @doc "The volume reduction applied to every member seat."
+  def seat_discount_percent(count) when is_integer(count) and count >= 0 do
+    cond do
+      count >= 51 -> 35
+      count >= 11 -> 30
+      count >= 2 -> 25
+      true -> 0
+    end
+  end
+
+  @doc "A seat estimate for one tier and billing interval, in cents."
+  def seat_pricing(tier, interval, count)
+      when is_binary(tier) and interval in [:month, :year] and is_integer(count) and count >= 0 do
+    discount_percent = seat_discount_percent(count)
+    base_cents = Plan.price(tier, interval)
+    unit_cents = div(base_cents * (100 - discount_percent) + 50, 100)
+
+    %{
+      count: count,
+      discount_percent: discount_percent,
+      unit_cents: unit_cents,
+      total_cents: unit_cents * count
+    }
+  end
 
   # --- Quotas --------------------------------------------------------------
 

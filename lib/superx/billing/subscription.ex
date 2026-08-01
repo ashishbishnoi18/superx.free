@@ -75,8 +75,21 @@ defmodule SuperX.Billing.Subscription do
   past-due subscription still works until the period ends, which avoids
   cutting someone off over a transient card failure.
   """
-  def entitled?(%__MODULE__{status: status, tier: tier}) when tier != "free" do
-    status in ~w(trialing active past_due)
+  def entitled?(%__MODULE__{status: status, tier: tier})
+      when tier != "free" and status in ~w(trialing active),
+      do: true
+
+  def entitled?(%__MODULE__{status: "past_due", tier: tier, current_period_end: nil})
+      when tier != "free",
+      do: true
+
+  def entitled?(%__MODULE__{
+        status: "past_due",
+        tier: tier,
+        current_period_end: current_period_end
+      })
+      when tier != "free" do
+    DateTime.compare(current_period_end, DateTime.utc_now()) == :gt
   end
 
   def entitled?(_), do: false

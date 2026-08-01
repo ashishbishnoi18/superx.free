@@ -1,0 +1,76 @@
+<div class="min-h-full">
+  <header class="measure flex items-center justify-between px-6 py-5">
+    <Layouts.logo class="text-[15px]" />
+    <Layouts.theme_toggle />
+  </header>
+
+  <main class="measure px-6 py-16 sm:py-24">
+    <section id="team-invitation" class="max-w-[38rem]">
+      <p class="nb-eyebrow mb-5">Team invitation</p>
+
+      <%= cond do %>
+        <% is_nil(@invitation) -> %>
+          <h1 class="text-[2rem] font-semibold tracking-[-0.03em]">
+            This invitation isn't available
+          </h1>
+          <p class="mt-4 leading-[1.65] text-muted-foreground">
+            The link may be incomplete or revoked. Ask the owner to create a new invitation.
+          </p>
+        <% @invitation.status == "expired" -> %>
+          <h1 class="text-[2rem] font-semibold tracking-[-0.03em]">
+            This invitation has expired
+          </h1>
+          <p class="mt-4 leading-[1.65] text-muted-foreground">
+            Ask {@invitation.owner.name || "the owner"} to create a new link from Accounts.
+          </p>
+        <% @invitation.status != "pending" -> %>
+          <h1 class="text-[2rem] font-semibold tracking-[-0.03em]">
+            This invitation has already been used
+          </h1>
+          <p class="mt-4 leading-[1.65] text-muted-foreground">
+            Each team invitation can add one account once.
+          </p>
+        <% true -> %>
+          <h1 class="max-w-[20ch] text-[2rem] font-semibold leading-[1.15] tracking-[-0.03em]">
+            Join {@invitation.owner.name || "this team"} on SuperX
+          </h1>
+          <p class="mt-4 leading-[1.65] text-muted-foreground">
+            You will keep your own sign-in, X accounts, posts, drafts, quotas, and voice profiles.
+            Only your plan entitlement comes from the owner's subscription.
+          </p>
+
+          <div class="mt-8 border-y border-border py-5">
+            <p class="nb-eyebrow">Invited email</p>
+            <p class="mt-2">{@invitation.email}</p>
+          </div>
+
+          <%= if @current_user do %>
+            <.form
+              for={@acceptance_form}
+              id="accept-team-invitation-form"
+              method="post"
+              action={~p"/team/invitations/#{@token}/accept"}
+              class="mt-7"
+            >
+              <button type="submit" class="act-key">Accept with this account →</button>
+            </.form>
+            <p class="mt-3 text-[12px] text-faint">
+              Signed in as {@current_user.name || @current_user.email || "your current account"}.
+            </p>
+          <% else %>
+            <.link
+              :if={@x_configured}
+              href={~p"/auth/x?redirect_to=/team/invitations/#{@token}"}
+              class="act-key mt-7 inline-block"
+            >
+              Sign in with 𝕏 to continue →
+            </.link>
+            <p :if={!@x_configured} class="mt-7 text-muted-foreground">
+              X sign-in isn't configured on this server. Ask the instance owner to configure it
+              before this invitation expires.
+            </p>
+          <% end %>
+      <% end %>
+    </section>
+  </main>
+</div>

@@ -28,6 +28,8 @@ defmodule SuperXWeb.Router do
 
     get "/", PageController, :home
     get "/share/:token", AnalyticsShareController, :show
+    get "/team/invitations/:token", TeamInvitationController, :show
+    post "/team/invitations/:token/accept", TeamInvitationController, :accept
     delete "/sign-out", AuthController, :delete
   end
 

@@ -10,7 +10,7 @@ defmodule SuperXWeb.AccountsLive do
 
   use SuperXWeb, :live_view
 
-  alias SuperX.{Accounts, Billing}
+  alias SuperX.{Accounts, Billing, Teams}
   alias SuperX.Billing.Plan
 
   @themes [
@@ -27,6 +27,7 @@ defmodule SuperXWeb.AccountsLive do
      |> assign(:themes, @themes)
      |> assign(:new_api_token, nil)
      |> assign(:token_form, token_form())
+     |> assign(:invitation_form, invitation_form(socket.assigns.current_user))
      |> load_accounts()}
   end
 
@@ -97,6 +98,52 @@ defmodule SuperXWeb.AccountsLive do
     end
   end
 
+  def handle_event("invite_member", %{"invitation" => params}, socket) do
+    case Teams.invite(socket.assigns.current_user, params) do
+      {:ok, _invitation, _url} ->
+        {:noreply,
+         socket
+         |> assign(:invitation_form, invitation_form(socket.assigns.current_user))
+         |> put_flash(:info, "Invitation created. Its link is ready to copy below.")
+         |> load_accounts()}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :invitation_form, to_form(changeset))}
+
+      {:error, :member_cannot_invite} ->
+        {:noreply, put_flash(socket, :error, "A team member cannot invite another member.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "We couldn't create that invitation.")}
+    end
+  end
+
+  def handle_event("revoke_invitation", %{"id" => id}, socket) do
+    case Teams.revoke_invitation(socket.assigns.current_user, id) do
+      {:ok, _invitation} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Invitation revoked.")
+         |> load_accounts()}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That invitation isn't available.")}
+    end
+  end
+
+  def handle_event("remove_member", %{"id" => id}, socket) do
+    case Teams.remove_member(socket.assigns.current_user, id) do
+      {:ok, _member} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Member removed. Their account and data are unchanged.")
+         |> load_accounts()}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That member isn't available.")}
+    end
+  end
+
   defp load_accounts(socket) do
     user = Accounts.get_user_with_context!(socket.assigns.current_user.id)
     accounts = Accounts.list_x_accounts(user)
@@ -109,13 +156,32 @@ defmodule SuperXWeb.AccountsLive do
     |> assign(:account_limit, Plan.limit(tier, :x_accounts))
     |> assign(:tier, tier)
     |> assign(:theme, Accounts.theme(user))
+    |> load_team(user)
     |> stream(:api_tokens, Accounts.list_api_tokens(user),
       reset: true,
       dom_id: &"api-token-#{&1.id}"
     )
   end
 
+  defp load_team(socket, user) do
+    team_owner = Teams.owner_for(user)
+    members = if team_owner, do: [], else: Teams.list_members(user)
+    invitations = if team_owner, do: [], else: Teams.list_invitations(user)
+
+    socket
+    |> assign(:team_owner, team_owner)
+    |> stream(:team_members, members,
+      reset: true,
+      dom_id: &"team-member-#{&1.id}"
+    )
+    |> stream(:team_invitations, invitations,
+      reset: true,
+      dom_id: &"team-invitation-#{&1.id}"
+    )
+  end
+
   defp token_form, do: to_form(%{"name" => ""}, as: :api_token)
+  defp invitation_form(user), do: user |> Teams.change_invitation() |> to_form()
 
   @impl true
   def render(assigns) do
@@ -192,7 +258,137 @@ defmodule SuperXWeb.AccountsLive do
       </div>
     </div>
 
-    <section id="appearance-settings" class="mt-12 border-t border-border py-6">
+    <section id="team-settings" class="mt-12 border-t border-border py-6">
+      <div class="grid grid-cols-1 gap-7 sm:grid-cols-[14rem_minmax(0,1fr)]">
+        <div>
+          <h2 class="text-[15px] font-semibold">Team</h2>
+          <p class="mt-1 text-[12px] leading-[1.6] text-faint">
+            Each member keeps their own account and data. Only plan entitlement comes from the owner.
+          </p>
+        </div>
+
+        <div :if={@team_owner} id="team-membership">
+          <p class="nb-eyebrow">Your seat</p>
+          <div class="mt-3 flex items-center gap-3 border-y border-border py-4">
+            <Layouts.avatar src={@team_owner.avatar_url} size="size-8" />
+            <div class="min-w-0">
+              <p class="truncate font-medium">
+                {@team_owner.name || @team_owner.email || "Team owner"}
+              </p>
+              <p :if={@team_owner.email} class="mt-0.5 truncate text-[12px] text-faint">
+                {@team_owner.email}
+              </p>
+            </div>
+          </div>
+          <p class="mt-3 max-w-[58ch] text-[12px] leading-[1.6] text-muted-foreground">
+            Your X accounts, posts, drafts, quotas, and voice profiles remain yours. The owner only
+            supplies your {String.capitalize(@tier)} plan entitlement.
+          </p>
+        </div>
+
+        <div :if={!@team_owner}>
+          <div id="team-member-list" phx-update="stream" class="flex flex-col">
+            <div id="team-members-empty" class="border-y border-border py-5 only:block">
+              <p class="text-muted-foreground">No members yet.</p>
+              <p class="mt-1 text-[12px] text-faint">
+                Invite someone when they need their own SuperX account on your plan.
+              </p>
+            </div>
+            <div
+              :for={{id, member} <- @streams.team_members}
+              id={id}
+              class="flex items-center gap-3 border-b border-border py-4 first:border-t"
+            >
+              <Layouts.avatar src={member.avatar_url} size="size-8" />
+              <div class="min-w-0 flex-1">
+                <p class="truncate font-medium">{member.name || member.email || "Team member"}</p>
+                <p :if={member.email} class="mt-0.5 truncate text-[12px] text-faint">
+                  {member.email}
+                </p>
+              </div>
+              <button
+                type="button"
+                phx-click="remove_member"
+                phx-value-id={member.id}
+                data-confirm={"Remove #{member.name || member.email || "this member"}? They will return to the default plan immediately."}
+                class="act-danger shrink-0 text-xs"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+
+          <.form
+            for={@invitation_form}
+            id="team-invitation-form"
+            phx-submit="invite_member"
+            class="mt-7 flex max-w-[34rem] items-end gap-5"
+          >
+            <div class="min-w-0 flex-1">
+              <.input
+                field={@invitation_form[:email]}
+                type="email"
+                label="Invite by email"
+                placeholder="member@example.com"
+                autocomplete="email"
+                required
+              />
+            </div>
+            <button type="submit" class="act-key mb-4 shrink-0 text-xs">Create invitation</button>
+          </.form>
+
+          <div class="mt-7">
+            <p class="nb-eyebrow mb-2">Invitations</p>
+            <div id="team-invitation-list" phx-update="stream" class="flex flex-col">
+              <p
+                id="team-invitations-empty"
+                class="border-y border-border py-4 text-muted-foreground only:block"
+              >
+                No pending invitations. New links will remain here until they are used or revoked.
+              </p>
+              <div
+                :for={{id, invitation} <- @streams.team_invitations}
+                id={id}
+                class="border-b border-border py-4 first:border-t"
+              >
+                <div class="flex items-baseline justify-between gap-5">
+                  <p class="min-w-0 truncate font-medium">{invitation.email}</p>
+                  <span class="nb-mono shrink-0 text-[11px] text-faint">
+                    {invitation.status}
+                  </span>
+                </div>
+                <div :if={invitation.status == "pending"} class="mt-2 flex items-end gap-5">
+                  <div class="min-w-0 flex-1">
+                    <.input
+                      id={"invitation-link-#{invitation.id}"}
+                      name={"invitation-link-#{invitation.id}"}
+                      type="url"
+                      value={Teams.invitation_url(invitation)}
+                      readonly
+                      class="nb-mono w-full input text-[11px]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    phx-click="revoke_invitation"
+                    phx-value-id={invitation.id}
+                    data-confirm={"Revoke the invitation for #{invitation.email}?"}
+                    class="act-danger mb-4 shrink-0 text-xs"
+                  >
+                    Revoke
+                  </button>
+                </div>
+                <p :if={invitation.status == "expired"} class="mt-1 text-[12px] text-faint">
+                  This link expired. Create a new invitation if they still need a seat.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="appearance-settings" class="mt-6 border-t border-border py-6">
       <div class="grid grid-cols-1 gap-7 sm:grid-cols-[14rem_minmax(0,1fr)]">
         <div>
           <h2 class="text-[15px] font-semibold">Appearance</h2>
