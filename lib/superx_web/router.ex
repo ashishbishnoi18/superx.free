@@ -17,6 +17,10 @@ defmodule SuperXWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :authenticated_api do
+    plug SuperXWeb.ApiAuth
+  end
+
   # --- Public --------------------------------------------------------------
 
   scope "/", SuperXWeb do
@@ -89,6 +93,16 @@ defmodule SuperXWeb.Router do
     pipe_through :api
 
     post "/stripe", StripeWebhookController, :handle
+  end
+
+  # --- Programmatic API ---------------------------------------------------
+
+  scope "/api", SuperXWeb do
+    pipe_through [:api, :authenticated_api]
+
+    get "/queue", ApiController, :queue
+    get "/shelf", ApiController, :shelf
+    get "/analytics", ApiController, :analytics
   end
 
   if Application.compile_env(:superx, :dev_routes) do

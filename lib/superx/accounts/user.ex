@@ -8,7 +8,7 @@ defmodule SuperX.Accounts.User do
 
   import Ecto.Changeset
 
-  alias SuperX.Accounts.XAccount
+  alias SuperX.Accounts.{ApiToken, XAccount}
 
   @derive {Inspect, except: [:email]}
   schema "users" do
@@ -24,6 +24,7 @@ defmodule SuperX.Accounts.User do
 
     belongs_to :default_x_account, XAccount
     has_many :x_accounts, XAccount, preload_order: [asc: :inserted_at]
+    has_many :api_tokens, ApiToken
     has_many :content_workers, SuperX.Workers.ContentWorker
 
     has_one :subscription, SuperX.Billing.Subscription

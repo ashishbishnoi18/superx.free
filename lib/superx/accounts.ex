@@ -6,7 +6,7 @@ defmodule SuperX.Accounts do
   import Ecto.Query
 
   alias Ecto.Multi
-  alias SuperX.Accounts.{OAuthRequest, Session, User, XAccount}
+  alias SuperX.Accounts.{ApiToken, OAuthRequest, Session, User, XAccount}
   alias SuperX.Repo
 
   # --- Users ---------------------------------------------------------------
@@ -35,6 +35,21 @@ defmodule SuperX.Accounts do
   @doc "Reads a setting, falling back to the shipped defaults."
   def setting(%User{settings: settings}, key) do
     Map.get(settings || %{}, key, Map.get(User.default_settings(), key))
+  end
+
+  @doc "Persists one of the three appearance modes understood by the root layout."
+  def update_theme(%User{} = user, theme) when theme in ~w(light dark system) do
+    update_settings(user, %{"theme" => theme})
+  end
+
+  def update_theme(%User{}, _theme), do: {:error, :invalid_theme}
+
+  @doc "Returns a safe appearance mode even if an older settings map contains bad data."
+  def theme(%User{} = user) do
+    case setting(user, "theme") do
+      theme when theme in ~w(light dark system) -> theme
+      _theme -> User.default_settings()["theme"]
+    end
   end
 
   def touch_last_seen(%User{} = user) do
@@ -218,6 +233,52 @@ defmodule SuperX.Accounts do
     now = DateTime.utc_now()
     {count, _} = Session |> where([s], s.expires_at <= ^now) |> Repo.delete_all()
     count
+  end
+
+  # --- API tokens ---------------------------------------------------------
+
+  @doc "Creates an API credential, returning its plaintext exactly once."
+  def create_api_token(%User{} = user, attrs) do
+    {plaintext, changeset} = ApiToken.build(user, attrs)
+
+    case Repo.insert(changeset) do
+      {:ok, api_token} -> {:ok, api_token, plaintext}
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  @doc "Lists a user's API credentials, newest first, including revoked history."
+  def list_api_tokens(%User{} = user) do
+    ApiToken
+    |> where(user_id: ^user.id)
+    |> order_by(desc: :inserted_at)
+    |> Repo.all()
+  end
+
+  @doc "Revokes a credential owned by the user."
+  def revoke_api_token(%User{} = user, id) do
+    case Repo.get_by(ApiToken, id: id, user_id: user.id) do
+      nil -> {:error, :not_found}
+      api_token -> api_token |> ApiToken.revoke_changeset() |> Repo.update()
+    end
+  end
+
+  @doc "Resolves a presented API credential to its user, or nil."
+  def get_user_by_api_token(encoded) do
+    with {:ok, prefix, secret} <- ApiToken.split(encoded),
+         %ApiToken{} = api_token <- active_api_token(prefix),
+         true <- ApiToken.secret_matches?(api_token, secret) do
+      get_user_with_context!(api_token.user_id)
+    else
+      _ -> nil
+    end
+  end
+
+  defp active_api_token(prefix) do
+    ApiToken
+    |> where(token_prefix: ^prefix)
+    |> where([token], is_nil(token.revoked_at))
+    |> Repo.one()
   end
 
   # --- Helpers -------------------------------------------------------------
