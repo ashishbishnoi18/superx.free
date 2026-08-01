@@ -78,6 +78,7 @@ defmodule SuperXWeb.Layouts do
         <.nav_section label="Network">
           <.nav_link navigate={~p"/signals"} active={@active == :signals}>Signals</.nav_link>
           <.nav_link navigate={~p"/contacts"} active={@active == :contacts}>Contacts</.nav_link>
+          <.nav_link navigate={~p"/dms"} active={@active == :dms}>DMs</.nav_link>
         </.nav_section>
 
         <.nav_section label="Settings">

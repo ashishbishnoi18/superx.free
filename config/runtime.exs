@@ -42,7 +42,8 @@ config :superx, SuperXWeb.Endpoint, http: [port: String.to_integer(env.("PORT", 
 config :superx, SuperX.X,
   client_id: env.("X_CLIENT_ID", nil),
   client_secret: env.("X_CLIENT_SECRET", nil),
-  redirect_uri: env.("X_REDIRECT_URI", "http://localhost:4000/auth/x/callback")
+  redirect_uri: env.("X_REDIRECT_URI", "http://localhost:4000/auth/x/callback"),
+  dm_enabled: env.("SUPERX_ENABLE_DMS", "false") in ~w(1 true)
 
 # LLM provider. Both speak Anthropic's Messages API — DeepSeek serves it
 # at /anthropic with the same header and content-block format — so this is

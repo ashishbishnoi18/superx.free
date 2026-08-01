@@ -28,6 +28,11 @@ an account, people replying to an account, members of a list. Each one
 scores whoever it finds against a sentence describing who you're looking
 for, and files the keepers in **Contacts**.
 
+**DMs** — Keeps private conversations per connected account, drafts replies
+in the account's voice, and sends approved messages through X with the
+user's OAuth grant. Incoming sync is held at a documented provider seam;
+see [Direct Messages](#direct-messages) before enabling it.
+
 **Ask** — Chat with tools over your own data. It can read your analytics,
 queue, inbox, contacts, and the library, and draft or queue posts. It
 cannot publish; queueing is as far as it goes.
@@ -129,6 +134,7 @@ Each optional integration degrades rather than breaks:
 |---|---|
 | LLM key (`ANTHROPIC_API_KEY` or `DEEPSEEK_API_KEY`) | No drafting, no reply writing, no lead scoring, no Ask. Signals still find people but return them unranked. |
 | `TWITTERAPI_IO_KEY` | No corpus, no mentions, no feeds, no Signals. The Create loop still works on posts you write. |
+| `SUPERX_ENABLE_DMS` unset or `false` | OAuth keeps its existing scopes and the DMs screen explains how to enable access. |
 | `VOYAGE_API_KEY` | Corpus search falls back to full text. |
 | `STRIPE_*` | Billing disabled, every account keeps free limits. Correct for a private instance. |
 
@@ -214,6 +220,29 @@ A self-hosted Go scraper remains in `scraper/` as an alternative source
 behind the same contract, but it carries terms-of-service exposure that
 the paid API does not. It is off unless configured, and twitterapi.io wins
 when both are present.
+
+## Direct Messages
+
+DM access is deliberately off by default. Before setting
+`SUPERX_ENABLE_DMS=true`, change the X app's permission tier in the developer
+console from **Read and write** to **Read and write and Direct message**.
+SuperX then adds `dm.read` and `dm.write` to new OAuth requests. X requires
+both scopes for sending, and every already-connected account must reconnect
+after the change.
+
+Do these in order:
+
+1. Upgrade the app permission tier in the X developer console.
+2. Set `SUPERX_ENABLE_DMS=true` and restart SuperX.
+3. Open **Accounts** and reconnect every account that will use DMs.
+
+Sending uses X's supported OAuth endpoint and the user's encrypted access
+token. Incoming reads are not wired yet. twitterapi.io publishes a narrow
+history endpoint, but it requires the user's X login cookies, a proxy, and a
+counterparty id; it cannot enumerate the inbox using this app's API-key read
+client. SuperX will not collect passwords or browser cookies to work around
+that. The `/dms` storage and sync seam are ready for a compatible API-key
+endpoint when the provider exposes one.
 
 ## Operating notes
 

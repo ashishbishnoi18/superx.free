@@ -21,16 +21,34 @@ defmodule SuperX.Engage.Replier do
   @spec draft(User.t(), XAccount.t(), Engagement.t()) ::
           {:ok, map()} | {:error, term()} | {:error, :quota_exceeded, map()}
   def draft(%User{} = user, %XAccount{} = account, %Engagement{} = engagement) do
+    with {:ok, text} <- write(user, account, engagement_prompt(account, engagement)) do
+      Engage.create_draft(%{
+        engagement_id: engagement.id,
+        user_id: user.id,
+        text: text,
+        model: AI.writer_model()
+      })
+    end
+  end
+
+  @doc "Drafts a private reply from the recent messages in a DM thread."
+  def draft_direct_message(%User{} = user, %XAccount{} = account, handle, messages)
+      when is_list(messages) do
+    case List.last(messages) do
+      %{direction: "inbound"} ->
+        write(user, account, direct_message_prompt(account, handle, messages))
+
+      _ ->
+        {:error, :nothing_to_reply_to}
+    end
+  end
+
+  defp write(user, account, prompt) do
     with {:ok, voice} <- Content.get_or_create_voice_profile(account),
          {:ok, _quota} <- claim(user) do
-      case ask(voice, account, engagement) do
+      case ask(voice, account, prompt) do
         {:ok, text} ->
-          Engage.create_draft(%{
-            engagement_id: engagement.id,
-            user_id: user.id,
-            text: text,
-            model: AI.writer_model()
-          })
+          {:ok, text}
 
         {:error, reason} ->
           # The user shouldn't lose a reply from their daily allowance
@@ -48,8 +66,8 @@ defmodule SuperX.Engage.Replier do
     end
   end
 
-  defp ask(voice, account, engagement) do
-    prompt = """
+  defp engagement_prompt(account, engagement) do
+    """
     Someone posted this on X:
 
     <post>
@@ -66,7 +84,36 @@ defmodule SuperX.Engage.Replier do
     Do not pitch anything. Do not use hashtags. Stay well under 280
     characters — most good replies are under 120.
     """
+  end
 
+  defp direct_message_prompt(account, handle, messages) do
+    transcript =
+      messages
+      |> Enum.take(-8)
+      |> Enum.map_join("\n", fn message ->
+        speaker = if message.direction == "outbound", do: "You", else: "@#{handle || "them"}"
+        "#{speaker}: #{message.text}"
+      end)
+
+    """
+    This is a private X conversation between #{account.display_name || "@" <> account.handle}
+    and @#{handle || "the other person"}:
+
+    <conversation>
+    #{transcript}
+    </conversation>
+
+    Write the next message from #{account.display_name || "@" <> account.handle}.
+
+    A direct message is a conversation, not a broadcast. Respond to the
+    latest thing they said, while respecting what was already said in the
+    thread. Say one thing, briefly. Do not pitch anything unless the thread
+    is already discussing it. Do not use hashtags. Stay well under 280
+    characters — most good replies are under 120.
+    """
+  end
+
+  defp ask(voice, account, prompt) do
     schema = %{
       type: "object",
       properties: %{

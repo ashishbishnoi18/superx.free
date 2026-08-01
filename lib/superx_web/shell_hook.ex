@@ -23,6 +23,7 @@ defmodule SuperXWeb.ShellHook do
     SuperXWeb.InspirationLive => :inspiration,
     SuperXWeb.SignalsLive => :signals,
     SuperXWeb.ContactsLive => :contacts,
+    SuperXWeb.DMsLive => :dms,
     SuperXWeb.VoiceLive => :voice,
     SuperXWeb.SettingsLive => :settings,
     SuperXWeb.AccountsLive => :accounts,
