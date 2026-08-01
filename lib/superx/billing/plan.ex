@@ -19,6 +19,7 @@ defmodule SuperX.Billing.Plan do
         posts_month: 30,
         credits_month: 50,
         replies_day: 10,
+        api_requests_minute: 15,
         signal_agents: 0,
         leads_day: 0,
         auto_dms_month: 0
@@ -42,6 +43,7 @@ defmodule SuperX.Billing.Plan do
         posts_month: 500,
         credits_month: 500,
         replies_day: 25,
+        api_requests_minute: 60,
         signal_agents: 1,
         leads_day: 750,
         auto_dms_month: 1000
@@ -66,6 +68,7 @@ defmodule SuperX.Billing.Plan do
         posts_month: 1000,
         credits_month: 1500,
         replies_day: 75,
+        api_requests_minute: 120,
         signal_agents: 3,
         leads_day: 3000,
         auto_dms_month: 1000
@@ -89,6 +92,7 @@ defmodule SuperX.Billing.Plan do
         posts_month: 3000,
         credits_month: 4000,
         replies_day: 300,
+        api_requests_minute: 300,
         signal_agents: 5,
         leads_day: 7500,
         auto_dms_month: 5000

@@ -14,6 +14,7 @@ defmodule SuperX.Application do
       {Phoenix.PubSub, name: SuperX.PubSub},
       # Runs LLM calls off the LiveView process so the UI stays responsive.
       {Task.Supervisor, name: SuperX.TaskSupervisor},
+      SuperXWeb.ApiRateLimit,
       # Serialises every twitterapi.io call behind one clock, because the
       # plan's QPS is shared across the whole node.
       SuperX.TwitterAPI,

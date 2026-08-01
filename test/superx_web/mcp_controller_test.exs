@@ -214,4 +214,35 @@ defmodule SuperXWeb.MCPControllerTest do
   defp authorise(conn, plaintext) do
     put_req_header(conn, "authorization", "Bearer #{plaintext}")
   end
+
+  test "is rate limited by the same plan limit as the REST API", %{
+    conn: conn,
+    user: user,
+    plaintext: plaintext
+  } do
+    # MCP shares the :authenticated_api pipeline, so the limiter covers it
+    # without a second implementation. That is an integration fact rather
+    # than something either module asserts on its own, so it is pinned
+    # here — an unlimited agent transport is how one token becomes an
+    # outage.
+    limit = user |> SuperX.Billing.tier() |> SuperX.Billing.Plan.limit(:api_requests_minute)
+
+    body = %{
+      "jsonrpc" => "2.0",
+      "id" => 1,
+      "method" => "tools/list",
+      "params" => %{}
+    }
+
+    responses =
+      for _ <- 1..(limit + 1) do
+        build_conn()
+        |> put_req_header("authorization", "Bearer " <> plaintext)
+        |> put_req_header("content-type", "application/json")
+        |> post(~p"/mcp", body)
+      end
+
+    assert Enum.any?(responses, &(&1.status == 429))
+    assert conn
+  end
 end

@@ -12,6 +12,7 @@ defmodule SuperXWeb.AccountsLive do
 
   alias SuperX.{Accounts, Billing, Teams}
   alias SuperX.Billing.Plan
+  alias SuperXWeb.ApiRateLimit
 
   @themes [
     {"light", "Light", "Always use the Ink & Paper palette."},
@@ -148,6 +149,7 @@ defmodule SuperXWeb.AccountsLive do
     user = Accounts.get_user_with_context!(socket.assigns.current_user.id)
     accounts = Accounts.list_x_accounts(user)
     tier = Billing.tier(user)
+    api_usage = ApiRateLimit.usage(user)
 
     socket
     |> assign(:current_user, user)
@@ -155,6 +157,8 @@ defmodule SuperXWeb.AccountsLive do
     |> assign(:current_x_account, Accounts.current_x_account(user))
     |> assign(:account_limit, Plan.limit(tier, :x_accounts))
     |> assign(:tier, tier)
+    |> assign(:api_limit, Plan.limit(tier, :api_requests_minute))
+    |> assign(:api_usage, api_usage)
     |> assign(:theme, Accounts.theme(user))
     |> load_team(user)
     |> stream(:api_tokens, Accounts.list_api_tokens(user),
@@ -422,11 +426,29 @@ defmodule SuperXWeb.AccountsLive do
         <div>
           <h2 class="text-[15px] font-semibold">API access</h2>
           <p class="mt-1 text-[12px] leading-[1.6] text-faint">
-            Read account data from scripts, or let MCP clients draft and queue posts.
+            Read the selected account and put approved drafts into its queue, from a
+            script or an MCP client.
           </p>
         </div>
 
         <div>
+          <div
+            id="api-usage"
+            data-limit={@api_limit}
+            data-requests-today={@api_usage.requests_today}
+            class="mb-6 flex flex-wrap items-center justify-between gap-3 border-y border-border py-3"
+          >
+            <p class="text-[12px] text-muted-foreground">
+              <span class="font-medium text-foreground">{Plan.get(@tier).name}</span>
+              <span class="mx-1.5 text-faint">·</span>
+              <span class="nb-mono">{@api_limit} req/min</span>
+              <span class="mx-1.5 text-faint">·</span>
+              Requests today (UTC):
+              <span class="nb-mono text-foreground">{@api_usage.requests_today}</span>
+            </p>
+            <.link navigate={~p"/api"} class="act text-xs">API docs</.link>
+          </div>
+
           <div
             :if={@new_api_token}
             id="new-api-token"
