@@ -1,6 +1,7 @@
 defmodule SuperX.Content.Voice do
   @moduledoc """
-  Derives an account's writing voice from its own posts.
+  Derives an account's writing voice from its own posts and gathers idea
+  material without letting other authors redefine that voice.
 
   Run at connect time and re-runnable on demand. Regeneration deliberately
   preserves `rules` — those are the user's own instructions, and silently
@@ -14,6 +15,9 @@ defmodule SuperX.Content.Voice do
   alias SuperX.AI.Prompts
   alias SuperX.Accounts.XAccount
   alias SuperX.Content.VoiceProfile
+  alias SuperX.TwitterAPI
+
+  @inspiration_posts_per_creator 5
 
   @doc """
   Rebuilds the voice profile for an account from its recent posts.
@@ -108,4 +112,43 @@ defmodule SuperX.Content.Voice do
   end
 
   def examples(_account, _profile, _limit), do: []
+
+  @doc """
+  Recent posts from the creators selected as idea sources.
+
+  These remain grouped by handle so the prompt can keep them visibly apart
+  from the account's own voice examples. A failed or unconfigured read is
+  treated as no inspiration; writing from the user's existing topics still
+  works without the paid read provider.
+  """
+  def inspiration_posts(%VoiceProfile{} = profile, limit \\ @inspiration_posts_per_creator) do
+    if TwitterAPI.configured?() do
+      (profile.inspiration_handles || [])
+      |> Enum.map(&String.downcase/1)
+      |> Enum.uniq()
+      |> Enum.take(3)
+      |> Enum.map(&fetch_inspiration_posts(&1, limit))
+      |> Enum.reject(&(&1.posts == []))
+    else
+      []
+    end
+  end
+
+  # TwitterAPI owns the persistent cache boundary. Calling it here means a
+  # shelf top-up reuses the records already bought by an earlier draft.
+  defp fetch_inspiration_posts(handle, limit) do
+    case TwitterAPI.user_tweets(handle, max: limit) do
+      {:ok, posts} ->
+        texts =
+          posts
+          |> Enum.map(&(&1["text"] || &1[:text]))
+          |> Enum.filter(&(is_binary(&1) and String.trim(&1) != ""))
+
+        %{handle: handle, posts: texts}
+
+      {:error, reason} ->
+        Logger.warning("Could not read inspiration posts for @#{handle}: #{inspect(reason)}")
+        %{handle: handle, posts: []}
+    end
+  end
 end

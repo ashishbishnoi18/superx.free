@@ -21,7 +21,8 @@ defmodule SuperX.Engage.Replier do
   @spec draft(User.t(), XAccount.t(), Engagement.t()) ::
           {:ok, map()} | {:error, term()} | {:error, :quota_exceeded, map()}
   def draft(%User{} = user, %XAccount{} = account, %Engagement{} = engagement) do
-    with {:ok, text} <- write(user, account, engagement_prompt(account, engagement)) do
+    with {:ok, text} <-
+           write(user, account, &engagement_prompt(account, engagement, &1)) do
       Engage.create_draft(%{
         engagement_id: engagement.id,
         user_id: user.id,
@@ -36,16 +37,18 @@ defmodule SuperX.Engage.Replier do
       when is_list(messages) do
     case List.last(messages) do
       %{direction: "inbound"} ->
-        write(user, account, direct_message_prompt(account, handle, messages))
+        write(user, account, fn _voice -> direct_message_prompt(account, handle, messages) end)
 
       _ ->
         {:error, :nothing_to_reply_to}
     end
   end
 
-  defp write(user, account, prompt) do
+  defp write(user, account, prompt_builder) do
     with {:ok, voice} <- Content.get_or_create_voice_profile(account),
          {:ok, _quota} <- claim(user) do
+      prompt = prompt_builder.(voice)
+
       case ask(voice, account, prompt) do
         {:ok, text} ->
           {:ok, text}
@@ -66,7 +69,7 @@ defmodule SuperX.Engage.Replier do
     end
   end
 
-  defp engagement_prompt(account, engagement) do
+  defp engagement_prompt(account, engagement, voice) do
     """
     Someone posted this on X:
 
@@ -76,14 +79,43 @@ defmodule SuperX.Engage.Replier do
 
     Write a reply from #{account.display_name || "@" <> account.handle}.
 
-    A reply is a conversation, not a broadcast. Say one thing, briefly.
-    React to what they actually said rather than restating it. If you have
-    nothing to add, say something short and human instead of padding.
+    A reply is a conversation, not a broadcast. React to what they actually
+    said rather than restating it. If you have nothing to add, say something
+    short and human instead of padding.
+
+    #{reply_length_guidance(voice.reply_length)}
+
+    #{question_guidance(voice.reply_question_policy)}
 
     Do not open with "Great point" or "This." Do not compliment the post.
-    Do not pitch anything. Do not use hashtags. Stay well under 280
-    characters — most good replies are under 120.
+    Do not pitch anything. Do not use hashtags. Stay under 280 characters.
     """
+  end
+
+  defp reply_length_guidance(nil) do
+    "Say one thing, briefly. Most good replies are under 120 characters."
+  end
+
+  defp reply_length_guidance("short") do
+    "Keep it to one compact sentence, usually under 80 characters."
+  end
+
+  defp reply_length_guidance("medium") do
+    "Use one or two sentences, usually 80–180 characters."
+  end
+
+  defp reply_length_guidance("long") do
+    "When there is enough substance, use two or three sentences and aim for 160–260 characters. Do not pad a thin response to reach that length."
+  end
+
+  defp question_guidance(nil), do: ""
+
+  defp question_guidance("ask") do
+    "End with one relevant question that gives them something concrete to answer."
+  end
+
+  defp question_guidance("never") do
+    "Do not ask a question or end the reply with a question mark."
   end
 
   defp direct_message_prompt(account, handle, messages) do

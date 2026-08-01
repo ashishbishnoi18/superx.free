@@ -8,7 +8,30 @@ defmodule SuperX.Content.WriterTest do
 
   use ExUnit.Case, async: true
 
+  alias SuperX.AI.Prompts
   alias SuperX.Content.Writer
+
+  describe "creator idea prompts" do
+    test "keeps external ideas separate from the author's voice evidence" do
+      prompt =
+        Prompts.write_from_topic(
+          "durable software",
+          ["I delete code before I add abstractions."],
+          [%{handle: "builder", posts: ["Ownership is a product decision."]}]
+        )
+
+      assert prompt =~ "<author_voice_examples>"
+      assert prompt =~ "I delete code before I add abstractions."
+      assert prompt =~ "<creator_idea_material>"
+      assert prompt =~ "@builder"
+      assert prompt =~ "they say nothing about\nthis author's voice"
+      assert prompt =~ "Never imitate these creators' voice"
+
+      {voice_at, _} = :binary.match(prompt, "<author_voice_examples>")
+      {ideas_at, _} = :binary.match(prompt, "<creator_idea_material>")
+      assert voice_at < ideas_at
+    end
+  end
 
   describe "strip_thread_markers/1" do
     test "removes numbering the model wrote for itself" do

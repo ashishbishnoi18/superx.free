@@ -92,7 +92,7 @@ defmodule SuperXWeb.VoiceLive do
   defp normalize(params) do
     params
     |> Map.update("questions", [], &split_lines/1)
-    |> Map.update("favorite_voices", [], &split_lines/1)
+    |> Map.update("inspiration_handles", [], &split_lines/1)
   end
 
   defp split_lines(value) when is_binary(value) do
@@ -132,7 +132,13 @@ defmodule SuperXWeb.VoiceLive do
       )} posts
     </p>
 
-    <.form for={@form} phx-change="validate" phx-submit="save" class="flex flex-col">
+    <.form
+      for={@form}
+      id="voice-profile-form"
+      phx-change="validate"
+      phx-submit="save"
+      class="flex flex-col"
+    >
       <.field
         id="voice_profile_about"
         name="voice_profile[about]"
@@ -209,19 +215,35 @@ defmodule SuperXWeb.VoiceLive do
       </.field>
 
       <.field
-        id="voice_profile_favorite_voices"
-        name="voice_profile[favorite_voices]"
-        label="Voices you admire"
-        hint="One handle per line. SuperX leans toward how they structure a post."
+        id="voice_profile_inspiration_handles"
+        name="voice_profile[inspiration_handles]"
+        label="Creator inspiration"
+        hint="Up to three handles, one per line. Their posts supply ideas only — never voice, structure, or phrasing."
       >
-        <textarea
-          id="voice_profile_favorite_voices"
-          name="voice_profile[favorite_voices]"
+        <.input
+          field={@form[:inspiration_handles]}
+          type="textarea"
+          value={Enum.join(@form[:inspiration_handles].value || [], "\n")}
           rows="3"
-          class="textarea"
-          placeholder="@paulg"
-        >{Enum.join(@form[:favorite_voices].value || [], "\n")}</textarea>
+          class="w-full textarea"
+          placeholder="@paulg\n@shl"
+        />
 
+        <p
+          :if={(@form[:inspiration_handles].value || []) == []}
+          id="creator-inspiration-empty"
+          class="mt-2 text-[12px] leading-[1.6] text-faint"
+        >
+          No creators added. Writing will use your topics and the shared corpus.
+        </p>
+      </.field>
+
+      <.field
+        id="voice_profile_use_own_posts"
+        name="voice_profile[use_own_posts]"
+        label="Your examples"
+        hint="Your published posts teach SuperX your register. Creator posts never appear in this voice evidence."
+      >
         <label class="mt-4 flex items-center gap-2.5">
           <input type="hidden" name="voice_profile[use_own_posts]" value="false" />
           <input
@@ -229,8 +251,44 @@ defmodule SuperXWeb.VoiceLive do
             name="voice_profile[use_own_posts]"
             value="true"
             checked={@form[:use_own_posts].value}
-          /> Show SuperX my published posts as examples
+          /> Use my published posts as voice examples
         </label>
+      </.field>
+
+      <div id="engage-reply-settings" class="border-t border-border py-6">
+        <p class="nb-eyebrow">Engage replies</p>
+        <p class="mt-1 max-w-[42rem] text-[12px] leading-[1.6] text-faint">
+          These preferences shape public replies drafted in Engage. Leaving either on its
+          current setting preserves the existing behaviour.
+        </p>
+      </div>
+
+      <.field
+        id="voice_profile_reply_length"
+        name="voice_profile[reply_length]"
+        label="Reply length"
+        hint="A target, not padding — replies still stop when the thought is complete."
+      >
+        <.input
+          field={@form[:reply_length]}
+          type="select"
+          options={reply_length_options()}
+          class="w-full select"
+        />
+      </.field>
+
+      <.field
+        id="voice_profile_reply_question_policy"
+        name="voice_profile[reply_question_policy]"
+        label="Questions back"
+        hint="Choose whether a drafted reply should invite a response."
+      >
+        <.input
+          field={@form[:reply_question_policy]}
+          type="select"
+          options={reply_question_options()}
+          class="w-full select"
+        />
       </.field>
 
       <div class="flex items-center gap-6 border-t border-border pt-6 text-xs">
@@ -238,6 +296,23 @@ defmodule SuperXWeb.VoiceLive do
       </div>
     </.form>
     """
+  end
+
+  defp reply_length_options do
+    [
+      {"Current — usually under 120 characters", ""},
+      {"Very short — usually under 80", "short"},
+      {"Balanced — usually 80–180", "medium"},
+      {"Detailed — usually 160–260", "long"}
+    ]
+  end
+
+  defp reply_question_options do
+    [
+      {"When it fits — current behaviour", ""},
+      {"Ask a relevant question", "ask"},
+      {"Never ask a question", "never"}
+    ]
   end
 
   attr :id, :string, required: true
