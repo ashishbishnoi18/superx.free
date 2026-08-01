@@ -35,6 +35,44 @@ defmodule SuperX.Workers.RunContentWorkerTest do
     fixture
   end
 
+  test "a trends worker still writes when the corpus knows none of the user's topics", %{
+    user: user,
+    account: account
+  } do
+    # The library is only ever seeded on topics specific enough to search
+    # for, so an account describing itself as writing about "life" matches
+    # nothing in it. Refusing to write would leave those accounts with an
+    # empty shelf forever.
+    stub_writer(:counters.new(1, []))
+
+    SuperX.Content.Corpus.upsert_many([
+      %{
+        x_post_id: "unrelated-1",
+        author_handle: "someone",
+        author_followers: 40_000,
+        likes: 9_000,
+        text:
+          "The thing nobody tells you about shipping is that the last ten " <>
+            "percent takes as long as the first ninety, and it is the only " <>
+            "part anyone sees.",
+        topics: ["marketing strategies"],
+        posted_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      }
+    ])
+
+    {:ok, voice} = Content.get_or_create_voice_profile(account)
+    {:ok, _} = Content.update_voice_profile(voice, %{topics: "knitting, semaphore"})
+
+    {:ok, worker} =
+      Workers.create_content_worker(user, account, %{
+        name: "Trends",
+        topic_source: "trends",
+        batch_size: 1
+      })
+
+    assert {:ok, 1} = RunContentWorker.run_batch(Repo.preload(worker, [:user, :x_account]))
+  end
+
   test "writes exactly the configured batch and charges one credit per shelf item", %{
     user: user,
     account: account

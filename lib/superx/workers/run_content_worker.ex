@@ -79,11 +79,30 @@ defmodule SuperX.Workers.RunContentWorker do
     topics = voice && VoiceProfile.topic_list(voice)
     since = DateTime.utc_now() |> DateTime.add(-14, :day)
 
+    # Relax in two steps, not one. Dropping only the date leaves an account
+    # whose subjects match nothing in the library with no source at all —
+    # which is every account whose topics are too vague to have been
+    # ingested. Structure transfers across subjects, so any strong post
+    # beats refusing to write, and this mirrors what the writer already
+    # does when it picks a source itself.
     candidates =
-      case Corpus.candidates_for(worker.x_account.id, topics, limit: 10, since: since) do
-        [] -> Corpus.candidates_for(worker.x_account.id, topics, limit: 10)
-        posts -> posts
-      end
+      Enum.find_value(
+        [
+          [topics: topics, since: since],
+          [topics: topics, since: nil],
+          [topics: nil, since: nil]
+        ],
+        [],
+        fn opts ->
+          case Corpus.candidates_for(worker.x_account.id, opts[:topics],
+                 limit: 10,
+                 since: opts[:since]
+               ) do
+            [] -> nil
+            posts -> posts
+          end
+        end
+      )
 
     case candidates do
       [] ->
