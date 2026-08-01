@@ -90,7 +90,11 @@ defmodule SuperXWeb.Layouts do
 
       <div class="flex flex-col gap-2.5 border-t border-border px-[1.125rem] pb-4 pt-3.5">
         <.credit_meter :if={@quota} quota={@quota} />
-        <.account_footer current_user={@current_user} current_x_account={@current_x_account} />
+        <.account_footer
+          current_user={@current_user}
+          current_x_account={@current_x_account}
+          quota={@quota}
+        />
       </div>
     </aside>
     """
@@ -146,6 +150,7 @@ defmodule SuperXWeb.Layouts do
 
   attr :current_user, :map, default: nil
   attr :current_x_account, :map, default: nil
+  attr :quota, :map, default: nil
 
   defp account_footer(assigns) do
     ~H"""
@@ -164,10 +169,25 @@ defmodule SuperXWeb.Layouts do
         <.icon name="hero-arrow-right-start-on-rectangle-mini" class="size-4" />
       </.link>
     </div>
-    <p :if={@current_user && @current_user.subscription} class="text-[11px] text-faint">
-      {Subscription.label(@current_user.subscription)}
+    <p :if={tier_label(assigns)} class="text-[11px] text-faint">
+      {tier_label(assigns)}
     </p>
     """
+  end
+
+  # A paying subscription labels itself, because only it knows about
+  # trials. Everyone else gets the tier actually in force — on an
+  # instance with SUPERX_DEFAULT_TIER set they really do have those
+  # limits, and "Free" beside a 4000-credit meter reads as a bug.
+  defp tier_label(assigns) do
+    sub = get_in(assigns, [:current_user, Access.key(:subscription)])
+
+    cond do
+      match?(%Subscription{}, sub) and Subscription.entitled?(sub) -> Subscription.label(sub)
+      is_binary(assigns[:quota][:tier]) -> String.capitalize(assigns.quota.tier)
+      match?(%Subscription{}, sub) -> Subscription.label(sub)
+      true -> nil
+    end
   end
 
   @doc """

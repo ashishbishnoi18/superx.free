@@ -109,7 +109,8 @@ defmodule SuperX.Billing do
   def quota_snapshot(%User{} = user) do
     tier = tier(user)
 
-    Map.new(Quota.keys(), fn key ->
+    Quota.keys()
+    |> Map.new(fn key ->
       quota = get_quota(user, key, tier)
 
       {key,
@@ -120,6 +121,10 @@ defmodule SuperX.Billing do
          resets_at: quota.window_end
        }}
     end)
+    # Carried on an atom key so it can't collide with a quota name. The
+    # tier is already resolved here, and anything rendering the snapshot
+    # would otherwise re-query to label it.
+    |> Map.put(:tier, tier)
   end
 
   defp create_quota(%User{} = user, key, limit) do
