@@ -167,18 +167,31 @@ defmodule SuperX.Ask.Tools do
     {body, "Read the #{status} queue"}
   end
 
+  @shelf_shown 15
+
   def run("get_shelf", _input, ctx) do
-    generations = Content.list_shelf(ctx.account, limit: 15)
+    # shelf_counts/1 already carries the total under "all"; summing the
+    # map's values would count it a second time.
+    total = Content.shelf_counts(ctx.account)["all"] || 0
+    generations = Content.list_shelf(ctx.account, limit: @shelf_shown)
 
     body =
       if generations == [] do
         "The shelf is empty."
       else
-        Enum.map_join(generations, "\n\n", fn g ->
-          text = g.segments |> Enum.map_join(" / ", &(&1["text"] || "")) |> String.slice(0, 200)
-          source = if g.source_likes, do: " (from a post with #{g.source_likes} likes)", else: ""
-          "#{g.kind}#{source}: #{text}"
-        end)
+        listed =
+          Enum.map_join(generations, "\n\n", fn g ->
+            text = g.segments |> Enum.map_join(" / ", &(&1["text"] || "")) |> String.slice(0, 200)
+
+            source =
+              if g.source_likes, do: " (from a post with #{g.source_likes} likes)", else: ""
+
+            "#{g.kind}#{source}: #{text}"
+          end)
+
+        # The total is stated separately from the sample, or the model
+        # reports the page size as the count.
+        "#{total} draft(s) on the shelf. Showing #{length(generations)}:\n\n#{listed}"
       end
 
     {body, "Read the Ready to Post shelf"}

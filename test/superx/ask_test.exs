@@ -196,6 +196,8 @@ defmodule SuperX.AskTest do
 
       assert body =~ "a draft waiting for review"
       assert body =~ "4200 likes"
+      # The count has to be the real total, not the page size.
+      assert body =~ "1 draft(s) on the shelf"
       assert summary =~ "shelf"
     end
 
