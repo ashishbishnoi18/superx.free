@@ -182,7 +182,10 @@ defmodule SuperX.Content.Corpus do
     * `:query` — free text
     * `:topics` — restrict to posts tagged with any of these
     * `:min_likes` — engagement floor (default 100)
-    * `:since` — only posts published after this datetime
+    * `:min_reposts`, `:min_replies`, `:min_bookmarks`, `:min_views` — metric floors
+    * `:min_length` — minimum post length in characters
+    * `:since` — only posts published at or after this datetime
+    * `:until` — only posts published at or before this datetime
     * `:has_media` — true/false
     * `:sort` — `:engagement` (default) or `:outlier`
     * `:limit` — default 40
@@ -195,7 +198,10 @@ defmodule SuperX.Content.Corpus do
     base =
       CorpusPost
       |> filter_min_likes(opts[:min_likes] || 100)
+      |> filter_metric_floors(opts)
+      |> filter_min_length(opts[:min_length])
       |> filter_since(opts[:since])
+      |> filter_until(opts[:until])
       |> filter_topics(opts[:topics])
       |> filter_media(opts[:has_media])
       |> filter_exclusions(opts[:exclude])
@@ -326,8 +332,30 @@ defmodule SuperX.Content.Corpus do
   defp filter_min_likes(query, nil), do: query
   defp filter_min_likes(query, min), do: where(query, [c], c.likes >= ^min)
 
+  defp filter_metric_floors(query, opts) do
+    [
+      {:reposts, opts[:min_reposts]},
+      {:replies, opts[:min_replies]},
+      {:bookmarks, opts[:min_bookmarks]},
+      {:impressions, opts[:min_views]}
+    ]
+    |> Enum.reduce(query, fn
+      {_field, nil}, query -> query
+      {field_name, minimum}, query -> where(query, [c], field(c, ^field_name) >= ^minimum)
+    end)
+  end
+
+  defp filter_min_length(query, nil), do: query
+
+  defp filter_min_length(query, minimum) do
+    where(query, [c], fragment("char_length(?) >= ?", c.text, ^minimum))
+  end
+
   defp filter_since(query, nil), do: query
   defp filter_since(query, since), do: where(query, [c], c.posted_at >= ^since)
+
+  defp filter_until(query, nil), do: query
+  defp filter_until(query, until), do: where(query, [c], c.posted_at <= ^until)
 
   defp filter_topics(query, nil), do: query
   defp filter_topics(query, []), do: query

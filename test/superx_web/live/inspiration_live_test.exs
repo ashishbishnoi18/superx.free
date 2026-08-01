@@ -50,6 +50,73 @@ defmodule SuperXWeb.InspirationLiveTest do
            )
   end
 
+  test "media and advanced filters combine and explain an empty result", %{conn: conn} do
+    %{user: user} = user_fixture()
+    {:ok, token} = Accounts.create_session(user)
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    target =
+      corpus_attrs("target", 500, 10_000)
+      |> Map.merge(%{
+        text: String.duplicate("A useful argument needs enough room to develop. ", 4),
+        reposts: 30,
+        replies: 20,
+        bookmarks: 20,
+        impressions: 2_000,
+        media: [%{"type" => "photo", "url" => "https://images.example/target.jpg"}],
+        posted_at: now
+      })
+
+    Corpus.upsert_many([
+      target,
+      Map.merge(target, %{x_post_id: "text-only", media: []}),
+      Map.merge(target, %{x_post_id: "few-replies", replies: 2})
+    ])
+
+    target_post = post("target")
+    text_only = post("text-only")
+    few_replies = post("few-replies")
+    conn = init_test_session(conn, %{user_token: token})
+    {:ok, view, _html} = live(conn, ~p"/inspiration")
+
+    assert has_element?(view, "#inspiration-post-#{text_only.id}")
+
+    view |> element("#tab-media") |> render_click()
+
+    refute has_element?(view, "#inspiration-post-#{text_only.id}")
+    assert has_element?(view, "#inspiration-post-#{target_post.id}")
+    assert has_element?(view, "#inspiration-post-#{few_replies.id}")
+
+    filters = %{
+      "min_reposts" => "30",
+      "min_replies" => "20",
+      "min_bookmarks" => "10",
+      "min_views" => "2000",
+      "min_length" => "120",
+      "date_from" => Date.utc_today() |> Date.add(-1) |> Date.to_iso8601(),
+      "date_to" => Date.utc_today() |> Date.to_iso8601()
+    }
+
+    view
+    |> form("#advanced-filter-form", filters: filters)
+    |> render_change()
+
+    assert has_element?(view, "#inspiration-post-#{target_post.id}")
+    refute has_element?(view, "#inspiration-post-#{few_replies.id}")
+
+    assert has_element?(
+             view,
+             "#inspiration-post-#{target_post.id} img[src='https://images.example/target.jpg']"
+           )
+
+    view
+    |> form("#advanced-filter-form", filters: Map.put(filters, "min_bookmarks", "21"))
+    |> render_change()
+
+    assert has_element?(view, "#inspiration-filter-empty", "Media")
+    assert has_element?(view, "#inspiration-filter-empty", "21+ bookmarks")
+  end
+
   defp corpus_attrs(id, likes, followers) do
     %{
       x_post_id: id,
