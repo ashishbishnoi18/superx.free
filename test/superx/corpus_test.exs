@@ -1,7 +1,7 @@
 defmodule SuperX.CorpusTest do
   use SuperX.DataCase, async: true
 
-  alias SuperX.Content.Corpus
+  alias SuperX.Content.{Corpus, Exclusions}
   alias SuperX.Workers.CorpusRefresh
 
   defp attrs(overrides) do
@@ -105,6 +105,39 @@ defmodule SuperX.CorpusTest do
       ])
 
       assert [_] = Corpus.candidates_for(Ecto.UUID.generate(), nil, min_likes: 0)
+    end
+  end
+
+  describe "exclusions" do
+    test "a political post is never offered as a template" do
+      Corpus.upsert_many([
+        attrs(%{
+          text:
+            "The thing nobody tells you about the senate race is that the last " <>
+              "ten percent of the campaign takes as long as the first ninety."
+        })
+      ])
+
+      assert [] == Corpus.candidates_for(Ecto.UUID.generate(), nil, min_likes: 0)
+    end
+
+    test "but Inspiration still shows it unless the filter is on" do
+      Corpus.upsert_many([
+        attrs(%{
+          text:
+            "The thing nobody tells you about the senate race is that the last " <>
+              "ten percent of the campaign takes as long as the first ninety."
+        })
+      ])
+
+      assert [_] = Corpus.search(min_likes: 0)
+      assert [] == Corpus.search(min_likes: 0, exclude: ["politics"])
+      assert [_] = Corpus.search(min_likes: 0, exclude: ["crypto"])
+    end
+
+    test "pattern_for/1 returns nil when nothing is excluded" do
+      assert is_nil(Exclusions.pattern_for([]))
+      assert is_nil(Exclusions.pattern_for(nil))
     end
   end
 

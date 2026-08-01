@@ -6,7 +6,7 @@ defmodule SuperXWeb.InspirationLive do
 
   use SuperXWeb, :live_view
 
-  alias SuperX.Content.{Corpus, VoiceProfile, Writer}
+  alias SuperX.Content.{Corpus, Exclusions, VoiceProfile, Writer}
 
   @ranges [
     {"day", "Past 24 hours", 1},
@@ -27,19 +27,25 @@ defmodule SuperXWeb.InspirationLive do
      |> assign(:min_likes, 100)
      |> assign(:searching, false)
      |> assign(:ranges, @ranges)
+     |> assign(:exclude, [])
+     |> assign(:exclusions, Exclusions.categories())
      |> assign(:suggestions, suggestions(voice))
      |> assign(:corpus_size, Corpus.count())
      |> search()}
   end
 
-  defp suggestions(nil), do: ["startups", "writing", "productivity", "design"]
+  # Falls back to the same categories the library is seeded with, so the
+  # chips offer something the corpus can actually answer.
+  defp suggestions(nil), do: default_suggestions()
 
   defp suggestions(%VoiceProfile{} = voice) do
     case VoiceProfile.topic_list(voice) do
-      [] -> ["startups", "writing", "productivity", "design"]
+      [] -> default_suggestions()
       topics -> Enum.take(topics, 6)
     end
   end
+
+  defp default_suggestions, do: Enum.take(SuperX.Workers.CorpusRefresh.seed_topics(), 6)
 
   defp search(socket) do
     since =
@@ -54,6 +60,7 @@ defmodule SuperXWeb.InspirationLive do
         query: socket.assigns.query,
         since: since,
         min_likes: socket.assigns.min_likes,
+        exclude: socket.assigns.exclude,
         limit: 48
       )
 
@@ -71,6 +78,17 @@ defmodule SuperXWeb.InspirationLive do
 
   def handle_event("set_min_likes", %{"min_likes" => value}, socket) do
     {:noreply, socket |> assign(:min_likes, String.to_integer(value)) |> search()}
+  end
+
+  def handle_event("toggle_exclude", %{"key" => key}, socket) do
+    exclude =
+      if key in socket.assigns.exclude do
+        List.delete(socket.assigns.exclude, key)
+      else
+        [key | socket.assigns.exclude]
+      end
+
+    {:noreply, socket |> assign(:exclude, exclude) |> search()}
   end
 
   def handle_event("suggest", %{"topic" => topic}, socket) do
@@ -159,6 +177,18 @@ defmodule SuperXWeb.InspirationLive do
         class={if @min_likes == n, do: "act-key", else: "act"}
       >
         {format_count(n)}+ likes
+      </button>
+
+      <span class="text-border">·</span>
+
+      <span class="text-faint">Hide</span>
+      <button
+        :for={category <- @exclusions}
+        phx-click="toggle_exclude"
+        phx-value-key={category.key}
+        class={if category.key in @exclude, do: "act-key", else: "act"}
+      >
+        {category.label}
       </button>
     </div>
 

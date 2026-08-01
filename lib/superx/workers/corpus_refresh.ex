@@ -34,7 +34,18 @@ defmodule SuperX.Workers.CorpusRefresh do
   # someone already asked for is empty on day one and stays narrow after
   # that — and the writer borrows *structure*, which transfers across
   # subjects, so breadth here is worth more than precision.
+  #
+  # The first seven are the categories SuperX itself suggests, which is a
+  # useful prior on what this audience actually writes about. The rest
+  # widen it past what one competitor chose to feature.
   @seed_topics [
+    "AI coding tips",
+    "marketing strategies",
+    "startup advice",
+    "productivity hacks",
+    "design inspiration",
+    "growth tactics",
+    "tech trends",
     "building in public",
     "indie hacking",
     "startup lessons",

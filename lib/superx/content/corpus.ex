@@ -13,7 +13,7 @@ defmodule SuperX.Content.Corpus do
   import Pgvector.Ecto.Query
 
   alias SuperX.AI
-  alias SuperX.Content.CorpusPost
+  alias SuperX.Content.{CorpusPost, Exclusions}
   alias SuperX.Repo
 
   @doc """
@@ -125,6 +125,7 @@ defmodule SuperX.Content.Corpus do
       |> filter_since(opts[:since])
       |> filter_topics(opts[:topics])
       |> filter_media(opts[:has_media])
+      |> filter_exclusions(opts[:exclude])
 
     cond do
       is_nil(query_text) or query_text == "" ->
@@ -190,6 +191,15 @@ defmodule SuperX.Content.Corpus do
   defp filter_media(query, nil), do: query
   defp filter_media(query, value), do: where(query, [c], c.has_media == ^value)
 
+  # The pattern is bound as a parameter rather than spliced into the SQL,
+  # so the category definitions stay plain regex with nothing to escape.
+  defp filter_exclusions(query, keys) do
+    case Exclusions.pattern_for(keys) do
+      nil -> query
+      pattern -> where(query, [c], fragment("? !~* ?", c.text, ^pattern))
+    end
+  end
+
   @doc """
   Picks candidate posts to use as structural templates for a user.
 
@@ -209,6 +219,10 @@ defmodule SuperX.Content.Corpus do
     |> where([c], c.likes >= ^(opts[:min_likes] || 500))
     |> where([c], c.id not in subquery(used))
     |> usable_as_template()
+    # Unconditional here, unlike on Inspiration: someone researching crypto
+    # posts wants to see them, but nobody wants the overnight shelf quietly
+    # handing them the shape of a political rant to publish.
+    |> filter_exclusions(Exclusions.all_keys())
     |> filter_topics(topics)
     |> filter_since(opts[:since])
     # Randomised among the strong candidates so two runs don't produce
