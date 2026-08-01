@@ -1,0 +1,4 @@
+interface:
+  display_name: "SuperX Free"
+  short_description: "Manage SuperX drafts, queue, and analytics"
+  default_prompt: "Use $superx-free to review my account and prepare a draft for approval."
