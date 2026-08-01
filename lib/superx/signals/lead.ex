@@ -18,6 +18,9 @@ defmodule SuperX.Signals.Lead do
     belongs_to :x_account, XAccount
     belongs_to :signal_agent, SuperX.Signals.Agent
 
+    has_many :contact_list_memberships, SuperX.Signals.ContactListMembership
+    has_many :contact_lists, through: [:contact_list_memberships, :contact_list]
+
     field :x_user_id, :string
     field :handle, :string
     field :display_name, :string

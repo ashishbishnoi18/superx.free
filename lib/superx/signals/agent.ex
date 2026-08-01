@@ -18,6 +18,7 @@ defmodule SuperX.Signals.Agent do
 
   schema "signal_agents" do
     belongs_to :x_account, XAccount
+    belongs_to :contact_list, SuperX.Signals.ContactList
 
     field :name, :string
     field :kind, :string
@@ -43,6 +44,7 @@ defmodule SuperX.Signals.Agent do
     agent
     |> cast(attrs, [
       :x_account_id,
+      :contact_list_id,
       :name,
       :kind,
       :target,

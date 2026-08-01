@@ -29,6 +29,7 @@ defmodule SuperXWeb.Router do
 
     get "/", PageController, :home
     get "/share/:token", AnalyticsShareController, :show
+    get "/circle/:token", ContactListShareController, :show
     get "/team/invitations/:token", TeamInvitationController, :show
     post "/team/invitations/:token/accept", TeamInvitationController, :accept
     delete "/sign-out", AuthController, :delete
@@ -47,6 +48,7 @@ defmodule SuperXWeb.Router do
     pipe_through [:browser, :require_authenticated_user]
 
     get "/uploads/:id", UploadController, :show
+    get "/contacts/export", ContactExportController, :show
 
     live_session :authenticated,
       on_mount: [{SuperXWeb.UserAuth, :ensure_authenticated}, SuperXWeb.ShellHook],
