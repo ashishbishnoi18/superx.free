@@ -195,6 +195,34 @@ defmodule SuperX.CorpusTest do
     end
   end
 
+  describe "the outlier sample floor" do
+    setup do
+      # Production requires 30 posts behind a median. The suite runs with
+      # a floor of 1 so the maths can be tested on small fixtures, so the
+      # floor itself has to be reinstated here.
+      previous = Application.get_env(:superx, :min_outlier_baseline_sample)
+      Application.put_env(:superx, :min_outlier_baseline_sample, 30)
+      on_exit(fn -> Application.put_env(:superx, :min_outlier_baseline_sample, previous) end)
+    end
+
+    test "suppresses the multiple when the band has too few posts to judge" do
+      # This post is the only one in its band, so its own engagement *is*
+      # the median. A median of one is not evidence, and reporting it as a
+      # huge outlier would be an artefact of the sample.
+      Corpus.upsert_many([attrs(%{x_post_id: "solo", author_followers: 500, likes: 90_000})])
+
+      assert [post] = Corpus.search(min_likes: 0)
+      assert post.outlier_score == 1.0
+    end
+
+    test "min_outlier never filters against a band it cannot judge" do
+      Corpus.upsert_many([attrs(%{x_post_id: "solo", author_followers: 500, likes: 90_000})])
+
+      assert [] ==
+               Corpus.candidates_for(Ecto.UUID.generate(), nil, min_likes: 0, min_outlier: 2.0)
+    end
+  end
+
   describe "exclusions" do
     test "a political post is never offered as a template" do
       Corpus.upsert_many([

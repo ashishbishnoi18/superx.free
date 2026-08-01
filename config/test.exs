@@ -39,6 +39,11 @@ config :phoenix_live_view,
 config :phoenix,
   sort_verified_routes_query_params: true
 
+# Fixtures build bands of a handful of posts. The production floor of 30
+# exists to stop a thin band producing a meaningless multiple; the tests
+# that assert the floor itself set it explicitly.
+config :superx, :min_outlier_baseline_sample, 1
+
 # Stub the HTTP wire in tests rather than reaching the real APIs.
 config :superx, twitter_api_plug: {Req.Test, SuperX.TwitterAPI}
 config :superx, ai_plug: {Req.Test, SuperX.AI}

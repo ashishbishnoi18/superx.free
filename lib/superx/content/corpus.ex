@@ -270,33 +270,53 @@ defmodule SuperX.Content.Corpus do
     end
   end
 
+  # A median is only worth dividing by once enough posts stand behind it.
+  # The sparse tail of the corpus is the small-account bands, which is
+  # exactly where one viral post would otherwise be scored against a
+  # handful of neighbours and reported as "12x" — an artefact of the
+  # sample, not a fact about the post.
+  #
+  # Below this the score is suppressed to 1.0 rather than estimated from
+  # a global median: engagement rate varies so much with account size
+  # that a corpus-wide baseline would systematically mislabel exactly the
+  # accounts it was standing in for. "We cannot tell yet" is the honest
+  # answer, and the badge only renders above 2x anyway.
+  @default_min_baseline_sample 30
+
+  @doc false
+  # Configurable so tests can exercise the maths on small fixtures without
+  # having to manufacture a statistically meaningful corpus to do it.
+  def min_baseline_sample do
+    Application.get_env(:superx, :min_outlier_baseline_sample, @default_min_baseline_sample)
+  end
+
+  defmacrop outlier_multiple(post, baseline) do
+    quote do
+      fragment(
+        "CASE WHEN COALESCE(?, 0) >= ? THEN COALESCE(? / NULLIF(?, 0.0), 1.0) ELSE 1.0 END",
+        unquote(baseline).sample_size,
+        ^min_baseline_sample(),
+        unquote(post).engagement_score,
+        unquote(baseline).median_engagement_score
+      )
+    end
+  end
+
   defp with_outlier(query) do
     query
     |> join(:left, [c], baseline in CorpusOutlierBaseline,
       as: :outlier_baseline,
       on: baseline.follower_bucket == c.follower_bucket
     )
-    |> select_merge([c, outlier_baseline: baseline], %{
-      outlier_score:
-        type(
-          fragment(
-            "COALESCE(? / NULLIF(?, 0.0), 1.0)",
-            c.engagement_score,
-            baseline.median_engagement_score
-          ),
-          :float
-        )
-    })
+    |> select_merge(
+      [c, outlier_baseline: baseline],
+      %{outlier_score: type(outlier_multiple(c, baseline), :float)}
+    )
   end
 
   defp order_results(query, :outlier) do
     order_by(query, [c, outlier_baseline: baseline],
-      desc:
-        fragment(
-          "COALESCE(? / NULLIF(?, 0.0), 1.0)",
-          c.engagement_score,
-          baseline.median_engagement_score
-        ),
+      desc: outlier_multiple(c, baseline),
       desc: c.engagement_score
     )
   end
@@ -365,11 +385,15 @@ defmodule SuperX.Content.Corpus do
 
   defp filter_min_outlier(query, nil), do: query
 
+  # Same sample floor as the displayed multiple: a band too thin to score
+  # is too thin to filter on, and an inner join here would otherwise let
+  # a noisy median decide what the writer is allowed to borrow from.
   defp filter_min_outlier(query, minimum) do
     query
     |> join(:inner, [c], baseline in CorpusOutlierBaseline,
       on: baseline.follower_bucket == c.follower_bucket
     )
+    |> where([c, baseline], baseline.sample_size >= ^min_baseline_sample())
     |> where(
       [c, baseline],
       c.engagement_score >= baseline.median_engagement_score * ^minimum
