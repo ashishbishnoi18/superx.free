@@ -20,17 +20,30 @@ if System.get_env("PHX_SERVER") do
   config :superx, SuperXWeb.Endpoint, server: true
 end
 
+# `System.get_env/2` only falls back when a variable is *unset*, but an
+# unset variable is rare in practice: Docker Compose passes every key it
+# knows about, so a blank line in .env arrives as "". That empty string
+# is truthy, so it shadows the default — an empty model name reaches the
+# provider, and an empty integer raises. Treat blank as absent.
+env = fn name, default ->
+  case System.get_env(name) do
+    nil -> default
+    "" -> default
+    value -> value
+  end
+end
+
 config :superx, SuperXWeb.Endpoint,
-  http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+  http: [port: String.to_integer(env.("PORT", "4000"))]
 
 # --- Secrets shared by every environment -----------------------------------
 
 # X OAuth2 app credentials. Without these, login is disabled and the app
 # boots into a setup screen explaining what to configure.
 config :superx, SuperX.X,
-  client_id: System.get_env("X_CLIENT_ID"),
-  client_secret: System.get_env("X_CLIENT_SECRET"),
-  redirect_uri: System.get_env("X_REDIRECT_URI", "http://localhost:4000/auth/x/callback")
+  client_id: env.("X_CLIENT_ID", nil),
+  client_secret: env.("X_CLIENT_SECRET", nil),
+  redirect_uri: env.("X_REDIRECT_URI", "http://localhost:4000/auth/x/callback")
 
 # LLM provider. Both speak Anthropic's Messages API — DeepSeek serves it
 # at /anthropic with the same header and content-block format — so this is
@@ -40,24 +53,23 @@ config :superx, SuperX.X,
 # whether a post sounds like the user), the utility model runs the
 # high-volume classification and scoring where cheap is right.
 llm =
-  case System.get_env("SUPERX_LLM_PROVIDER", "anthropic") do
+  case env.("SUPERX_LLM_PROVIDER", "anthropic") do
     "deepseek" ->
       %{
         provider: "deepseek",
         base_url: "https://api.deepseek.com/anthropic",
-        api_key: System.get_env("DEEPSEEK_API_KEY"),
-        writer_model: System.get_env("SUPERX_WRITER_MODEL", "deepseek-v4-pro"),
-        utility_model: System.get_env("SUPERX_UTILITY_MODEL", "deepseek-v4-flash")
+        api_key: env.("DEEPSEEK_API_KEY", nil),
+        writer_model: env.("SUPERX_WRITER_MODEL", "deepseek-v4-pro"),
+        utility_model: env.("SUPERX_UTILITY_MODEL", "deepseek-v4-flash")
       }
 
     _anthropic ->
       %{
         provider: "anthropic",
         base_url: "https://api.anthropic.com",
-        api_key: System.get_env("ANTHROPIC_API_KEY"),
-        writer_model: System.get_env("SUPERX_WRITER_MODEL", "claude-sonnet-5"),
-        utility_model:
-          System.get_env("SUPERX_UTILITY_MODEL", "claude-haiku-4-5-20251001")
+        api_key: env.("ANTHROPIC_API_KEY", nil),
+        writer_model: env.("SUPERX_WRITER_MODEL", "claude-sonnet-5"),
+        utility_model: env.("SUPERX_UTILITY_MODEL", "claude-haiku-4-5-20251001")
       }
   end
 
@@ -69,7 +81,7 @@ config :superx, SuperX.AI,
   utility_model: llm.utility_model,
   embedding_model: "voyage-3-large",
   embedding_dimensions: 1024,
-  voyage_api_key: System.get_env("VOYAGE_API_KEY")
+  voyage_api_key: env.("VOYAGE_API_KEY", nil)
 
 # twitterapi.io — the read side. Without a key the corpus, mentions, and
 # Signals stay empty and the rest of the app works normally.
@@ -81,19 +93,17 @@ config :superx, SuperX.AI,
 # one call per 11s rather than failing. Lower this once you're on a paid
 # plan; raising QPS beyond what you pay for only buys 429s.
 config :superx, SuperX.TwitterAPI,
-  api_key: System.get_env("TWITTERAPI_IO_KEY"),
-  min_interval_ms: String.to_integer(System.get_env("TWITTERAPI_IO_MIN_INTERVAL_MS", "5000"))
+  api_key: env.("TWITTERAPI_IO_KEY", nil),
+  min_interval_ms: String.to_integer(env.("TWITTERAPI_IO_MIN_INTERVAL_MS", "5000"))
 
 config :superx, SuperX.Billing,
-  stripe_secret_key: System.get_env("STRIPE_SECRET_KEY"),
-  stripe_webhook_secret: System.get_env("STRIPE_WEBHOOK_SECRET")
+  stripe_secret_key: env.("STRIPE_SECRET_KEY", nil),
+  stripe_webhook_secret: env.("STRIPE_WEBHOOK_SECRET", nil)
 
 # Tier granted to users without a paid subscription. `free` suits a
 # multi-tenant deployment; a private instance paying its own LLM bill
 # should set this to `ultra` so it isn't throttled by its own quotas.
-config :superx,
-       :default_tier,
-       System.get_env("SUPERX_DEFAULT_TIER", "free")
+config :superx, :default_tier, env.("SUPERX_DEFAULT_TIER", "free")
 
 # Stripe price ids per {tier, interval}. Only the pairs you configure are
 # offered, so a partial setup degrades to fewer plans rather than errors.
@@ -111,7 +121,7 @@ config :superx, SuperX.Billing.Checkout,
 # Token encryption key. Required in prod; in dev/test it falls back to a
 # key derived from secret_key_base so a fresh checkout just runs.
 vault_key =
-  case System.get_env("SUPERX_VAULT_KEY") do
+  case env.("SUPERX_VAULT_KEY", nil) do
     nil ->
       if config_env() == :prod do
         raise """
@@ -143,7 +153,7 @@ config :superx, vault_key: vault_key
 
 if config_env() == :prod do
   database_url =
-    System.get_env("DATABASE_URL") ||
+    env.("DATABASE_URL", nil) ||
       raise """
       environment variable DATABASE_URL is missing.
       For example: ecto://USER:PASS@HOST/DATABASE
@@ -154,7 +164,7 @@ if config_env() == :prod do
   config :superx, SuperX.Repo,
     # ssl: true,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    pool_size: String.to_integer(env.("POOL_SIZE", "10")),
     # For machines with several cores, consider starting multiple pools of `pool_size`
     # pool_count: 4,
     socket_options: maybe_ipv6
@@ -165,13 +175,13 @@ if config_env() == :prod do
   # to check this value into version control, so we use an environment
   # variable instead.
   secret_key_base =
-    System.get_env("SECRET_KEY_BASE") ||
+    env.("SECRET_KEY_BASE", nil) ||
       raise """
       environment variable SECRET_KEY_BASE is missing.
       You can generate one by calling: mix phx.gen.secret
       """
 
-  host = System.get_env("PHX_HOST") || "example.com"
+  host = env.("PHX_HOST", "example.com")
 
   config :superx, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
