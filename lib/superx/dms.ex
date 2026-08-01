@@ -6,6 +6,14 @@ defmodule SuperX.DMs do
   Private reads and writes both use X's own API with the account's OAuth
   grant. Unlike the public-data workloads routed through twitterapi.io, DM
   history is small and cannot be read without the user's authorisation.
+
+  `sync/1` reads the account-wide `/2/dm_events` feed, which is the right
+  source for conversations with other people. One thing that surprises you
+  when testing: a message you send to yourself never appears there. It is
+  retrievable through the per-conversation endpoints, so an empty sync on
+  an account whose only message is a self-DM is X behaving as designed,
+  not a parsing failure — confirmed against the live API rather than
+  inferred.
   """
 
   import Ecto.Query
