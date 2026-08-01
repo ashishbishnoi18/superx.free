@@ -33,23 +33,28 @@ defmodule SuperX.XTest do
       path = temporary_file(<<"GIF89a", 0, 0, 0, 0, 0, 0>>)
       counter = start_supervised!({Agent, fn -> 0 end})
 
+      # v2 gives each step its own path rather than a `command` parameter.
+      # Pinned against the wire because the v1.1 shape survives INIT and
+      # only fails at APPEND, which no stub caught until it ran for real.
       Req.Test.stub(X, fn conn ->
         request = Agent.get_and_update(counter, &{&1 + 1, &1 + 1})
         {body, conn} = read_body(conn)
 
         case request do
           1 ->
-            assert body =~ ~s(name="command"\r\n\r\nINIT)
-            assert body =~ ~s(name="media_category"\r\n\r\ntweet_gif)
+            assert conn.request_path == "/2/media/upload/initialize"
+            assert Jason.decode!(body)["media_category"] == "tweet_gif"
+            assert Jason.decode!(body)["total_bytes"] == 12
             json(conn, 200, %{"data" => %{"id" => "x-media-1"}})
 
           2 ->
-            assert body =~ ~s(name="command"\r\n\r\nAPPEND)
+            assert conn.request_path == "/2/media/upload/x-media-1/append"
+            assert body =~ ~s(name="segment_index")
             assert body =~ "GIF89a"
             Plug.Conn.send_resp(conn, 204, "")
 
           3 ->
-            assert body =~ ~s(name="command"\r\n\r\nFINALIZE)
+            assert conn.request_path == "/2/media/upload/x-media-1/finalize"
             json(conn, 200, %{"data" => %{"id" => "x-media-1"}})
         end
       end)

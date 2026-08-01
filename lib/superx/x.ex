@@ -188,15 +188,18 @@ defmodule SuperX.X do
 
   # --- Media ---------------------------------------------------------------
 
+  # v2 gives each step its own path. The `command=INIT` form these were
+  # first written against is the v1.1 shape: it survives INIT and then
+  # fails APPEND with "Missing media field in JSON", because v2 is not
+  # reading a command parameter at all.
   defp initialise_media(access_token, media) do
-    fields = [
-      command: "INIT",
-      total_bytes: media.size,
-      media_type: media.content_type,
-      media_category: media_category(media.content_type)
-    ]
+    body = %{
+      "total_bytes" => media.size,
+      "media_type" => media.content_type,
+      "media_category" => media_category(media.content_type)
+    }
 
-    case request(:post, "/media/upload", form_multipart: fields, token: access_token) do
+    case request(:post, "/media/upload/initialize", json: body, token: access_token) do
       {:ok, %{"data" => %{"id" => id} = data}} ->
         {:ok, id, data["processing_info"]}
 
@@ -210,24 +213,21 @@ defmodule SuperX.X do
 
   defp append_media(access_token, media_id, media) do
     fields = [
-      command: "APPEND",
-      media_id: media_id,
       segment_index: 0,
-      media:
-        {File.stream!(media.path, [], 64_000),
-         filename: media.filename, content_type: media.content_type, size: media.size}
+      media: {File.read!(media.path), filename: media.filename, content_type: media.content_type}
     ]
 
-    case request(:post, "/media/upload", form_multipart: fields, token: access_token) do
+    case request(:post, "/media/upload/#{media_id}/append",
+           form_multipart: fields,
+           token: access_token
+         ) do
       {:ok, _body} -> :ok
       error -> error
     end
   end
 
   defp finalise_media(access_token, media_id, previous_processing) do
-    fields = [command: "FINALIZE", media_id: media_id]
-
-    case request(:post, "/media/upload", form_multipart: fields, token: access_token) do
+    case request(:post, "/media/upload/#{media_id}/finalize", token: access_token) do
       {:ok, %{"data" => data}} -> {:ok, data["processing_info"] || previous_processing}
       {:ok, other} -> {:error, {:unexpected_response, other}}
       error -> error
@@ -251,10 +251,7 @@ defmodule SuperX.X do
     seconds = processing |> Map.get("check_after_secs", 1) |> min(5) |> max(1)
     Process.sleep(seconds * 1_000)
 
-    case request(:get, "/media/upload",
-           params: %{"command" => "STATUS", "media_id" => media_id},
-           token: access_token
-         ) do
+    case request(:get, "/media/upload", params: %{"media_id" => media_id}, token: access_token) do
       {:ok, %{"data" => data}} ->
         await_media(access_token, media_id, data["processing_info"], attempt + 1)
 
