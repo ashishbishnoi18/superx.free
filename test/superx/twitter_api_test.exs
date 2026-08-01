@@ -6,7 +6,9 @@ defmodule SuperX.TwitterAPITest do
   get wrong.
   """
 
-  use ExUnit.Case, async: true
+  # Reads go through the persistent cache, so these need a database even
+  # though what they assert is HTTP behaviour.
+  use SuperX.DataCase, async: true
 
   alias SuperX.TwitterAPI
 

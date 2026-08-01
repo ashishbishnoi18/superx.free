@@ -24,6 +24,8 @@ defmodule SuperX.TwitterAPI do
 
   require Logger
 
+  alias SuperX.ApiCache
+
   @base "https://api.twitterapi.io"
 
   # The free tier is 0.2 QPS — one call per five seconds. Pacing at exactly
@@ -257,7 +259,14 @@ defmodule SuperX.TwitterAPI do
     Enum.find(candidates, [], &is_list/1)
   end
 
+  # Every read goes through the cache. The rate limiter is acquired inside
+  # the miss branch rather than around it, so a cache hit is not made to
+  # wait its turn behind calls that actually cost money.
   defp get(path, params) do
+    ApiCache.fetch(path, params, fn -> do_get(path, params) end)
+  end
+
+  defp do_get(path, params) do
     if configured?() do
       acquire()
 

@@ -176,6 +176,20 @@ paging helper here takes a mandatory ceiling for that reason — a loop that
 pages "until done" can spend a month of budget in a minute. Corpus
 ingestion is capped at 20 topics a day.
 
+**Every response is kept.** Reads go through `SuperX.ApiCache`, which
+stores each call's raw body keyed by endpoint and parameters, so an
+identical call is never bought twice. Rows are never deleted: an expired
+one still records that we paid and what came back, which is what makes
+`SuperX.ApiCache.spend_report/1` the actual bill.
+
+Answers do expire, per endpoint, because a cache that never did would be
+wrong for most of what we read — the corpus search query carries no date,
+so the same topic would return the same page forever and the library
+would stop growing, and mentions would freeze after the first poll.
+Mentions keep for five minutes, searches and follower lists for a day,
+profiles for a week. Errors are never cached, or one 500 would last the
+whole window.
+
 A run spends up to twelve of those topics on what your users actually
 write about and the rest on a rotating built-in list, so a fresh instance
 has a library on day one and an established one keeps broadening. Topics
