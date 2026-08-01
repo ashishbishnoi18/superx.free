@@ -1,10 +1,10 @@
 defmodule SuperX.Content.Writer do
   @moduledoc """
-  Writes posts in a user's voice, seeded by the corpus.
+  Writes posts in a user's voice, seeded by a structural source.
 
-  The loop is: pick a topic the user actually posts about, retrieve a
-  high-performing post as a structural template, then rewrite that
-  structure onto the topic in the user's voice.
+  The ordinary loop retrieves a high-performing corpus post; a remix
+  supplies one of the user's own published posts instead. Both then cross
+  the same prompt, derivative guard, storage, and billing boundary.
 
   Credits are claimed before the model call and refunded if it fails, so
   a provider outage never costs the user anything.
@@ -15,11 +15,26 @@ defmodule SuperX.Content.Writer do
   alias SuperX.{AI, Billing, Content}
   alias SuperX.AI.Prompts
   alias SuperX.Accounts.{User, XAccount}
-  alias SuperX.Content.{Corpus, Generation, Voice, VoiceProfile}
+  alias SuperX.Content.{Corpus, CorpusPost, Generation, Post, Voice, VoiceProfile}
 
   # One shelf item costs one credit. Ask, which runs a longer agentic
   # loop, costs more — see SuperX.Content.Ask.
   @credit_cost 1
+
+  @doc "Credits spent for one post generation or remix."
+  def credit_cost, do: @credit_cost
+
+  @doc "Writes a fresh variant using one of the account's published posts as its shape."
+  def remix(
+        %User{} = user,
+        %XAccount{id: account_id} = account,
+        %Post{x_account_id: account_id, status: "posted"} = post
+      ) do
+    source = %CorpusPost{text: Post.preview_text(post)}
+    generate(user, account, source: source, kind: "for_you")
+  end
+
+  def remix(%User{}, %XAccount{}, %Post{}), do: {:error, :not_published}
 
   @doc """
   Generates one post and puts it on the shelf.
@@ -211,13 +226,20 @@ defmodule SuperX.Content.Writer do
           &%{"text" => &1 |> to_string() |> strip_thread_markers(), "media_ids" => []}
         ),
       kind: kind,
-      source_corpus_post_id: source && source.id,
-      source_likes: source && source.likes,
+      source_corpus_post_id: corpus_value(source, :id),
+      source_likes: corpus_value(source, :likes),
       model: AI.writer_model(),
       credits_cost: @credit_cost,
-      score: source && source.engagement_score
+      score: corpus_value(source, :engagement_score)
     })
   end
+
+  # A user's own published post can guide the same rewrite path without
+  # masquerading as a row in the shared corpus or acquiring its attribution.
+  defp corpus_value(%CorpusPost{id: id} = source, key) when not is_nil(id),
+    do: Map.fetch!(source, key)
+
+  defp corpus_value(_source, _key), do: nil
 
   # Segments are chained into a thread by the publisher, so any numbering
   # the model writes itself publishes as literal text — a post that ends

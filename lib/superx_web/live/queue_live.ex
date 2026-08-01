@@ -7,7 +7,7 @@ defmodule SuperXWeb.QueueLive do
   use SuperXWeb, :live_view
 
   alias SuperX.Content
-  alias SuperX.Content.{Generation, Post, Slot, Week}
+  alias SuperX.Content.{Generation, Post, Slot, Week, Writer}
   alias SuperXWeb.MediaUploads
 
   @tabs ~w(scheduled draft posted failed)
@@ -24,6 +24,7 @@ defmodule SuperXWeb.QueueLive do
      |> assign(:editing, nil)
      |> assign(:composer_slot, nil)
      |> assign(:filling_slot, nil)
+     |> assign(:remixing, nil)
      |> assign(:segments, [])
      |> assign(:posts, [])
      |> assign(:counts, %{})
@@ -295,6 +296,29 @@ defmodule SuperXWeb.QueueLive do
 
   # --- Queue actions -------------------------------------------------------
 
+  def handle_event("remix", _params, %{assigns: %{remixing: id}} = socket)
+      when not is_nil(id),
+      do: {:noreply, socket}
+
+  def handle_event("remix", %{"id" => id}, socket) do
+    case Content.get_post(socket.assigns.current_user, id) do
+      %Post{status: "posted"} = post ->
+        parent = self()
+        user = socket.assigns.current_user
+        account = socket.assigns.current_x_account
+
+        Task.Supervisor.start_child(SuperX.TaskSupervisor, fn ->
+          result = Writer.remix(user, account, post)
+          send(parent, {:remixed, post.id, result})
+        end)
+
+        {:noreply, assign(socket, :remixing, post.id)}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "That published post is no longer available.")}
+    end
+  end
+
   def handle_event("unschedule", %{"id" => id}, socket) do
     with %Post{} = post <- Content.get_post(socket.assigns.current_user, id),
          {:ok, _} <- Content.unschedule_post(post) do
@@ -384,6 +408,34 @@ defmodule SuperXWeb.QueueLive do
   end
 
   defp same_instant?(_left, _right), do: false
+
+  @impl true
+  def handle_info({:remixed, _id, {:ok, _generation}}, socket) do
+    send(self(), :refresh_quota)
+
+    {:noreply,
+     socket
+     |> assign(:remixing, nil)
+     |> put_flash(:info, "Fresh variant ready.")
+     |> push_navigate(to: ~p"/ready-to-post")}
+  end
+
+  def handle_info({:remixed, _id, {:error, :quota_exceeded, _details}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:remixing, nil)
+     |> put_flash(:error, "You're out of AI credits for this window.")}
+  end
+
+  def handle_info({:remixed, _id, {:error, reason}}, socket) do
+    require Logger
+    Logger.warning("Post remix failed: #{inspect(reason)}")
+
+    {:noreply,
+     socket
+     |> assign(:remixing, nil)
+     |> put_flash(:error, "Couldn't write a fresh variant just now.")}
+  end
 
   defp persist(socket, status) do
     {segments, errors} = consume_media(socket)
@@ -551,6 +603,7 @@ defmodule SuperXWeb.QueueLive do
             post={slot.post}
             time_label={slot_time(slot)}
             account={@current_x_account}
+            remixing={@remixing}
           />
 
           <article
@@ -611,6 +664,7 @@ defmodule SuperXWeb.QueueLive do
           post={post}
           time_label={format_time(post, @current_user.timezone)}
           account={@current_x_account}
+          remixing={@remixing}
         />
       </section>
     </section>
@@ -630,6 +684,7 @@ defmodule SuperXWeb.QueueLive do
         post={post}
         time_label={format_time(post, @current_user.timezone)}
         account={@current_x_account}
+        remixing={@remixing}
       />
     </div>
     """
@@ -639,6 +694,7 @@ defmodule SuperXWeb.QueueLive do
   attr :post, :map, required: true
   attr :time_label, :string, required: true
   attr :account, :map, required: true
+  attr :remixing, :string, default: nil, doc: "id of the post currently being remixed"
 
   defp post_row(assigns) do
     ~H"""
@@ -694,6 +750,15 @@ defmodule SuperXWeb.QueueLive do
           >
             View on 𝕏
           </a>
+          <button
+            :if={@post.status == "posted"}
+            phx-click="remix"
+            phx-value-id={@post.id}
+            class="act-key"
+            disabled={not is_nil(@remixing)}
+          >
+            {if @remixing == @post.id, do: "Writing…", else: "Remix"}
+          </button>
           <button
             :if={@post.status != "posted"}
             phx-click="delete"

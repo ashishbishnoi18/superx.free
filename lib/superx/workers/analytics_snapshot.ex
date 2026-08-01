@@ -32,6 +32,13 @@ defmodule SuperX.Workers.AnalyticsSnapshot do
 
     with {:ok, token, account} <- SuperX.X.Tokens.fresh_token(account),
          {:ok, profile} <- SuperX.X.get_me(token) do
+      profile =
+        Map.put(
+          profile,
+          :last_synced_at,
+          DateTime.utc_now() |> DateTime.truncate(:second)
+        )
+
       {:ok, account} = Accounts.update_x_account_profile(account, profile)
 
       Analytics.record_snapshot(account, date, %{

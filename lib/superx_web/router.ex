@@ -27,6 +27,7 @@ defmodule SuperXWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/share/:token", AnalyticsShareController, :show
     delete "/sign-out", AuthController, :delete
   end
 
