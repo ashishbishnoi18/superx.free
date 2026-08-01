@@ -255,6 +255,25 @@ runs idempotent. A 403 during setup means the app permission tier still needs
 to be upgraded; an account connected before DM access was enabled is marked for
 reconnection without making a DM request.
 
+**Expect the inbox to stay empty anyway.** X's DM API only sees legacy,
+unencrypted conversations. Anything in XChat — the encrypted messaging X
+now defaults to, served at `/i/chat` — is absent from it, not merely
+filtered: `/2/dm_events` returns `result_count: 0` and a conversation
+lookup by id returns "Could not find dm_conversation" for a thread you can
+read in the web client at that moment.
+
+Measured here, not assumed: a DM created *through the API* was readable
+back through the API immediately, while two messages sent from the X app
+to the same account were invisible to all three lookup endpoints on the
+same token in the same minute. Other developers report the same thing
+after a conversation upgrades to encryption
+([1](https://devcommunity.x.com/t/x-api-stops-returning-new-direct-messages-in-the-dm-events-endpoint/267856),
+[2](https://devcommunity.x.com/t/x-api-bug-i-found-out-why-we-can-t-access-dms-after-conversation-upgraded/255763)).
+
+Sending still works, and legacy threads still sync. Reaching XChat would
+mean the Activity API's chat webhooks — a push integration rather than
+this polling one — and that surface is currently alpha.
+
 ## Programmatic access
 
 The in-app reference lives at `/api`. Create a token under **Accounts → API

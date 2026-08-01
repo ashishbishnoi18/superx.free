@@ -7,13 +7,26 @@ defmodule SuperX.DMs do
   grant. Unlike the public-data workloads routed through twitterapi.io, DM
   history is small and cannot be read without the user's authorisation.
 
-  `sync/1` reads the account-wide `/2/dm_events` feed, which is the right
-  source for conversations with other people. One thing that surprises you
-  when testing: a message you send to yourself never appears there. It is
-  retrievable through the per-conversation endpoints, so an empty sync on
-  an account whose only message is a self-DM is X behaving as designed,
-  not a parsing failure — confirmed against the live API rather than
-  inferred.
+  `sync/1` reads the account-wide `/2/dm_events` feed.
+
+  ## Why your inbox may sync as empty
+
+  X's DM API only sees *legacy, unencrypted* conversations. Anything that
+  lives in XChat — the encrypted messaging X now defaults to, served at
+  `/i/chat` — is invisible to it. Not filtered, absent: `/2/dm_events`
+  returns `result_count: 0`, and asking for the conversation by id returns
+  "Could not find dm_conversation" for a thread that is plainly on screen
+  in the web client.
+
+  Measured on this account rather than assumed. A DM *created through the
+  API* was readable back through the API moments later; two messages sent
+  from the X app to the same account were invisible to all three lookup
+  endpoints. Same token, same scopes, same minute.
+
+  So an empty sync is very often correct, and this code is not the thing
+  to debug. The path forward if X's own inbox matters more than the API's
+  is the Activity API's chat webhooks, which do deliver these events —
+  a push integration, not a fix to this polling one.
   """
 
   import Ecto.Query
