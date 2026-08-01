@@ -7,7 +7,7 @@ defmodule SuperXWeb.QueueLive do
   use SuperXWeb, :live_view
 
   alias SuperX.Content
-  alias SuperX.Content.{Post, Week}
+  alias SuperX.Content.{Generation, Post, Slot, Week}
   alias SuperXWeb.MediaUploads
 
   @tabs ~w(scheduled draft posted failed)
@@ -22,8 +22,17 @@ defmodule SuperXWeb.QueueLive do
      |> assign(:view, "list")
      |> assign(:week_anchor, nil)
      |> assign(:editing, nil)
+     |> assign(:composer_slot, nil)
+     |> assign(:filling_slot, nil)
      |> assign(:segments, [])
-     |> load()}
+     |> assign(:posts, [])
+     |> assign(:counts, %{})
+     |> assign(:next_slot, nil)
+     |> assign(:upcoming_slots, [])
+     |> assign(:upcoming_slot_groups, [])
+     |> assign(:unslotted_posts, [])
+     |> assign(:shelf, [])
+     |> assign(:week, nil)}
   end
 
   @impl true
@@ -41,12 +50,43 @@ defmodule SuperXWeb.QueueLive do
 
   defp load(socket) do
     account = socket.assigns.current_x_account
+    timeline = Slot.timeline(account, socket.assigns.current_user)
+    upcoming_slots = timeline.occurrences
 
     socket
-    |> assign(:posts, Content.list_posts(account, socket.assigns.tab))
+    |> assign(:posts, list_posts(account, socket.assigns.tab))
     |> assign(:counts, Content.post_counts(account))
-    |> assign(:next_slot, Content.next_open_slot_at(account, socket.assigns.current_user))
+    |> assign(:next_slot, next_opening(upcoming_slots))
+    |> assign(:upcoming_slots, upcoming_slots)
+    |> assign(:upcoming_slot_groups, group_slots(upcoming_slots))
+    |> assign(:unslotted_posts, timeline.unslotted_posts)
+    |> assign(:shelf, list_shelf(account, socket.assigns))
     |> assign_week()
+  end
+
+  defp list_posts(_account, "scheduled"), do: []
+  defp list_posts(account, tab), do: Content.list_posts(account, tab)
+
+  defp list_shelf(account, %{tab: "scheduled", view: "list"}) do
+    Content.list_shelf(account, limit: 8, preload_source: false)
+  end
+
+  defp list_shelf(_account, _assigns), do: []
+
+  defp next_opening(upcoming_slots) do
+    Enum.find_value(upcoming_slots, fn
+      %{post: nil, at: at} -> at
+      _slot -> nil
+    end)
+  end
+
+  defp group_slots(upcoming_slots) do
+    upcoming_slots
+    |> Enum.chunk_by(&DateTime.to_date(&1.local_at))
+    |> Enum.map(fn slots ->
+      date = slots |> hd() |> Map.fetch!(:local_at) |> DateTime.to_date()
+      %{date: date, slots: slots}
+    end)
   end
 
   # Only built when the calendar is on screen — it costs a query and the
@@ -71,7 +111,11 @@ defmodule SuperXWeb.QueueLive do
         put_flash(socket, :error, "That post no longer exists.")
 
       post ->
-        socket |> assign(:editing, post) |> put_composer(post.segments)
+        socket
+        |> assign(:editing, post)
+        |> assign(:composer_slot, post.scheduled_at)
+        |> assign(:filling_slot, nil)
+        |> put_composer(post.segments)
     end
   end
 
@@ -79,13 +123,32 @@ defmodule SuperXWeb.QueueLive do
 
   @impl true
   def handle_event("compose", _params, socket) do
-    {:noreply, socket |> assign(:editing, :new) |> put_composer([])}
+    {:noreply,
+     socket
+     |> assign(:editing, :new)
+     |> assign(:composer_slot, nil)
+     |> assign(:filling_slot, nil)
+     |> put_composer([])}
+  end
+
+  def handle_event("compose_for_slot", %{"at" => encoded_at}, socket) do
+    with {:ok, slot} <- find_open_slot(socket, encoded_at) do
+      {:noreply,
+       socket
+       |> assign(:editing, :new)
+       |> assign(:composer_slot, slot.at)
+       |> assign(:filling_slot, nil)
+       |> put_composer([])}
+    else
+      _ -> {:noreply, stale_slot(socket)}
+    end
   end
 
   def handle_event("close_composer", _params, socket) do
     {:noreply,
      socket
      |> assign(:editing, nil)
+     |> assign(:composer_slot, nil)
      |> assign(:segments, [])
      |> push_patch(to: ~p"/queue?tab=#{socket.assigns.tab}")}
   end
@@ -148,6 +211,7 @@ defmodule SuperXWeb.QueueLive do
          socket
          |> put_flash(:info, "Saved to drafts.")
          |> assign(:editing, nil)
+         |> assign(:composer_slot, nil)
          |> assign(:segments, [])
          |> assign(:tab, "draft")
          |> load()}
@@ -160,27 +224,57 @@ defmodule SuperXWeb.QueueLive do
   def handle_event("add_to_queue", _params, socket) do
     {socket, result} = persist(socket, "draft")
 
-    with {:ok, post} <- result,
-         {:ok, scheduled} <- Content.schedule_post(post) do
+    case result do
+      {:ok, post} -> schedule_composed_post(socket, post)
+      {:error, reason} -> {:noreply, put_flash(socket, :error, error_message(reason))}
+    end
+  end
+
+  def handle_event("choose_ready_for_slot", %{"at" => encoded_at}, socket) do
+    with {:ok, slot} <- find_open_slot(socket, encoded_at) do
+      {:noreply, assign(socket, :filling_slot, slot.at)}
+    else
+      _ -> {:noreply, stale_slot(socket)}
+    end
+  end
+
+  def handle_event("close_ready_picker", _params, socket) do
+    {:noreply, assign(socket, :filling_slot, nil)}
+  end
+
+  def handle_event(
+        "fill_slot_from_shelf",
+        %{"id" => generation_id, "at" => encoded_at},
+        socket
+      ) do
+    with {:ok, slot} <- find_open_slot(socket, encoded_at),
+         %Generation{x_account_id: account_id, status: "shelf"} = generation <-
+           Content.get_generation(socket.assigns.current_user, generation_id),
+         true <- account_id == socket.assigns.current_x_account.id,
+         {:ok, scheduled} <-
+           Content.accept_generation_into_slot(
+             socket.assigns.current_user,
+             generation,
+             slot.at
+           ) do
       {:noreply,
        socket
        |> put_flash(
          :info,
          "Queued for #{format_when(scheduled.scheduled_at, socket.assigns.current_user.timezone)}."
        )
-       |> assign(:editing, nil)
-       |> assign(:segments, [])
-       |> assign(:tab, "scheduled")
+       |> assign(:filling_slot, nil)
        |> load()}
     else
-      {:error, :no_slots} ->
+      {:error, :slot_taken} ->
+        {:noreply, stale_slot(socket)}
+
+      _ ->
         {:noreply,
          socket
-         |> put_flash(:error, "Choose some posting times first.")
-         |> push_navigate(to: ~p"/settings")}
-
-      {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, error_message(changeset))}
+         |> put_flash(:error, "We couldn't put that draft in the opening.")
+         |> assign(:filling_slot, nil)
+         |> load()}
     end
   end
 
@@ -229,6 +323,67 @@ defmodule SuperXWeb.QueueLive do
         {:noreply, socket |> put_flash(:info, "Deleted.") |> load()}
     end
   end
+
+  defp schedule_composed_post(socket, post) do
+    case Content.schedule_post(post, schedule_options(socket)) do
+      {:ok, scheduled} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "Queued for #{format_when(scheduled.scheduled_at, socket.assigns.current_user.timezone)}."
+         )
+         |> assign(:editing, nil)
+         |> assign(:composer_slot, nil)
+         |> assign(:segments, [])
+         |> assign(:tab, "scheduled")
+         |> load()}
+
+      {:error, :no_slots} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Choose some posting times first.")
+         |> push_navigate(to: ~p"/settings")}
+
+      {:error, :slot_taken} ->
+        {:noreply, socket |> assign(:editing, post) |> stale_slot()}
+
+      {:error, changeset} ->
+        {:noreply,
+         socket
+         |> assign(:editing, post)
+         |> put_flash(:error, error_message(changeset))}
+    end
+  end
+
+  defp schedule_options(%{assigns: %{composer_slot: %DateTime{} = at}}), do: [at: at]
+  defp schedule_options(_socket), do: []
+
+  defp find_open_slot(socket, encoded_at) do
+    with {:ok, at, _offset} <- DateTime.from_iso8601(encoded_at),
+         %{} = slot <-
+           Enum.find(socket.assigns.upcoming_slots, fn slot ->
+             is_nil(slot.post) and same_instant?(slot.at, at)
+           end) do
+      {:ok, slot}
+    else
+      _ -> {:error, :not_open}
+    end
+  end
+
+  defp stale_slot(socket) do
+    socket
+    |> assign(:filling_slot, nil)
+    |> assign(:composer_slot, nil)
+    |> put_flash(:error, "That opening was filled while you were choosing.")
+    |> load()
+  end
+
+  defp same_instant?(%DateTime{} = left, %DateTime{} = right) do
+    DateTime.compare(left, right) == :eq
+  end
+
+  defp same_instant?(_left, _right), do: false
 
   defp persist(socket, status) do
     {segments, errors} = consume_media(socket)
@@ -309,7 +464,10 @@ defmodule SuperXWeb.QueueLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.page_header title="Queue" description={queue_description(@next_slot, @current_user)}>
+    <Layouts.page_header
+      title="Queue"
+      description={queue_description(@next_slot, @upcoming_slot_groups, @current_user)}
+    >
       <:action>
         <button phx-click="compose" class="act-key whitespace-nowrap">Create a post</button>
       </:action>
@@ -319,6 +477,8 @@ defmodule SuperXWeb.QueueLive do
       :if={@editing}
       segments={@segments}
       editing={@editing}
+      composer_slot={@composer_slot}
+      timezone={@current_user.timezone}
       account={@current_x_account}
       uploads={@uploads}
     />
@@ -356,89 +516,255 @@ defmodule SuperXWeb.QueueLive do
       </.link>
     </div>
 
-    <div :if={@view == "list" and @posts == []} class="py-16 text-center">
+    <section
+      :if={@view == "list" and @tab == "scheduled"}
+      id="queue-upcoming-slots"
+      class="flex flex-col"
+    >
+      <div :if={@upcoming_slot_groups == []} id="queue-no-schedule" class="py-16 text-center">
+        <p class="text-muted-foreground">No posting times yet.</p>
+        <.link navigate={~p"/settings"} class="act-key mt-4 inline-block">
+          Pick some under Schedule
+        </.link>
+      </div>
+
+      <section
+        :for={{group, index} <- Enum.with_index(@upcoming_slot_groups)}
+        id={slot_group_id(group.date)}
+      >
+        <h2 class={[
+          "flex items-baseline gap-3 border-b border-border pb-2",
+          if(index == 0, do: "pt-0", else: "pt-7")
+        ]}>
+          <span class="nb-eyebrow text-[10px] text-foreground">
+            {Calendar.strftime(group.date, "%A")}
+          </span>
+          <span class="nb-mono text-[11px] font-normal text-faint">
+            {Calendar.strftime(group.date, "%-d %b")}
+          </span>
+        </h2>
+
+        <%= for slot <- group.slots do %>
+          <.post_row
+            :if={slot.post}
+            id={slot_id(slot)}
+            post={slot.post}
+            time_label={slot_time(slot)}
+            account={@current_x_account}
+          />
+
+          <article
+            :if={is_nil(slot.post)}
+            id={slot_id(slot)}
+            data-slot-state="open"
+            class="grid grid-cols-1 gap-4 border-b border-border py-5 sm:grid-cols-[7.5rem_minmax(0,1fr)_auto] sm:gap-7"
+          >
+            <div class="nb-mono text-[11px] leading-[1.9] text-muted-foreground">
+              {slot_time(slot)}
+            </div>
+
+            <div class="min-w-0">
+              <p class="text-[13px] text-muted-foreground">
+                Nothing is queued for this opening.
+              </p>
+              <div class="mt-3 flex flex-wrap items-center gap-5 text-xs">
+                <button
+                  id={"write-slot-#{slot_key(slot)}"}
+                  phx-click="compose_for_slot"
+                  phx-value-at={DateTime.to_iso8601(slot.at)}
+                  class="act-key"
+                >
+                  Write something
+                </button>
+                <button
+                  :if={@shelf != []}
+                  id={"ready-slot-#{slot_key(slot)}"}
+                  phx-click="choose_ready_for_slot"
+                  phx-value-at={DateTime.to_iso8601(slot.at)}
+                  class="act"
+                >
+                  Use a ready draft
+                </button>
+              </div>
+
+              <.ready_picker
+                :if={same_instant?(@filling_slot, slot.at)}
+                slot={slot}
+                shelf={@shelf}
+              />
+            </div>
+
+            <span class="nb-mono text-[11px] tracking-[0.04em] text-faint">open</span>
+          </article>
+        <% end %>
+      </section>
+
+      <section :if={@unslotted_posts != []} id="queue-unslotted-posts">
+        <h2 class="flex items-baseline gap-3 border-b border-border pb-2 pt-7">
+          <span class="nb-eyebrow text-[10px] text-foreground">Outside the schedule</span>
+          <span class="text-[11px] font-normal text-faint">retries and immediate posts</span>
+        </h2>
+
+        <.post_row
+          :for={post <- @unslotted_posts}
+          id={"queue-post-#{post.id}"}
+          post={post}
+          time_label={format_time(post, @current_user.timezone)}
+          account={@current_x_account}
+        />
+      </section>
+    </section>
+
+    <div
+      :if={@view == "list" and @tab != "scheduled" and @posts == []}
+      id={"queue-#{@tab}-empty"}
+      class="py-16 text-center"
+    >
       <p class="text-muted-foreground">{empty_message(@tab)}</p>
     </div>
 
-    <div :if={@view == "list"} class="flex flex-col">
-      <article
+    <div :if={@view == "list" and @tab != "scheduled"} class="flex flex-col">
+      <.post_row
         :for={post <- @posts}
-        class="grid grid-cols-1 gap-7 border-b border-border py-5 sm:grid-cols-[7.5rem_minmax(0,1fr)_auto]"
-      >
-        <div class="nb-mono text-[11px] leading-[1.9] text-muted-foreground">
-          {format_time(post, @current_user.timezone)}
-        </div>
-
-        <div class="min-w-0">
-          <%!-- Every segment is visible because the tail is where mistakes
-                hide; the shared card also keeps attachment crops identical
-                to the shelf and composer. --%>
-          <.post
-            author={author(@current_x_account)}
-            segments={segments(post)}
-            class="max-w-[42rem]"
-          />
-
-          <p :if={post.status == "failed"} class="mt-1.5 text-[12px] text-destructive">
-            {post.error}
-          </p>
-
-          <div class="mt-3 flex flex-wrap items-center gap-5 text-xs">
-            <.link
-              :if={post.status in ["draft", "scheduled"]}
-              patch={~p"/queue/#{post.id}"}
-              class="act-key"
-            >
-              Edit
-            </.link>
-            <button
-              :if={post.status == "scheduled"}
-              phx-click="unschedule"
-              phx-value-id={post.id}
-              class="act"
-            >
-              Move to drafts
-            </button>
-            <button
-              :if={post.status == "failed"}
-              phx-click="retry"
-              phx-value-id={post.id}
-              class="act-key"
-            >
-              Try again
-            </button>
-            <a
-              :if={post.permalink}
-              href={post.permalink}
-              target="_blank"
-              rel="noopener"
-              class="act"
-            >
-              View on 𝕏
-            </a>
-            <button
-              :if={post.status != "posted"}
-              phx-click="delete"
-              phx-value-id={post.id}
-              data-confirm="Delete this post?"
-              class="act-danger"
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-
-        <span class={["nb-mono text-[11px] tracking-[0.04em]", state_class(post.status)]}>
-          {state_label(post.status)}
-        </span>
-      </article>
+        id={"queue-post-#{post.id}"}
+        post={post}
+        time_label={format_time(post, @current_user.timezone)}
+        account={@current_x_account}
+      />
     </div>
     """
   end
 
-  defp queue_description(nil, _user), do: "No posting times set yet — pick some under Schedule."
+  attr :id, :string, required: true
+  attr :post, :map, required: true
+  attr :time_label, :string, required: true
+  attr :account, :map, required: true
 
-  defp queue_description(slot, user) do
+  defp post_row(assigns) do
+    ~H"""
+    <article
+      id={@id}
+      data-slot-state={@post.status}
+      class="grid grid-cols-1 gap-4 border-b border-border py-5 sm:grid-cols-[7.5rem_minmax(0,1fr)_auto] sm:gap-7"
+    >
+      <div class="nb-mono text-[11px] leading-[1.9] text-muted-foreground">
+        {@time_label}
+      </div>
+
+      <div class="min-w-0">
+        <%!-- Every segment is visible because the tail is where mistakes
+              hide; the shared card also keeps attachment crops identical
+              to the shelf and composer. --%>
+        <.post author={author(@account)} segments={segments(@post)} class="max-w-[42rem]" />
+
+        <p :if={@post.status == "failed"} class="mt-1.5 text-[12px] text-destructive">
+          {@post.error}
+        </p>
+
+        <div class="mt-3 flex flex-wrap items-center gap-5 text-xs">
+          <.link
+            :if={@post.status in ["draft", "scheduled"]}
+            patch={~p"/queue/#{@post.id}"}
+            class="act-key"
+          >
+            Edit
+          </.link>
+          <button
+            :if={@post.status == "scheduled"}
+            phx-click="unschedule"
+            phx-value-id={@post.id}
+            class="act"
+          >
+            Move to drafts
+          </button>
+          <button
+            :if={@post.status == "failed"}
+            phx-click="retry"
+            phx-value-id={@post.id}
+            class="act-key"
+          >
+            Try again
+          </button>
+          <a
+            :if={@post.permalink}
+            href={@post.permalink}
+            target="_blank"
+            rel="noopener"
+            class="act"
+          >
+            View on 𝕏
+          </a>
+          <button
+            :if={@post.status != "posted"}
+            phx-click="delete"
+            phx-value-id={@post.id}
+            data-confirm="Delete this post?"
+            class="act-danger"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+
+      <span class={["nb-mono text-[11px] tracking-[0.04em]", state_class(@post.status)]}>
+        {state_label(@post.status)}
+      </span>
+    </article>
+    """
+  end
+
+  attr :slot, :map, required: true
+  attr :shelf, :list, required: true
+
+  defp ready_picker(assigns) do
+    ~H"""
+    <section id={"ready-picker-#{slot_key(@slot)}"} class="mt-5 border-y border-border py-4">
+      <div class="mb-3 flex items-center justify-between gap-5">
+        <p class="nb-eyebrow text-[10px]">Ready to Post</p>
+        <button phx-click="close_ready_picker" class="act text-xs">Close</button>
+      </div>
+
+      <div
+        :for={generation <- @shelf}
+        id={"ready-choice-#{generation.id}"}
+        class="flex items-start justify-between gap-6 border-t border-border py-3 first:border-t-0 first:pt-0 last:pb-0"
+      >
+        <div class="min-w-0">
+          <p class="line-clamp-2 text-[13px] leading-[1.5]">
+            {truncate(Generation.text(generation), 150)}
+          </p>
+          <p class="nb-mono mt-1 text-[10px] text-faint">{generation_label(generation.kind)}</p>
+        </div>
+        <button
+          phx-click="fill_slot_from_shelf"
+          phx-value-id={generation.id}
+          phx-value-at={DateTime.to_iso8601(@slot.at)}
+          class="act-key shrink-0 text-xs"
+        >
+          Use this draft
+        </button>
+      </div>
+    </section>
+    """
+  end
+
+  defp slot_group_id(date), do: "queue-day-#{Date.to_iso8601(date)}"
+  defp slot_id(slot), do: "queue-slot-#{slot_key(slot)}"
+  defp slot_key(slot), do: DateTime.to_unix(slot.at)
+  defp slot_time(slot), do: Calendar.strftime(slot.local_at, "%-I:%M %p")
+
+  defp generation_label(kind) do
+    kind |> String.replace("_", " ") |> String.capitalize()
+  end
+
+  defp queue_description(nil, [], _user),
+    do: "No posting times set yet — pick some under Schedule."
+
+  defp queue_description(nil, _groups, _user) do
+    "The next four weeks are full. New drafts will take the first opening after them."
+  end
+
+  defp queue_description(slot, _groups, user) do
     "Next opening is #{format_when(slot, user.timezone)}. Approved drafts fill it on their own."
   end
 
@@ -549,6 +875,8 @@ defmodule SuperXWeb.QueueLive do
 
   attr :segments, :list, required: true
   attr :editing, :any, required: true
+  attr :composer_slot, :any, required: true
+  attr :timezone, :string, required: true
   attr :account, :map, required: true
   attr :uploads, :map, required: true
 
@@ -572,6 +900,9 @@ defmodule SuperXWeb.QueueLive do
       <div class="mb-3 flex items-center justify-between">
         <span class="nb-eyebrow">
           {if is_struct(@editing), do: "Editing", else: "New post"}
+        </span>
+        <span :if={@composer_slot} class="nb-mono text-[10px] text-faint">
+          for {format_when(@composer_slot, @timezone)}
         </span>
         <button type="button" phx-click="close_composer" class="act text-xs">Close</button>
       </div>

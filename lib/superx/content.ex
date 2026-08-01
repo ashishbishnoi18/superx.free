@@ -7,7 +7,7 @@ defmodule SuperX.Content do
   import Ecto.Query
 
   alias SuperX.Accounts.{User, XAccount}
-  alias SuperX.Content.{Generation, Post, ScheduleSlot, VoiceProfile}
+  alias SuperX.Content.{Generation, Post, ScheduleSlot, Slot, VoiceProfile}
   alias SuperX.Repo
 
   # --- Voice profiles ------------------------------------------------------
@@ -118,22 +118,114 @@ defmodule SuperX.Content do
   @doc """
   Schedules a post into the next free slot, or at `at` when given.
 
-  Returns `{:error, :no_slots}` when the account has no enabled slots,
-  which the UI turns into a prompt to set some up.
+  Returns `{:error, :no_slots}` when the account has no enabled slots and
+  `{:error, :slot_taken}` when an explicit time has already been claimed.
   """
   def schedule_post(%Post{} = post, opts \\ []) do
     account = Repo.get!(XAccount, post.x_account_id)
     user = Repo.get!(User, post.user_id)
+    requested_at = opts[:at]
 
-    case opts[:at] || next_open_slot_at(account, user) do
-      nil ->
-        {:error, :no_slots}
+    Repo.transaction(fn ->
+      lock_queue(account.id)
 
-      %DateTime{} = at ->
-        post
-        |> Post.changeset(%{status: "scheduled", scheduled_at: DateTime.truncate(at, :second)})
-        |> Repo.update()
-    end
+      case requested_at || next_open_slot_at(account, user) do
+        nil ->
+          Repo.rollback(:no_slots)
+
+        %DateTime{} = at ->
+          at = DateTime.truncate(at, :second)
+
+          if requested_at && scheduled_at_taken?(account.id, post.id, at) do
+            Repo.rollback(:slot_taken)
+          else
+            post
+            |> Post.changeset(%{status: "scheduled", scheduled_at: at})
+            |> Repo.update()
+            |> unwrap_transaction()
+          end
+      end
+    end)
+  end
+
+  defp unwrap_transaction({:ok, value}), do: value
+  defp unwrap_transaction({:error, reason}), do: Repo.rollback(reason)
+
+  defp lock_queue(account_id) do
+    # Scheduling can arrive from LiveViews, Ask, and workers at once. A
+    # per-account transaction lock makes "next opening" a claim rather
+    # than two readers choosing the same apparently empty time.
+    Repo.query!("SELECT pg_advisory_xact_lock(hashtext($1))", ["superx.queue:#{account_id}"])
+  end
+
+  defp scheduled_at_taken?(account_id, post_id, at) do
+    Post
+    |> where([queued], queued.x_account_id == ^account_id and queued.status == "scheduled")
+    |> where([queued], queued.scheduled_at == ^at and queued.id != ^post_id)
+    |> Repo.exists?()
+  end
+
+  defp scheduled_at_taken?(account_id, at) do
+    Post
+    |> where([queued], queued.x_account_id == ^account_id and queued.status == "scheduled")
+    |> where([queued], queued.scheduled_at == ^at)
+    |> Repo.exists?()
+  end
+
+  defp insert_scheduled_generation(user, generation, at) do
+    Repo.transaction(fn ->
+      lock_queue(generation.x_account_id)
+
+      generation =
+        Repo.get_by(
+          Generation,
+          id: generation.id,
+          user_id: user.id,
+          x_account_id: generation.x_account_id,
+          status: "shelf"
+        ) || Repo.rollback(:not_on_shelf)
+
+      if scheduled_at_taken?(generation.x_account_id, at) do
+        Repo.rollback(:slot_taken)
+      end
+
+      generation
+      |> Generation.changeset(%{status: "used"})
+      |> Repo.update()
+      |> unwrap_transaction()
+
+      %Post{}
+      |> Post.changeset(%{
+        user_id: user.id,
+        x_account_id: generation.x_account_id,
+        generation_id: generation.id,
+        segments: generation.segments,
+        source: "generated",
+        status: "scheduled",
+        scheduled_at: at
+      })
+      |> Repo.insert()
+      |> unwrap_transaction()
+    end)
+  end
+
+  @doc """
+  Moves a shelf item directly into one known opening.
+
+  The shelf update and post insert share the queue lock and transaction, so
+  a stale opening cannot consume a generation or create two posts at the
+  same time.
+  """
+  def accept_generation_into_slot(
+        %User{} = user,
+        %Generation{status: "shelf"} = generation,
+        %DateTime{} = at
+      ) do
+    insert_scheduled_generation(user, generation, DateTime.truncate(at, :second))
+  end
+
+  def accept_generation_into_slot(%User{}, %Generation{}, %DateTime{}) do
+    {:error, :not_on_shelf}
   end
 
   @doc "Moves a scheduled post back to drafts."
@@ -150,52 +242,12 @@ defmodule SuperX.Content do
   """
   @spec next_open_slot_at(XAccount.t(), User.t()) :: DateTime.t() | nil
   def next_open_slot_at(%XAccount{} = account, %User{} = user) do
-    slots = account |> list_slots() |> Enum.filter(& &1.enabled)
-
-    if slots == [] do
-      nil
-    else
-      taken = scheduled_times(account)
-      now = DateTime.utc_now()
-
-      account
-      |> upcoming_slot_times(slots, user.timezone, now)
-      |> Enum.find(&(&1 not in taken))
-    end
-  end
-
-  defp scheduled_times(%XAccount{} = account) do
-    Post
-    |> where(x_account_id: ^account.id, status: "scheduled")
-    |> select([p], p.scheduled_at)
-    |> Repo.all()
-    |> MapSet.new()
-  end
-
-  # Every slot occurrence over the next 8 weeks, in chronological order.
-  defp upcoming_slot_times(_account, slots, timezone, now) do
-    today = now |> DateTime.shift_zone!(timezone, Tz.TimeZoneDatabase) |> DateTime.to_date()
-
-    0..55
-    |> Enum.flat_map(fn offset ->
-      date = Date.add(today, offset)
-      dow = Date.day_of_week(date, :sunday) - 1
-
-      slots
-      |> Enum.filter(&(&1.day_of_week == dow))
-      |> Enum.flat_map(fn slot ->
-        case DateTime.new(date, slot.time, timezone, Tz.TimeZoneDatabase) do
-          {:ok, dt} ->
-            [dt |> DateTime.shift_zone!("Etc/UTC") |> DateTime.truncate(:second)]
-
-          # Skip times that don't exist on a DST spring-forward day.
-          _ ->
-            []
-        end
-      end)
+    account
+    |> Slot.upcoming(user, weeks: 8)
+    |> Enum.find_value(fn
+      %{post: nil, at: at} -> at
+      _occurrence -> nil
     end)
-    |> Enum.filter(&(DateTime.compare(&1, now) == :gt))
-    |> Enum.sort(DateTime)
   end
 
   @doc "Scheduled posts that are due, for the dispatcher."
@@ -261,7 +313,13 @@ defmodule SuperX.Content do
     |> then(fn q -> if opts[:kind], do: where(q, kind: ^opts[:kind]), else: q end)
     |> order_by([g], desc: g.score, desc: g.inserted_at)
     |> limit(^(opts[:limit] || 60))
-    |> preload(:source_corpus_post)
+    |> then(fn query ->
+      if Keyword.get(opts, :preload_source, true) do
+        preload(query, :source_corpus_post)
+      else
+        query
+      end
+    end)
     |> Repo.all()
   end
 

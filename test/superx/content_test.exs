@@ -260,5 +260,34 @@ defmodule SuperX.ContentTest do
 
       assert %{"for_you" => 2} = Content.shelf_deficit(account, %{"for_you" => 3})
     end
+
+    test "a filled opening does not consume another shelf draft", %{
+      user: user,
+      account: account
+    } do
+      at = Content.next_open_slot_at(account, user)
+
+      {:ok, first} =
+        Content.create_generation(%{
+          user_id: user.id,
+          x_account_id: account.id,
+          segments: [%{"text" => "first"}]
+        })
+
+      {:ok, second} =
+        Content.create_generation(%{
+          user_id: user.id,
+          x_account_id: account.id,
+          segments: [%{"text" => "second"}]
+        })
+
+      assert {:ok, scheduled} = Content.accept_generation_into_slot(user, first, at)
+      assert scheduled.scheduled_at == at
+      assert {:error, :slot_taken} = Content.accept_generation_into_slot(user, second, at)
+      assert Content.get_generation(user, second.id).status == "shelf"
+
+      next_at = Content.next_open_slot_at(account, user)
+      assert {:error, :not_on_shelf} = Content.accept_generation_into_slot(user, first, next_at)
+    end
   end
 end
