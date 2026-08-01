@@ -83,6 +83,18 @@ defmodule SuperX.CorpusTest do
       assert [] == Corpus.candidates_for(Ecto.UUID.generate(), nil, min_likes: 0)
     end
 
+    test "rejects a post promising a list it never delivers" do
+      Corpus.upsert_many([
+        attrs(%{
+          text:
+            "the best conversations happen in doorways. 3 types of goodbyes " <>
+              "that tell you everything about how someone actually feels."
+        })
+      ])
+
+      assert [] == Corpus.candidates_for(Ecto.UUID.generate(), nil, min_likes: 0)
+    end
+
     test "does not reject a post that merely contains the word breaking" do
       Corpus.upsert_many([
         attrs(%{

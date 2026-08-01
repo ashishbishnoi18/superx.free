@@ -252,6 +252,17 @@ defmodule SuperX.Content.Corpus do
     # flag isn't available here — Ecto reads `?` as a placeholder — so
     # the newline is spelled out instead.
     |> where([c], fragment("? !~ E'(^|\\n)[[:space:]]*(BREAKING|JUST IN|DEVELOPING)'", c.text))
+    # Promises a list: "3 types of…", "10 lessons…". The corpus stores a
+    # thread's opening post, and the list itself lives in replies that were
+    # never captured — so the shape on offer is a hook with no payload, and
+    # borrowing it produces a draft that sets something up and stops.
+    |> where(
+      [c],
+      fragment(
+        "? !~* '[0-9]+[[:space:]]+(types|ways|things|lessons|reasons|rules|steps|tips|mistakes|habits|signs|traits|truths|questions)'",
+        c.text
+      )
+    )
   end
 
   @doc "Posts still missing an embedding, for the backfill job."
