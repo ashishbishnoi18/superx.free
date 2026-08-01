@@ -1,0 +1,27 @@
+{
+  "name": "superx-free",
+  "version": "0.1.0",
+  "description": "Command-line access to a self-hosted SuperX account",
+  "type": "module",
+  "bin": {
+    "superx-free": "bin/superx-free.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "superx",
+    "twitter",
+    "x",
+    "cli"
+  ],
+  "license": "MIT"
+}

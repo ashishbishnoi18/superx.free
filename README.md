@@ -290,6 +290,18 @@ authenticated response includes `RateLimit-Limit`, `RateLimit-Remaining`, and
 current UTC-day request count. Counters are kept on the single application node
 and start fresh after a restart.
 
+### CLI and agent skill
+
+The dependency-free Node 20 client is documented in
+[`cli/README.md`](cli/README.md). It installs the `superx-free` binary and
+covers login, reads, draft creation, scheduling, and local deletion. It has no
+direct publish command.
+
+The companion agent instructions live at
+[`skills/superx-free/SKILL.md`](skills/superx-free/SKILL.md). The folder follows
+the skill layout consumed by `npx skills add` and keeps human approval between
+drafting and scheduling.
+
 ### MCP clients
 
 The same token exposes SuperX's Ask tools over Streamable HTTP at `/mcp`.
