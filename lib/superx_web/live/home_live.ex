@@ -85,7 +85,7 @@ defmodule SuperXWeb.HomeLive do
     <section
       :if={@getting_started?}
       id="getting-started"
-      class="mb-10 border-y border-border py-6"
+      class="mb-9 border-y border-border py-6"
     >
       <p class="nb-eyebrow mb-1">Start here</p>
       <p class="mb-4 max-w-[62ch] text-[12px] leading-[1.6] text-faint">
@@ -137,7 +137,7 @@ defmodule SuperXWeb.HomeLive do
       </ul>
     </section>
 
-    <div class="mb-10 grid grid-cols-3 gap-px border-y border-border bg-border">
+    <div class="mb-9 grid grid-cols-3 gap-px border-y border-border bg-border">
       <.link
         :for={
           {label, value, href} <- [

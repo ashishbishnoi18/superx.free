@@ -196,7 +196,7 @@ defmodule SuperXWeb.ReadyToPostLive do
       to have SuperX write drafts for you. You can still write your own.
     </p>
 
-    <div class="mb-6 flex gap-6 border-b border-border">
+    <div class="mb-9 flex gap-6 border-b border-border">
       <.link patch={~p"/ready-to-post"} class="tab" aria-selected={to_string(is_nil(@kind))}>
         All <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "all", 0)}</span>
       </.link>

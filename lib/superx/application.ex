@@ -20,7 +20,6 @@ defmodule SuperX.Application do
       SuperX.TwitterAPI,
       # Optional self-hosted read path. Starts even when the binary is
       # missing; twitterapi.io is the default source.
-      SuperX.Scraper,
       {Oban, Application.fetch_env!(:superx, Oban)},
       # Start to serve requests, typically the last entry
       SuperXWeb.Endpoint

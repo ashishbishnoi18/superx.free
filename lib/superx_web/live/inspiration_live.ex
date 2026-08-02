@@ -218,7 +218,7 @@ defmodule SuperXWeb.InspirationLive do
       description={"#{format_count(@corpus_size)} posts that outperformed their author's baseline. Search for structure worth borrowing, not subjects worth copying."}
     />
 
-    <div id="inspiration-tabs" class="mb-5 flex gap-6 border-b border-border text-sm">
+    <div id="inspiration-tabs" class="mb-9 flex gap-6 border-b border-border text-sm">
       <button
         :for={{value, label} <- [{"posts", "Posts"}, {"media", "Media"}]}
         id={"tab-#{value}"}
@@ -387,7 +387,7 @@ defmodule SuperXWeb.InspirationLive do
       </.form>
     </details>
 
-    <div class="mb-6 flex flex-wrap items-center gap-5 border-y border-border py-3 text-xs">
+    <div class="mb-9 flex flex-wrap items-center gap-5 border-y border-border py-3 text-xs">
       <span class="text-faint">Sort</span>
       <button
         :for={{value, label} <- [{"engagement", "Engagement"}, {"outlier", "Outlier"}]}
@@ -415,8 +415,10 @@ defmodule SuperXWeb.InspirationLive do
 
     <div :if={@corpus_size == 0} class="py-16 text-center">
       <p class="text-muted-foreground">
-        The library is empty. Point the ingestion worker at the topics you care about —
-        see <code class="nb-mono text-[12px] text-foreground">scraper/README.md</code>.
+        The library is empty. It fills overnight from your voice profile's
+        topics — see the first-run steps in
+        <code class="nb-mono text-[12px] text-foreground">docs/SETUP.md</code>
+        to fetch a batch now.
       </p>
     </div>
 

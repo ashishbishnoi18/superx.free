@@ -128,14 +128,10 @@ The configured prices must match the tier and interval encoded by each variable.
 The Docker image contains a supervised Go process that can populate the
 corpus from X’s public web GraphQL endpoint. twitterapi.io takes priority when
 both sources are configured. This worker is off unless both credentials below
-are present. Read its legal warning in `scraper/README.md` before enabling it.
+
 
 | Variable | Required | Default | Purpose and missing behaviour |
 |---|---|---|---|
-| `X_WEB_BEARER` | No | None | Public-web bearer token used to activate a guest session. Without this or `X_SEARCH_PATH`, the process starts, reports `configured: false`, and refuses search requests. The rest of the application continues. |
-| `X_SEARCH_PATH` | No | None | Current GraphQL `<query-id>/SearchTimeline` path segment. X changes it. A stale or missing value leaves corpus searches failing or empty. |
-| `X_SEARCH_FEATURES` | No | `{}` in the worker | JSON feature-flag object passed as the `features` query parameter. Compose passes a blank value if it is absent from `.env`; the worker trims that blank and uses `{}`. Stale flags can make X reject or change the response. |
-| `X_MIN_REQUEST_INTERVAL` | No | `2000` | Minimum milliseconds between guest-token and GraphQL requests. Invalid values silently fall back to 2,000 ms. Requests are serial and add jitter. |
 | `X_USER_AGENT` | No | A Chrome 131 user-agent string | HTTP user-agent sent by the Go worker. Blank uses its built-in value. Compose does not list this variable, but a directly started worker reads it. |
 | `HTTPS_PROXY` | No | None | Proxy for HTTPS egress from the Go worker. Compose passes this variable. Missing sends requests directly. |
 | `HTTP_PROXY` | No | None | Standard Go HTTP proxy variable. The worker honors it through `http.ProxyFromEnvironment`, although Compose does not pass it by default. |

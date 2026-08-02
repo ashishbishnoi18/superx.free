@@ -303,7 +303,7 @@ defmodule SuperXWeb.DMsLive do
 
   defp availability_notice(%{availability: :disabled} = assigns) do
     ~H"""
-    <section id="dm-availability" class="mb-8 border-y border-border py-4">
+    <section id="dm-availability" class="mb-9 border-y border-border py-4">
       <p class="font-medium">DM access is off on this installation.</p>
       <p class="mt-1 max-w-[64ch] text-[12px] text-muted-foreground">
         Upgrade the X app to Read and write and Direct message, then set <code class="nb-mono text-[11px] text-foreground">SUPERX_ENABLE_DMS=true</code>.
@@ -315,7 +315,7 @@ defmodule SuperXWeb.DMsLive do
 
   defp availability_notice(%{availability: :reauthorize} = assigns) do
     ~H"""
-    <section id="dm-availability" class="mb-8 border-y border-border py-4">
+    <section id="dm-availability" class="mb-9 border-y border-border py-4">
       <p class="font-medium">@{@account.handle} has not granted DM access.</p>
       <p class="mt-1 text-[12px] text-muted-foreground">
         The permission change invalidates the old grant.
@@ -328,7 +328,7 @@ defmodule SuperXWeb.DMsLive do
 
   defp availability_notice(%{availability: :ready} = assigns) do
     ~H"""
-    <section id="dm-sync-status" class="mb-8 border-y border-border py-4">
+    <section id="dm-sync-status" class="mb-9 border-y border-border py-4">
       <p class="font-medium">Incoming sync is configured.</p>
       <p class="mt-1 max-w-[68ch] text-[12px] text-muted-foreground">
         SuperX checks X every five minutes with this account's OAuth grant.

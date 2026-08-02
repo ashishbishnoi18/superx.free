@@ -191,7 +191,7 @@ defmodule SuperXWeb.AskLive do
         <p :if={@thinking} class="nb-mono text-[11px] text-faint">working…</p>
       </div>
 
-      <form phx-submit="ask" class="mt-8 border-t border-border pt-5">
+      <form phx-submit="ask" class="mt-9 border-t border-border pt-5">
         <label class="label" for="question">
           Ask something
           <span class="nb-mono ml-2 font-normal text-faint">{Ask.credit_cost()} credits</span>
@@ -212,7 +212,7 @@ defmodule SuperXWeb.AskLive do
       </form>
     </div>
 
-    <section :if={@chats != []} class="mt-12 border-t border-border pt-6">
+    <section :if={@chats != []} class="mt-9 border-t border-border pt-6">
       <p class="nb-eyebrow mb-3">Earlier</p>
       <ul class="flex flex-col">
         <li

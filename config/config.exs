@@ -43,7 +43,7 @@ config :superx, Oban,
     publishing: 20,
     # LLM calls: generation, voice profiles, reply drafts.
     generation: 10,
-    # Corpus ingestion + watch agent polling, driven by the Go scraper.
+    # Corpus ingestion and watch agent polling.
     ingestion: 10,
     # Private inboxes, analytics snapshots, token refresh, housekeeping.
     maintenance: 5

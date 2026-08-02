@@ -335,10 +335,9 @@ defmodule SuperX.CorpusTest do
   end
 
   describe "corpus refresh execution" do
-    test "uses the scraper when it is the configured read source" do
+    test "does not enqueue anything without a configured read source" do
       previous_twitter = Application.get_env(:superx, SuperX.TwitterAPI, [])
       previous_refresh = Application.get_env(:superx, CorpusRefresh, [])
-      scraper_state = :sys.get_state(SuperX.Scraper)
       test_pid = self()
 
       Application.put_env(
@@ -353,22 +352,15 @@ defmodule SuperX.CorpusTest do
         enqueue_topics: fn topics, opts -> send(test_pid, {:enqueued, topics, opts}) end
       )
 
-      :sys.replace_state(SuperX.Scraper, &%{&1 | configured: true})
-
       on_exit(fn ->
         Application.put_env(:superx, SuperX.TwitterAPI, previous_twitter)
         Application.put_env(:superx, CorpusRefresh, previous_refresh)
-        :sys.replace_state(SuperX.Scraper, fn _state -> scraper_state end)
       end)
 
-      assert :ok =
-               CorpusRefresh.perform(%Oban.Job{
-                 args: %{"limit_topics" => 2, "spacing_seconds" => 0}
-               })
+      assert :ok = CorpusRefresh.perform(%Oban.Job{args: %{}})
 
-      assert_receive {:enqueued, topics, opts}
-      assert length(topics) == 2
-      assert opts[:spacing_seconds] == 0
+      # No key, no source, nothing bought.
+      refute_receive {:enqueued, _topics, _opts}
     end
 
     test "queues corpus topics immediately by default" do

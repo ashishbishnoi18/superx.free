@@ -1,8 +1,8 @@
 # Self-hosted SuperX: app + Postgres on one box.
 #
-# The app container runs the web server, the Oban workers, and the Go
-# scraper as one supervised OS process — there is no separate worker or
-# scheduler service to keep alive.
+# The app container runs the web server, the Oban workers and cron as one
+# supervised OS process — there is no separate worker or scheduler service
+# to keep alive.
 
 services:
   db:
@@ -83,12 +83,6 @@ services:
       STRIPE_SEAT_PRICE_ULTRA_MONTH: ${STRIPE_SEAT_PRICE_ULTRA_MONTH}
       STRIPE_SEAT_PRICE_ULTRA_YEAR: ${STRIPE_SEAT_PRICE_ULTRA_YEAR}
 
-      # Scraper — optional. Unset means the corpus stays empty.
-      X_WEB_BEARER: ${X_WEB_BEARER}
-      X_SEARCH_PATH: ${X_SEARCH_PATH}
-      X_SEARCH_FEATURES: ${X_SEARCH_FEATURES}
-      X_MIN_REQUEST_INTERVAL: ${X_MIN_REQUEST_INTERVAL:-2000}
-      HTTPS_PROXY: ${HTTPS_PROXY}
     ports:
       - "${BIND_ADDR:-127.0.0.1}:4000:4000"
     volumes:

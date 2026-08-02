@@ -199,8 +199,13 @@ defmodule SuperXWeb.ContactsLive do
       placeholder and are explicitly marked as not AI-scored.
     </p>
 
-    <section id="contact-lists" class="mb-7 border-y border-border py-4">
+    <%!-- Two filter rows stacked, both beginning with "All", both styled the
+          same, were impossible to tell apart. They filter different axes —
+          which audience, and how far along each person is — so each row
+          names its axis. --%>
+    <section id="contact-lists" class="mb-9 border-y border-border py-4">
       <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
+        <span class="nb-eyebrow shrink-0 text-[10px]">List</span>
         <.link
           patch={contacts_path(nil, @status)}
           class={if is_nil(@selected_list), do: "act-key", else: "act"}
@@ -270,7 +275,7 @@ defmodule SuperXWeb.ContactsLive do
       </div>
     </section>
 
-    <section :if={@share} id="contact-list-share" class="mb-8 border-y border-border py-4">
+    <section :if={@share} id="contact-list-share" class="mb-9 border-y border-border py-4">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between">
         <div class="min-w-0">
           <p class="nb-eyebrow">Public circle</p>
@@ -290,13 +295,14 @@ defmodule SuperXWeb.ContactsLive do
       </div>
     </section>
 
-    <div class="mb-6 flex flex-wrap gap-6 border-b border-border">
+    <div class="mb-9 flex flex-wrap items-center gap-6 border-b border-border">
+      <span class="nb-eyebrow shrink-0 pb-2.5 text-[10px]">Stage</span>
       <.link
         patch={contacts_path(@selected_list && @selected_list.id, nil)}
         class="tab"
         aria-selected={to_string(is_nil(@status))}
       >
-        All <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "all", 0)}</span>
+        All <span class="tab-count ml-1">{Map.get(@counts, "all", 0)}</span>
       </.link>
       <.link
         :for={status <- @statuses}
@@ -305,7 +311,7 @@ defmodule SuperXWeb.ContactsLive do
         aria-selected={to_string(@status == status)}
       >
         {String.capitalize(status)}
-        <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, status, 0)}</span>
+        <span class="tab-count ml-1">{Map.get(@counts, status, 0)}</span>
       </.link>
     </div>
 

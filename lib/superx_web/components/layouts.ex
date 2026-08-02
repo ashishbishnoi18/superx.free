@@ -339,7 +339,7 @@ defmodule SuperXWeb.Layouts do
 
   def page_header(assigns) do
     ~H"""
-    <header class="mb-8">
+    <header class="page-header">
       <div class="flex items-start justify-between gap-6">
         <div>
           <h1 class="text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.03em]">{@title}</h1>

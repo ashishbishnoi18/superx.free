@@ -165,7 +165,7 @@ defmodule SuperXWeb.AnalyticsLive do
       </:action>
     </Layouts.page_header>
 
-    <section :if={@share} id="analytics-share" class="mb-8 border-y border-border py-4">
+    <section :if={@share} id="analytics-share" class="mb-9 border-y border-border py-4">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between">
         <div class="min-w-0">
           <p class="nb-eyebrow">Public summary</p>
@@ -378,7 +378,7 @@ defmodule SuperXWeb.AnalyticsLive do
         {history_upload_error(error)}
       </p>
 
-      <div :if={@import_report} id="analytics-import-report" class="mt-5 border-t border-border pt-4">
+      <div :if={@import_report} id="analytics-import-report" class="mt-9 border-t border-border pt-4">
         <p>{imported_summary(@import_report)}</p>
         <p class="mt-1 text-[12px] text-muted-foreground">{skipped_summary(@import_report)}</p>
         <p

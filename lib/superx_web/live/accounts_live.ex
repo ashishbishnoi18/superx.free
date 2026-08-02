@@ -278,7 +278,7 @@ defmodule SuperXWeb.AccountsLive do
       </div>
     </div>
 
-    <section id="team-settings" class="mt-12 border-t border-border py-6">
+    <section id="team-settings" class="mt-9 border-t border-border py-6">
       <div class="grid grid-cols-1 gap-7 sm:grid-cols-[14rem_minmax(0,1fr)]">
         <div>
           <h2 class="text-[15px] font-semibold">Team</h2>
@@ -408,7 +408,7 @@ defmodule SuperXWeb.AccountsLive do
       </div>
     </section>
 
-    <section id="appearance-settings" class="mt-6 border-t border-border py-6">
+    <section id="appearance-settings" class="mt-9 border-t border-border py-6">
       <div class="grid grid-cols-1 gap-7 sm:grid-cols-[14rem_minmax(0,1fr)]">
         <div>
           <h2 class="text-[15px] font-semibold">Appearance</h2>
@@ -437,7 +437,7 @@ defmodule SuperXWeb.AccountsLive do
       </div>
     </section>
 
-    <section id="api-access" class="mt-6 border-t border-border py-6">
+    <section id="api-access" class="mt-9 border-t border-border py-6">
       <div class="grid grid-cols-1 gap-7 sm:grid-cols-[14rem_minmax(0,1fr)]">
         <div>
           <h2 class="text-[15px] font-semibold">API access</h2>
@@ -452,7 +452,7 @@ defmodule SuperXWeb.AccountsLive do
             id="api-usage"
             data-limit={@api_limit}
             data-requests-today={@api_usage.requests_today}
-            class="mb-6 flex flex-wrap items-center justify-between gap-3 border-y border-border py-3"
+            class="mb-9 flex flex-wrap items-center justify-between gap-3 border-y border-border py-3"
           >
             <p class="text-[12px] text-muted-foreground">
               <span class="font-medium text-foreground">{Plan.get(@tier).name}</span>
@@ -468,7 +468,7 @@ defmodule SuperXWeb.AccountsLive do
           <div
             :if={@new_api_token}
             id="new-api-token"
-            class="mb-6 border-y border-border py-4"
+            class="mb-9 border-y border-border py-4"
           >
             <div class="flex items-baseline justify-between gap-6">
               <span class="nb-eyebrow">Shown once</span>

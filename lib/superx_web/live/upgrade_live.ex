@@ -106,7 +106,7 @@ defmodule SuperXWeb.UpgradeLive do
       </div>
     </section>
 
-    <section id="seat-pricing" class="mb-10 border-y border-border py-6">
+    <section id="seat-pricing" class="mb-9 border-y border-border py-6">
       <div class="grid grid-cols-1 gap-7 sm:grid-cols-[14rem_minmax(0,1fr)]">
         <div>
           <p class="nb-eyebrow">Team seats</p>
@@ -168,37 +168,47 @@ defmodule SuperXWeb.UpgradeLive do
       </button>
     </div>
 
-    <div class="flex flex-col">
+    <%!-- Side by side, because the job on this screen is comparison. As
+          stacked full-width rows the reader had to scroll between tiers and
+          hold three feature lists in their head, and the CTA sat in the
+          middle of the page instead of at the foot of the thing it buys. --%>
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
       <section
         :for={plan <- @plans}
-        class="grid grid-cols-1 gap-7 border-t border-border py-6 last:border-b sm:grid-cols-[14rem_minmax(0,1fr)]"
+        id={"plan-#{plan.tier}"}
+        class="plan-card"
+        data-current={plan.tier == @tier && "true"}
       >
-        <div>
-          <div class="flex items-baseline gap-2">
-            <h3 class="text-[15px] font-semibold">{plan.name}</h3>
-            <span :if={plan.tier == @tier} class="nb-mono text-[11px] text-primary">current</span>
-          </div>
-          <p class="mt-1 text-[12px] leading-[1.6] text-faint">{plan.tagline}</p>
-          <p class="nb-display mt-3 text-[1.5rem] font-semibold tracking-[-0.03em] tabular-nums">
-            ${price(plan, @interval)}
-            <span class="nb-mono text-[11px] font-normal text-faint">
-              /{if @interval == :month, do: "mo", else: "yr"}
-            </span>
-          </p>
-          <p
-            :if={!@team_owner && @seat_count > 0}
-            id={"#{plan.tier}-seat-price"}
-            class="nb-mono mt-2 text-[11px] leading-[1.6] text-faint"
-          >
-            {seat_price_line(plan, @interval, @seat_count)}
-          </p>
+        <div class="flex items-center gap-2">
+          <h3 class="text-[15px] font-semibold">{plan.name}</h3>
+          <span :if={plan.tier == @tier} class="badge badge-ember">current</span>
         </div>
+        <p class="mt-1 text-[12px] leading-[1.6] text-faint">{plan.tagline}</p>
 
-        <div>
-          <ul class="flex flex-col gap-1.5">
-            <li :for={feature <- plan.features} class="text-muted-foreground">{feature}</li>
-          </ul>
+        <p class="nb-display mt-4 text-[1.75rem] font-semibold tracking-[-0.035em] tabular-nums">
+          ${price(plan, @interval)}
+          <span class="nb-mono text-[11px] font-normal text-faint">
+            /{if @interval == :month, do: "mo", else: "yr"}
+          </span>
+        </p>
+        <p
+          :if={!@team_owner && @seat_count > 0}
+          id={"#{plan.tier}-seat-price"}
+          class="nb-mono mt-2 text-[11px] leading-[1.6] text-faint"
+        >
+          {seat_price_line(plan, @interval, @seat_count)}
+        </p>
 
+        <ul class="mt-5 flex flex-1 flex-col gap-2">
+          <li :for={feature <- plan.features} class="flex gap-2 text-[13px] text-muted-foreground">
+            <.icon name="hero-check" class="mt-0.5 size-3.5 shrink-0 text-primary" />
+            <span>{feature}</span>
+          </li>
+        </ul>
+
+        <%!-- The action lives at the foot of the card it buys, so the price,
+              what you get, and how to get it are one object. --%>
+        <div class="mt-6">
           <button
             :if={
               !@team_owner and plan.tier != @tier and
@@ -206,7 +216,7 @@ defmodule SuperXWeb.UpgradeLive do
             }
             phx-click="checkout"
             phx-value-tier={plan.tier}
-            class="act-key mt-5 text-xs"
+            class={if Plan.upgrade?(@tier, plan.tier), do: "btn-primary w-full", else: "btn w-full"}
           >
             {if Plan.upgrade?(@tier, plan.tier), do: "Upgrade", else: "Switch"} to {plan.name}
           </button>
@@ -215,7 +225,7 @@ defmodule SuperXWeb.UpgradeLive do
               !@team_owner and plan.tier != @tier and @billing_configured and @seat_count > 0 and
                 !Billing.Checkout.configured_for?(plan.tier, @interval, @seat_count)
             }
-            class="mt-5 text-[12px] text-faint"
+            class="text-[12px] text-faint"
           >
             Seat billing is not configured for this plan and interval.
           </p>

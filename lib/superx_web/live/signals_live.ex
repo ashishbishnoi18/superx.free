@@ -250,7 +250,7 @@ defmodule SuperXWeb.SignalsLive do
       </article>
     </div>
 
-    <section class="mt-10 border-t border-border pt-6">
+    <section class="mt-9 border-t border-border pt-6">
       <p class="nb-eyebrow mb-4">New agent</p>
 
       <.form for={@agent_form} id="signal-agent-form" phx-submit="create" class="flex flex-col gap-5">

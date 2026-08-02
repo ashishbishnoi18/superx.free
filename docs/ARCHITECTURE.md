@@ -2,7 +2,7 @@
 
 SuperX is a Phoenix application designed to run on one host with one
 PostgreSQL database. The browser, web server, scheduler, workers, and optional
-scraper are not separate deployable services.
+workers are not separate deployable services.
 
 ```text
 Browser
@@ -40,12 +40,10 @@ separate worker deployment.
 - `SuperXWeb.ApiRateLimit` keeps programmatic API counters for the current
   node.
 - `SuperX.TwitterAPI` serializes paid public reads behind one node-wide clock.
-- `SuperX.Scraper` supervises the optional Go process through an Erlang Port.
 - Oban executes durable jobs and cron schedules.
 - `SuperXWeb.Endpoint` serves HTTP, WebSockets, and long polling.
 
 The supervisor uses `:one_for_one`: a failed optional worker can restart
-without taking down unrelated children. The Go scraper is started even when
 its binary or credentials are missing. In that state it reports itself
 unconfigured and corpus work skips it.
 
@@ -174,7 +172,6 @@ record.
 The optional Go worker is only a corpus fallback. Corpus ingestion prefers
 twitterapi.io when both are configured. The worker cannot fill Engage or
 Signals. It uses X’s public web GraphQL surface and carries the operational and
-terms-of-service risk described in `scraper/README.md`.
 
 ### Writes and private reads: X API v2
 
@@ -302,7 +299,6 @@ crashing the release:
 - no Voyage key selects full-text retrieval;
 - no Stripe configuration leaves the instance on its default tier;
 - DM access off makes no DM requests;
-- no Go scraper disables only its corpus fallback.
 
 The exceptions are core production secrets and the database connection. A
 production release cannot safely run without `DATABASE_URL`,

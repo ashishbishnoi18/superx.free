@@ -21,20 +21,8 @@ ARG ELIXIR_VERSION=1.19.5
 ARG OTP_VERSION=26.2.5.20
 ARG DEBIAN_VERSION=trixie-20260610-slim
 
-ARG GO_VERSION=1.25
-
 ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="docker.io/debian:${DEBIAN_VERSION}"
-
-# --- Scraper -----------------------------------------------------------------
-# The read-side worker is a separate Go binary driven over a Port. Built
-# here so it matches the runner's architecture, and statically linked so
-# it needs nothing from the runtime image.
-FROM docker.io/golang:${GO_VERSION} AS scraper
-
-WORKDIR /src
-COPY scraper/ ./
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/scraper .
 
 # --- Elixir ------------------------------------------------------------------
 FROM ${BUILDER_IMAGE} AS builder
@@ -68,9 +56,6 @@ RUN mix deps.compile
 RUN mix assets.setup
 
 COPY priv priv
-
-# Ships inside the release, so `bin/server` finds it at priv/scraper.
-COPY --from=scraper /out/scraper priv/scraper
 
 COPY lib lib
 

@@ -36,7 +36,6 @@ External credentials are capability based:
 | `TWITTERAPI_IO_KEY` | Supported public reads: corpus, mentions, feeds, replies, public profiles, followers, lists, and Signals | Official-X writes and private reads continue. The public-data screens stay empty. The Go worker can fill only the corpus. |
 | `VOYAGE_API_KEY` | Semantic corpus retrieval and embedding backfill | PostgreSQL full-text corpus search remains available. |
 | `STRIPE_SECRET_KEY`, webhook secret, and selected price IDs | Charging users of a multi-tenant instance | Billing stays disabled and users receive `SUPERX_DEFAULT_TIER`. This is normal for a private instance. |
-| `X_WEB_BEARER` and `X_SEARCH_PATH` | Optional, unsupported-by-X web scraper fallback for corpus ingestion | twitterapi.io remains the primary corpus source. Everything else is unaffected. |
 
 There is no “one key enables everything” mode. The selected LLM provider does
 not fail over to the other provider automatically.
@@ -125,7 +124,6 @@ application adds no Stripe surcharge.
 The Go worker has no API invoice, but it is not cost-free: it uses bandwidth,
 may need a proxy, and can cause rate limiting or IP blocks. More importantly,
 scraping X’s web endpoints is against X’s terms according to the repository’s
-own scraper warning. The consequence belongs to the operator. Leave it
 unconfigured unless that trade-off has been reviewed.
 
 ## Does it work without an LLM?
@@ -239,7 +237,6 @@ The current boundaries are intentional or explicit limitations in the code:
 - It does not synchronize Stripe seat quantity when team membership changes
   mid-cycle. Checkout prices can include seats, but the code comments state
   that automatic changes to a live subscription have not been exercised.
-- It does not make the optional Go scraper safe under X’s terms. The worker is
   disabled unless explicitly configured.
 - It is optimized for a single application node. DNS node discovery exists,
   but API rate counters are in memory per node and the supplied deployment does

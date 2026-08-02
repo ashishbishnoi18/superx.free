@@ -319,7 +319,7 @@ defmodule SuperXWeb.EngageLive do
       to pull mentions and feeds. Nothing here fills in without it.
     </p>
 
-    <div class="mb-6 flex gap-6 border-b border-border">
+    <div class="mb-9 flex gap-6 border-b border-border">
       <.link patch={~p"/engage"} class="tab" aria-selected={to_string(is_nil(@kind))}>
         All <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "all", 0)}</span>
       </.link>
@@ -522,7 +522,7 @@ defmodule SuperXWeb.EngageLive do
 
   defp feed_manager(assigns) do
     ~H"""
-    <section class="mb-8 border-b border-border pb-6">
+    <section class="mb-9 border-b border-border pb-6">
       <p class="nb-eyebrow mb-3">Your feeds</p>
 
       <ul :if={@feeds != []} id="topic-feeds" class="mb-6 flex flex-col">

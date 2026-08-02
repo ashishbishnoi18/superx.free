@@ -716,6 +716,22 @@
     object-fit: contain;
   }
 
+  /* Only hidden where a pointer can reveal it. On touch there is no hover
+     state to discover, so the control stays put rather than becoming
+     unreachable. Opacity rather than `display` keeps the row's height
+     stable, so revealing it never reflows the post. */
+  @media (hover: hover) and (pointer: fine) {
+    .post-media-add {
+      opacity: 0;
+      transition: opacity 0.12s ease;
+    }
+    .post:hover .post-media-add,
+    .post:focus-within .post-media-add,
+    .post-media-add:focus-within {
+      opacity: 1;
+    }
+  }
+
   .post-media-remove {
     position: absolute;
     top: 0.5rem;
@@ -809,6 +825,23 @@
     inset: 2px;
     border-radius: 9999px;
     background: var(--card);
+  }
+
+  /* ── Plan cards ───────────────────────────────────────────────────────
+     Comparison needs the tiers adjacent and equal-height, so price and
+     CTA line up across columns. The current plan is marked with the same
+     ember tick the nav uses, not a different highlight. */
+  .plan-card {
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+  }
+  .plan-card[data-current] {
+    border-color: color-mix(in oklab, var(--primary) 45%, var(--border));
+    background: var(--accent-soft);
   }
 
   /* ── Page rhythm ──────────────────────────────────────────────────────

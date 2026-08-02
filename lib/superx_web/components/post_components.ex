@@ -181,7 +181,15 @@ defmodule SuperXWeb.PostComponents do
     </div>
 
     <div :if={@upload} class="mt-2">
-      <label :if={@can_add?} class="act inline-flex cursor-pointer items-center gap-1.5 text-xs">
+      <%!-- A three-part thread showed this three times, making the loudest
+            thing on the card a control the writer rarely wants. It stays in
+            the layout (so revealing it never shifts the text) and appears on
+            hover or keyboard focus; touch devices, which have no hover, get
+            it permanently. See `.post-media-add`. --%>
+      <label
+        :if={@can_add?}
+        class="act post-media-add inline-flex cursor-pointer items-center gap-1.5 text-xs"
+      >
         <.icon name="hero-photo" class="size-4" /> Add image or GIF
         <.live_file_input upload={@upload} class="sr-only" />
       </label>

@@ -579,7 +579,7 @@ defmodule SuperXWeb.QueueLive do
 
     <.calendar :if={@view == "calendar"} week={@week} />
 
-    <div :if={@view == "list"} class="mb-6 flex gap-6 border-b border-border">
+    <div :if={@view == "list"} class="mb-9 flex gap-6 border-b border-border">
       <.link
         :for={tab <- @tabs}
         patch={~p"/queue?tab=#{tab}"}
@@ -602,6 +602,23 @@ defmodule SuperXWeb.QueueLive do
           Pick some under Schedule
         </.link>
       </div>
+
+      <%!-- One bulk route out of an empty queue, stated once, instead of
+            asking the reader to solve the same problem at every slot.
+            Approving on Ready to Post fills the next opening on its own,
+            so this points at the real path rather than inventing one. --%>
+      <p
+        :if={@shelf != [] and open_slot_count(@upcoming_slot_groups) > 0}
+        id="queue-fill-hint"
+        class="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground"
+      >
+        <span>
+          {length(@shelf)} {if length(@shelf) == 1, do: "draft is", else: "drafts are"} ready for {open_slot_count(
+            @upcoming_slot_groups
+          )} open {if open_slot_count(@upcoming_slot_groups) == 1, do: "slot", else: "slots"}.
+        </span>
+        <.link navigate={~p"/ready-to-post"} class="act-key">Review them</.link>
+      </p>
 
       <section
         :for={{group, index} <- Enum.with_index(@upcoming_slot_groups)}
@@ -639,18 +656,20 @@ defmodule SuperXWeb.QueueLive do
               {slot_time(slot)}
             </div>
 
+            <%!-- The sentence "Nothing is queued for this opening" used to
+                  repeat once per slot, so an empty queue read as five
+                  identical paragraphs. The `open` marker on the right
+                  already says it, and the actions say what to do about
+                  it. --%>
             <div class="min-w-0">
-              <p class="text-[13px] text-muted-foreground">
-                Nothing is queued for this opening.
-              </p>
-              <div class="mt-3 flex flex-wrap items-center gap-5 text-xs">
+              <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
                 <button
                   id={"write-slot-#{slot_key(slot)}"}
                   phx-click="compose_for_slot"
                   phx-value-at={DateTime.to_iso8601(slot.at)}
                   class="act-key"
                 >
-                  Write something
+                  <.icon name="hero-pencil-square" class="size-4" /> Write something
                 </button>
                 <button
                   :if={@shelf != []}
@@ -659,7 +678,7 @@ defmodule SuperXWeb.QueueLive do
                   phx-value-at={DateTime.to_iso8601(slot.at)}
                   class="act"
                 >
-                  Use a ready draft
+                  <.icon name="hero-inbox-stack" class="size-4" /> Use a ready draft
                 </button>
               </div>
 
@@ -835,7 +854,7 @@ defmodule SuperXWeb.QueueLive do
 
   defp ready_picker(assigns) do
     ~H"""
-    <section id={"ready-picker-#{slot_key(@slot)}"} class="mt-5 border-y border-border py-4">
+    <section id={"ready-picker-#{slot_key(@slot)}"} class="mt-9 border-y border-border py-4">
       <div class="mb-3 flex items-center justify-between gap-5">
         <p class="nb-eyebrow text-[10px]">Ready to Post</p>
         <button phx-click="close_ready_picker" class="act text-xs">Close</button>
@@ -868,6 +887,11 @@ defmodule SuperXWeb.QueueLive do
   defp slot_group_id(date), do: "queue-day-#{Date.to_iso8601(date)}"
   defp slot_id(slot), do: "queue-slot-#{slot_key(slot)}"
   defp slot_key(slot), do: DateTime.to_unix(slot.at)
+
+  defp open_slot_count(groups) do
+    Enum.sum_by(groups, fn group -> Enum.count(group.slots, &is_nil(&1.post)) end)
+  end
+
   defp slot_time(slot), do: Calendar.strftime(slot.local_at, "%-I:%M %p")
 
   defp generation_label(kind) do

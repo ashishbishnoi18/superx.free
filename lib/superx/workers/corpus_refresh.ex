@@ -19,7 +19,7 @@ defmodule SuperX.Workers.CorpusRefresh do
   require Logger
 
   alias SuperX.Content.VoiceProfile
-  alias SuperX.{Repo, Scraper, TwitterAPI}
+  alias SuperX.{Repo, TwitterAPI}
   alias SuperX.Workers.CorpusIngest
 
   # Topics per run, and posts fetched per topic.
@@ -120,7 +120,7 @@ defmodule SuperX.Workers.CorpusRefresh do
     :ok
   end
 
-  defp read_source_configured?, do: TwitterAPI.configured?() or Scraper.configured?()
+  defp read_source_configured?, do: TwitterAPI.configured?()
 
   # Test seam for asserting refresh dispatch without letting the supervised
   # Oban stager race a sandbox owner. Production has no override.

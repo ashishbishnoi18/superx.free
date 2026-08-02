@@ -377,7 +377,7 @@ defmodule SuperXWeb.ArticlesLive do
       </:action>
     </Layouts.page_header>
 
-    <div id="articles-tabs" class="mb-6 flex gap-6 border-b border-border">
+    <div id="articles-tabs" class="mb-9 flex gap-6 border-b border-border">
       <.link
         :for={tab <- @tabs}
         id={"articles-tab-#{tab}"}
@@ -506,7 +506,7 @@ defmodule SuperXWeb.ArticlesLive do
           aria-label="Article body"
           readonly={not editable?(@article) or not is_nil(@generating)}
           phx-debounce="250"
-          class="mt-5 min-h-[32rem] w-full resize-y border-0 bg-transparent px-0 py-2 text-[1.0625rem] leading-[1.9] tracking-[-0.008em] text-foreground placeholder:text-faint focus:outline-none"
+          class="mt-9 min-h-[32rem] w-full resize-y border-0 bg-transparent px-0 py-2 text-[1.0625rem] leading-[1.9] tracking-[-0.008em] text-foreground placeholder:text-faint focus:outline-none"
         />
 
         <div class="mt-4 flex flex-wrap items-center gap-5 border-t border-border pt-4 text-xs">
@@ -543,7 +543,7 @@ defmodule SuperXWeb.ArticlesLive do
         <section
           :if={editable?(@article)}
           id="article-ai-assistance"
-          class="mt-12 border-t border-border pt-6"
+          class="mt-9 border-t border-border pt-6"
         >
           <div class="mb-4 flex items-baseline justify-between gap-5">
             <div>

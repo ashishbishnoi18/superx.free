@@ -3,12 +3,9 @@ defmodule SuperX.Workers.CorpusIngest do
   Pulls high-performing posts into the shared corpus.
 
   Enqueued per topic so one bad query can't stall the rest, and so a retry
-  is scoped to the topic that actually failed. The source clients own their
-  rate limiting, so ready jobs can use all of the plan's available capacity.
+  is scoped to the topic that actually failed. The client owns its own rate
+  limiting, so ready jobs can use all of the plan's available capacity.
 
-  Reads come from twitterapi.io when it's configured, and fall back to the
-  self-hosted Go worker otherwise. Both return the same shape, so nothing
-  downstream knows or cares which one ran.
   """
 
   use Oban.Worker,
@@ -21,7 +18,7 @@ defmodule SuperX.Workers.CorpusIngest do
   require Logger
 
   alias SuperX.Content.Corpus
-  alias SuperX.{Scraper, TwitterAPI}
+  alias SuperX.TwitterAPI
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"topic" => topic} = args}) do
@@ -62,26 +59,18 @@ defmodule SuperX.Workers.CorpusIngest do
   end
 
   defp fetch(topic, limit, min_likes) do
-    cond do
-      TwitterAPI.configured?() ->
-        case TwitterAPI.search(topic, min_likes: min_likes, max: limit, lang: "en") do
-          {:ok, tweets} -> {:ok, tag(Enum.map(tweets, &TwitterAPI.to_corpus_attrs/1), topic)}
-          error -> error
-        end
-
-      Scraper.configured?() ->
-        case Scraper.search(topic, min_likes: min_likes, limit: limit) do
-          {:ok, posts} -> {:ok, tag(posts, topic)}
-          error -> error
-        end
-
-      true ->
-        {:error, :not_configured}
+    if TwitterAPI.configured?() do
+      case TwitterAPI.search(topic, min_likes: min_likes, max: limit, lang: "en") do
+        {:ok, tweets} -> {:ok, tag(Enum.map(tweets, &TwitterAPI.to_corpus_attrs/1), topic)}
+        error -> error
+      end
+    else
+      {:error, :not_configured}
     end
   end
 
-  # The search query is the only signal we have for what a post is about,
-  # and neither source returns topics of its own. Without this every post
+  # The search query is the only signal we have for what a post is about;
+  # the provider returns no topics of its own. Without this every post
   # lands with an empty topic array, `Corpus.candidates_for/3` can never
   # match a user's subjects, and the writer silently falls back to picking
   # any strong post at all.
@@ -91,8 +80,8 @@ defmodule SuperX.Workers.CorpusIngest do
   Enqueues ingestion for a list of topics.
 
   Jobs are ready immediately by default. `TwitterAPI` serialises calls at the
-  configured plan rate and the scraper serialises its own token, so delaying
-  the jobs here as well only applies an obsolete second throttle. Operators
+  configured plan rate, so delaying the jobs here as well only applies an
+  obsolete second throttle. Operators
   can still pass `:spacing_seconds` when a particular source requires it.
   """
   def enqueue_topics(topics, opts \\ []) when is_list(topics) do

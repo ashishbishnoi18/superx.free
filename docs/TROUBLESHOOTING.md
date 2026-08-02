@@ -185,7 +185,6 @@ of the interval.
 
 Under Compose the default is 6,000 ms. Raising it reduces request rate.
 Lowering it only helps when the upstream plan allows the corresponding rate;
-otherwise it produces more 429 responses. The Go scraper has a separate
 `X_MIN_REQUEST_INTERVAL` and is not a way to accelerate twitterapi.io.
 
 ## The Inspiration library is empty or drafts have no source
@@ -197,13 +196,11 @@ drafts were written because the inspiration library is empty.
 The corpus needs at least one configured read source:
 
 - `TWITTERAPI_IO_KEY`, which is preferred; or
-- both `X_WEB_BEARER` and a current `X_SEARCH_PATH` for the optional Go
   worker.
 
 Without either source, the nightly refresh logs `Skipping corpus refresh: no
 read source configured`. twitterapi.io is the supported path for all public
 read features. The Go worker only substitutes for corpus ingestion and has the
-terms-of-service limitation documented in `scraper/README.md`.
 
 Check the stored row count:
 
@@ -229,9 +226,6 @@ to a topic-only prompt, so the stored draft has no corpus source or
 attribution. The Niche trends worker is stricter because its topic is supposed
 to come from a recent corpus post; it returns `:no_corpus_posts` instead of
 pretending a trend exists.
-
-If the Go worker is configured but searches suddenly return nothing, check
-`X_SEARCH_PATH` and `X_SEARCH_FEATURES`. X changes that private GraphQL shape.
 
 ## Drafting controls are missing or generation never runs
 

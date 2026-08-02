@@ -42,7 +42,7 @@ defmodule SuperX.Content.CorpusPost do
     field :topics, {:array, :string}, default: []
     field :embedding, Pgvector.Ecto.Vector
 
-    field :source, :string, default: "scraper"
+    field :source, :string, default: "twitterapi.io"
     field :ingested_at, :utc_datetime
 
     timestamps(type: :utc_datetime)

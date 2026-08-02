@@ -114,7 +114,7 @@ browser
 ```
 
 No Redis, no separate queue service, no separate scheduler, no external
-cache. Postgres is all of them. Web, workers, cron and scraper run as one
+cache. Postgres is all of them. Web, workers and cron run as one
 supervised OS process on one box.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for why the read and write
