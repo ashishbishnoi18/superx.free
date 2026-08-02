@@ -23,7 +23,7 @@ defmodule SuperX.Engage do
     |> where(x_account_id: ^account.id)
     |> filter_kind(opts[:kind])
     |> where(status: ^(opts[:status] || "open"))
-    |> order_by([e], desc: fragment("coalesce(?, 0)", e.priority), desc: e.posted_at)
+    |> order_engagements(opts[:kind])
     |> limit(^(opts[:limit] || 50))
     |> preload(reply_drafts: ^drafts_query())
     |> Repo.all()
@@ -31,6 +31,20 @@ defmodule SuperX.Engage do
 
   defp drafts_query,
     do: from(d in ReplyDraft, where: d.status == "shelf", order_by: [desc: d.inserted_at])
+
+  # Mentions are a queue you have to work through, so the most worth
+  # answering goes first. A feed is a stream you scan, and burying an hour-old
+  # post under a two-day-old one because a model liked it better reads as
+  # stale — whatever its score, you have already seen it. Sorting a feed by
+  # score also made the per-feed Top/Latest control look broken: it changed
+  # which posts arrived and then the list reordered them anyway.
+  defp order_engagements(query, "feed") do
+    order_by(query, [e], desc: e.posted_at)
+  end
+
+  defp order_engagements(query, _kind) do
+    order_by(query, [e], desc: fragment("coalesce(?, 0)", e.priority), desc: e.posted_at)
+  end
 
   defp filter_kind(query, nil), do: query
   defp filter_kind(query, kind), do: where(query, kind: ^kind)

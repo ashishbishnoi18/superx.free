@@ -371,7 +371,7 @@ defmodule SuperXWeb.EngageLive do
             </span>
 
             <div class="flex items-center gap-3 text-xs">
-              <span class="nb-eyebrow">Rank</span>
+              <span class="nb-eyebrow">Pull</span>
               <button
                 id={"feed-#{feed.id}-relevance"}
                 phx-click="set_feed_ranking"
@@ -379,8 +379,9 @@ defmodule SuperXWeb.EngageLive do
                 phx-value-ranking="relevance"
                 class={if(feed.ranking == "relevance", do: "act-key", else: "act")}
                 aria-pressed={feed.ranking == "relevance"}
+                title="Ask X for its top matches"
               >
-                Relevance
+                Top
               </button>
               <button
                 id={"feed-#{feed.id}-newest"}
@@ -389,8 +390,9 @@ defmodule SuperXWeb.EngageLive do
                 phx-value-ranking="newest"
                 class={if(feed.ranking == "newest", do: "act-key", else: "act")}
                 aria-pressed={feed.ranking == "newest"}
+                title="Ask X for the newest matches"
               >
-                Newest
+                Latest
               </button>
             </div>
 

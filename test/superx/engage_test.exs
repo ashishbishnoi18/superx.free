@@ -225,4 +225,66 @@ defmodule SuperX.EngageTest do
       refute "fresh" in queries
     end
   end
+
+  describe "ordering" do
+    test "a feed reads newest first, whatever the model scored", %{account: account} do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      Engage.upsert_many([
+        %{
+          x_account_id: account.id,
+          kind: "feed",
+          x_post_id: "old-but-loved",
+          author_handle: "a",
+          text: "two days old, scored highly",
+          posted_at: DateTime.add(now, -2, :day),
+          priority: 99,
+          status: "open"
+        },
+        %{
+          x_account_id: account.id,
+          kind: "feed",
+          x_post_id: "fresh",
+          author_handle: "b",
+          text: "an hour old, scored low",
+          posted_at: DateTime.add(now, -1, :hour),
+          priority: 10,
+          status: "open"
+        }
+      ])
+
+      assert ["fresh", "old-but-loved"] =
+               account |> Engage.list_engagements(kind: "feed") |> Enum.map(& &1.x_post_id)
+    end
+
+    test "mentions still lead with what is worth answering", %{account: account} do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      Engage.upsert_many([
+        %{
+          x_account_id: account.id,
+          kind: "mention",
+          x_post_id: "urgent",
+          author_handle: "a",
+          text: "a real question",
+          posted_at: DateTime.add(now, -2, :day),
+          priority: 95,
+          status: "open"
+        },
+        %{
+          x_account_id: account.id,
+          kind: "mention",
+          x_post_id: "noise",
+          author_handle: "b",
+          text: "nice!",
+          posted_at: DateTime.add(now, -1, :hour),
+          priority: 5,
+          status: "open"
+        }
+      ])
+
+      assert ["urgent", "noise"] =
+               account |> Engage.list_engagements(kind: "mention") |> Enum.map(& &1.x_post_id)
+    end
+  end
 end
