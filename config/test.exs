@@ -22,6 +22,10 @@ config :superx, SuperXWeb.Endpoint,
 # In test we don't send emails
 config :superx, SuperX.Mailer, adapter: Swoosh.Adapters.Test
 
+# Keep job insertion available for assertions without starting queues or cron
+# processes against SQL Sandbox connections owned by individual tests.
+config :superx, Oban, queues: false, plugins: false
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 
