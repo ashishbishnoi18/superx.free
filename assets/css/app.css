@@ -82,6 +82,8 @@
   --color-ring: var(--ring);
   --color-destructive: var(--destructive);
   --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-line-strong: var(--line-strong);
 
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
@@ -104,7 +106,11 @@
 
   --muted: light-dark(oklch(0.955 0.005 83), oklch(0.255 0.006 70));
   --muted-foreground: light-dark(oklch(0.515 0.012 67), oklch(0.66 0.01 75));
-  --faint: light-dark(oklch(0.63 0.01 67), oklch(0.54 0.01 75));
+
+  /* `faint` is the smallest tier we print — handles, timestamps, meter
+     labels — so it has to clear 4.5:1 rather than merely look quiet.
+     Light was 0.63 (3.36:1) and dark was 0.54 (3.1:1); both failed. */
+  --faint: light-dark(oklch(0.555 0.011 67), oklch(0.635 0.011 75));
 
   --accent: light-dark(oklch(0.955 0.008 80), oklch(0.28 0.008 72));
   --accent-foreground: light-dark(oklch(0.30 0.01 67), oklch(0.93 0.005 83));
@@ -114,14 +120,44 @@
   --input: light-dark(oklch(0.9 0.006 80), oklch(1 0 0 / 0.12));
   --ring: light-dark(oklch(0.555 0.165 47), oklch(0.72 0.145 58));
 
-  /* Semantic colour, kept separate from the brand accent so neither
-     cancels the other out. */
-  --destructive: light-dark(oklch(0.52 0.18 27), oklch(0.66 0.17 28));
-  --success: light-dark(oklch(0.52 0.13 155), oklch(0.72 0.15 155));
+  /* ── Semantic colour ───────────────────────────────────────────────────
+     Kept separate from the brand accent so neither cancels the other out.
+     Colour is still never decoration: each of these means exactly one
+     thing, and a surface may only wear one at a time.
 
+       destructive  this destroys or has failed
+       success      this is live / connected / won
+       warning      this needs you, but nothing is broken
+
+     Each has a `-soft` wash for badges, sized so 12px text on it still
+     clears contrast in both themes. */
+  --destructive: light-dark(oklch(0.52 0.18 27), oklch(0.66 0.17 28));
+  --success: light-dark(oklch(0.47 0.11 155), oklch(0.74 0.15 155));
+  --warning: light-dark(oklch(0.52 0.11 75), oklch(0.78 0.13 80));
+
+  --destructive-soft: light-dark(oklch(0.52 0.18 27 / 0.09), oklch(0.66 0.17 28 / 0.16));
+  --success-soft: light-dark(oklch(0.47 0.11 155 / 0.10), oklch(0.74 0.15 155 / 0.15));
+  --warning-soft: light-dark(oklch(0.52 0.11 75 / 0.11), oklch(0.78 0.13 80 / 0.16));
   --accent-soft: light-dark(oklch(0.555 0.165 47 / 0.08), oklch(0.72 0.145 58 / 0.14));
 
+  /* A score is data, not chrome, so it earns a ramp. Three steps only —
+     enough to sort "worth your time" from "probably not" at a glance,
+     and it reuses the semantic hues rather than inventing new ones. */
+  --score-strong: var(--success);
+  --score-mid: var(--primary);
+  --score-weak: var(--faint);
+
   --radius: 0.375rem;
+
+  /* ── Spacing rhythm ────────────────────────────────────────────────────
+     Named steps for the handful of gaps that must agree across screens.
+     Ad-hoc Tailwind values are what made the density drift page to page. */
+  --space-page-x: 1.5rem;         /* page gutter, ≥lg bumps to 2rem */
+  --space-page-y: 2.25rem;        /* page top/bottom air */
+  --space-section: 2.25rem;       /* between major sections */
+  --space-header: 2rem;           /* page header → first section */
+  --space-stack: 0.75rem;         /* between sibling cards in a list */
+  --space-card: 1rem;             /* card padding */
 
   --shadow-strong: light-dark(oklch(0.25 0.02 67 / 0.16), oklch(0 0 0 / 0.6));
   --shadow-soft: light-dark(oklch(0.25 0.02 67 / 0.08), oklch(0 0 0 / 0.4));
@@ -244,6 +280,112 @@
     cursor: not-allowed;
   }
 
+  /* Text actions carry an optional leading glyph. The icon inherits the
+     hover ritual rather than owning its own, so a row of them still reads
+     as one family. */
+  .act, .act-key, .act-danger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    /* WCAG 2.5.8 wants 24px of target. These sit in dense rows, so the box
+       grows without the ink moving: padding out, margin back. */
+    padding-block: 0.3125rem;
+    margin-block: -0.3125rem;
+  }
+  .act > .hero, .act-key > .hero, .act-danger > .hero { opacity: 0.72; }
+
+  /* ── Buttons ──────────────────────────────────────────────────────────
+     The constitution says the box disappears — but a screen with twelve
+     equal text actions and one commit has no hierarchy at all. So exactly
+     one affordance in the product wears a fill: the action that commits
+     the page. Everything else stays a text action.
+
+     Use `.btn-primary` at most once per view. `.btn` is its outlined
+     sibling for a secondary commit (Cancel beside Save). */
+  .btn, .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4375rem;
+    height: 2rem;
+    padding-inline: 0.875rem;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.006em;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  }
+
+  .btn-primary {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border: 1px solid var(--primary);
+  }
+  .btn-primary:hover {
+    background: color-mix(in oklab, var(--primary) 88%, black);
+    border-color: color-mix(in oklab, var(--primary) 88%, black);
+  }
+
+  .btn {
+    background: transparent;
+    color: var(--foreground);
+    border: 1px solid var(--line-strong);
+  }
+  .btn:hover { background: var(--accent); border-color: var(--faint); }
+
+  .btn-primary:disabled, .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .btn-primary:disabled:hover { background: var(--primary); border-color: var(--primary); }
+  .btn:disabled:hover { background: transparent; border-color: var(--line-strong); }
+
+  /* ── Badges ───────────────────────────────────────────────────────────
+     Status, not decoration. One per object. Mono so a column of them
+     lines up, and soft-washed so the badge never outshouts the row. */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    padding: 0.0625rem 0.4375rem;
+    border-radius: 9999px;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    background: var(--muted);
+    color: var(--muted-foreground);
+  }
+  .badge-success { background: var(--success-soft); color: var(--success); }
+  .badge-warning { background: var(--warning-soft); color: var(--warning); }
+  .badge-danger { background: var(--destructive-soft); color: var(--destructive); }
+  .badge-ember { background: var(--accent-soft); color: var(--primary); }
+
+  /* A live status reads faster with a dot than with a word colour alone. */
+  .badge::before {
+    content: "";
+    width: 0.3125rem;
+    height: 0.3125rem;
+    border-radius: 9999px;
+    background: currentColor;
+    flex: none;
+  }
+  .badge-plain::before { display: none; }
+
+  /* Match scores. Mono + tabular so 95 and 8 stay comparable down a list. */
+  .score {
+    font-family: var(--font-mono);
+    font-feature-settings: "tnum";
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--score-weak);
+  }
+  .score[data-tier="strong"] { color: var(--score-strong); }
+  .score[data-tier="mid"] { color: var(--score-mid); }
+
   .hover-ember { transition: color 0.12s ease; }
   .hover-ember:hover { color: var(--primary); }
 
@@ -327,19 +469,21 @@
      The active marker is a 2px ember tick, not a filled pill. */
   .nav-link {
     position: relative;
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     border-radius: var(--radius);
-    padding: 0.25rem 0.625rem;
+    padding: 0.3125rem 0.625rem;
     font-size: 13px;
     color: var(--muted-foreground);
-    transition: color 0.12s ease;
+    transition: color 0.12s ease, background-color 0.12s ease;
   }
-  .nav-link:hover { color: var(--foreground); }
+  .nav-link:hover { color: var(--foreground); background: var(--accent); }
   .nav-link[aria-current="page"] { color: var(--foreground); font-weight: 500; }
   .nav-link[aria-current="page"]::before {
     content: "";
     position: absolute;
-    left: 0;
+    left: -0.375rem;
     top: 50%;
     height: 0.875rem;
     width: 2px;
@@ -348,7 +492,32 @@
     background: var(--primary);
   }
 
-  /* ── Tabs — text with a hairline, no pills ────────────────────────────── */
+  /* The glyph is wayfinding, not ornament: quiet until the row is yours.
+     Size stays a utility at the call site — Tailwind's utilities layer
+     outranks this one, so setting it here would be silently overridden. */
+  .nav-link > .hero {
+    flex: none;
+    color: var(--faint);
+    transition: color 0.12s ease;
+  }
+  .nav-link:hover > .hero { color: var(--muted-foreground); }
+  .nav-link[aria-current="page"] > .hero { color: var(--primary); }
+
+  /* A count rides the right edge so the eye can find work without reading. */
+  .nav-count {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-feature-settings: "tnum";
+    font-size: 0.6875rem;
+    color: var(--faint);
+  }
+
+  /* ── Tabs — text with a hairline, no pills ──────────────────────────────
+     Matched on `aria-selected` *present* rather than `="true"`. HEEx
+     renders `aria-selected={true}` as a bare attribute, so the older
+     `[aria-selected="true"]` selector never matched and no tab in the
+     product ever showed as active. Accepting both keeps string call
+     sites working too. */
   .tab {
     position: relative;
     padding: 0 0 0.625rem;
@@ -360,13 +529,39 @@
     transition: color 0.12s ease;
   }
   .tab:hover { color: var(--foreground); }
-  .tab[aria-selected="true"] { color: var(--foreground); font-weight: 500; }
-  .tab[aria-selected="true"]::after {
+  .tab[aria-selected]:not([aria-selected="false"]) {
+    color: var(--foreground);
+    font-weight: 500;
+  }
+  .tab[aria-selected]:not([aria-selected="false"])::after {
     content: "";
     position: absolute;
     left: 0; right: 0; bottom: -1px;
-    height: 1px;
+    height: 2px;
+    border-radius: 9999px;
     background: var(--primary);
+  }
+  /* Same rule for tab rows that mark themselves with aria-current. */
+  .tab[aria-current]:not([aria-current="false"]) {
+    color: var(--foreground);
+    font-weight: 500;
+  }
+  .tab[aria-current]:not([aria-current="false"])::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 2px;
+    border-radius: 9999px;
+    background: var(--primary);
+  }
+
+  /* The count beside a tab label is data, not part of the word. */
+  .tab-count {
+    font-family: var(--font-mono);
+    font-feature-settings: "tnum";
+    font-size: 0.6875rem;
+    color: var(--faint);
+    font-weight: 400;
   }
 
   /* Meter is a hairline that fills — no track chrome. */
@@ -402,25 +597,63 @@
      a hairline and no shadow. Depth still isn't how anything here is
      signalled. */
   .post {
+    --post-avatar: 2.25rem;        /* 36px — an author, not a favicon */
+    --post-gutter: 0.75rem;
+
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 0.875rem 1rem 0.75rem;
+    padding: var(--space-card);
     transition: border-color 0.12s ease;
   }
   .post:hover { border-color: var(--line-strong); }
 
-  .post-head { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
-  .post-name { font-weight: 500; }
-  .post-handle { color: var(--faint); }
+  /* A denser variant for sidebars and inline previews, where the card is
+     supporting evidence rather than the subject. */
+  .post-compact { --post-avatar: 1.75rem; --post-gutter: 0.625rem; padding: 0.75rem 0.875rem; }
+
+  .post-avatar {
+    width: var(--post-avatar);
+    height: var(--post-avatar);
+    flex: none;
+  }
+
+  /* Head is one line: name, handle, then the time pushed to the far right.
+     X puts the timestamp inline after a dot; at our widths that collides
+     with long display names, so it gets the right edge and always sits in
+     the same place down a column. */
+  .post-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.375rem;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1.25rem;
+  }
+  .post-name { font-weight: 600; color: var(--foreground); }
+  .post-handle { color: var(--faint); font-weight: 400; }
+  .post-time {
+    margin-left: auto;
+    padding-left: 0.5rem;
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--faint);
+  }
 
   .post-body {
+    /* `pre-wrap` preserves the author's own line breaks, which is the whole
+       point for a post — but it also preserves whatever whitespace the
+       template leaves around the interpolation. Every call site must close
+       the tag onto the value: `>{text}</p>`, never on its own line. */
     white-space: pre-wrap;
     font-size: 0.9375rem;
     line-height: 1.6;
     letter-spacing: -0.008em;
     overflow-wrap: anywhere;
+    color: var(--foreground);
   }
+  .post-body + .post-body { margin-top: 0.5rem; }
 
   /* An inbox is scanned, and one 40-line post otherwise takes the whole
      screen. Clamped bodies keep the queue legible; the full text is one
@@ -439,15 +672,23 @@
   .post-seg { position: relative; padding-bottom: 0.875rem; }
   .post-seg:last-child { padding-bottom: 0; }
 
+  /* The connector is centred on the avatar column, so it follows
+     `--post-avatar` instead of a hardcoded offset that silently breaks
+     whenever the avatar resizes. */
   .post-seg:not(:last-child)::before {
     content: "";
     position: absolute;
-    left: 0.6875rem;               /* centre of a size-6 avatar */
-    top: 1.875rem;
-    bottom: 0.25rem;
+    left: calc(var(--post-avatar) / 2 - 0.5px);
+    top: calc(var(--post-avatar) + 0.375rem);
+    bottom: 0.3125rem;
     width: 1px;
     background: var(--border);
   }
+
+  /* Segments after the first sit under the same text column as the first,
+     with a smaller avatar — the author is already established, so the
+     repeat is a rhythm cue rather than a second introduction. */
+  .post-seg + .post-seg .post-avatar { opacity: 0.55; }
 
   .post-media-grid {
     display: grid;
@@ -492,17 +733,54 @@
   .post-media-remove:hover { color: var(--destructive); border-color: var(--line-strong); }
 
   /* Engagement figures. Always mono and tabular so numbers line up
-     between cards, which is the whole point of showing them. */
+     between cards, which is the whole point of showing them. The glyph
+     replaces the word — "148 likes" costs six characters to say what a
+     heart says instantly, and it is the convention every reader of these
+     numbers already knows from X. */
   .metrics {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.875rem;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     font-feature-settings: "tnum";
     color: var(--faint);
   }
+  .metrics > span { display: inline-flex; align-items: center; gap: 0.3125rem; }
+  .metrics .hero { opacity: 0.7; }
   .metrics b { font-weight: 500; color: var(--muted-foreground); }
+
+  /* ── Post footer rows ─────────────────────────────────────────────────
+     Attribution and figures share one line above a hairline; the actions
+     sit below it. The rule is what makes the card feel finished — without
+     it the actions read as one more line of body copy. */
+  .post-foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.875rem;
+    margin-top: 0.75rem;
+  }
+  .post-meta {
+    font-size: 0.6875rem;
+    color: var(--faint);
+    min-width: 0;
+  }
+  .post-foot .metrics { margin-left: auto; }
+
+  .post-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin-top: 0.5rem;
+    padding-top: 0.625rem;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+  }
+  /* When a card has no meta or figures, the rule would sit directly under
+     the body and read as a divider in the text. */
+  .post-actions:first-of-type { border-top: 0; padding-top: 0; }
 
   /* Character budget as a ring that fills — an X convention, and it reads
      at a glance in a way a number does not. Turns ember near the limit and
@@ -521,6 +799,71 @@
     inset: 2px;
     border-radius: 9999px;
     background: var(--card);
+  }
+
+  /* ── Page rhythm ──────────────────────────────────────────────────────
+     Density drifted screen to screen because every page picked its own
+     margins. These are the only vertical steps a page may use. */
+  .page { padding: var(--space-page-y) var(--space-page-x); }
+  @media (width >= 64rem) { .page { padding-inline: 2rem; } }
+
+  .page-header { margin-bottom: var(--space-header); }
+
+  .section + .section { margin-top: var(--space-section); }
+  .section-rule {
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-section);
+  }
+
+  /* A list of cards. One gap value, everywhere cards are stacked. */
+  .stack { display: flex; flex-direction: column; gap: var(--space-stack); }
+
+  /* ── Mobile shell ─────────────────────────────────────────────────────
+     Below `md` the sidebar is display:none, so without this the product
+     has no navigation at all on a phone. The drawer reuses the same
+     `.nav-link` rows rather than inventing a second nav vocabulary. */
+  .mobile-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    height: 3rem;
+    padding-inline: 1rem;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklab, var(--background) 88%, transparent);
+    backdrop-filter: saturate(1.4) blur(10px);
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+
+  .mobile-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+  }
+  .mobile-drawer[hidden] { display: none; }
+  .mobile-drawer-scrim {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in oklab, var(--foreground) 32%, transparent);
+  }
+  .mobile-drawer-panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 17rem;
+    max-width: 82vw;
+    background: var(--background);
+    border-right: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* Touch targets. The desktop rows are 13px text in a dense column; on a
+     phone they need to be finger-sized. */
+  @media (width < 48rem) {
+    .nav-link { padding-block: 0.5rem; font-size: 14px; }
+    .act, .act-key, .act-danger { padding-block: 0.4375rem; margin-block: -0.4375rem; }
   }
 }
 

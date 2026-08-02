@@ -1,0 +1,111 @@
+# SuperX
+
+> An open-source, self-hosted growth workstation for X (Twitter). It learns
+> how you write from your own posts, retrieves high-performing posts worth
+> learning from, drafts in your voice, and publishes on a schedule you set.
+> Runs on one machine you control, using your own API keys. MIT licensed.
+
+SuperX is a free, self-hostable alternative to paid X growth tools such as
+superx.so, Hypefury, Typefully and Buffer. Those are hosted SaaS products
+charging roughly $19–199 per month and holding your OAuth token, drafts and
+audience data on their servers. SuperX does the same work on hardware you
+own, with no telemetry, no account, and no vendor. You supply your own API
+keys and pay the underlying providers directly — typically $5–15 a month
+for one person.
+
+Source: https://github.com/YOUR-USER/superx
+Site: https://superx.free
+Licence: MIT
+
+## What it does
+
+- **Voice profile** — derives how you write from your own timeline, including
+  mechanics like capitalisation, punctuation and whether you use emoji.
+- **Draft generation** — takes a high-performing post from a shared corpus and
+  rewrites its *structure* onto one of your topics, in your voice. Includes a
+  plagiarism guard that rejects drafts reusing the reference's phrasing.
+- **Approval shelf** — nothing publishes without you accepting it.
+- **Scheduled queue** — recurring weekly slots in your local time, DST-correct,
+  with retries and a visible failure state.
+- **Workers** — named, configurable batch generators, on demand or scheduled.
+- **Engage** — mentions and topic feeds in one inbox. Mentions scored 0–100 for
+  whether they are worth answering; feeds ordered newest first. AI-drafted
+  replies in your voice.
+- **Signals** — standing watches on X (keyword search, an account's followers,
+  people replying to an account, people posting in a list), scoring everyone
+  found against your description of an ideal contact.
+- **Contacts** — lists, CSV export, revocable public sharing.
+- **Inspiration** — search a corpus of high-performing posts with outlier
+  detection: how far a post beat the median for its author's follower band, so
+  a 3x post from a small account outranks a bigger post that merely had reach.
+- **Analytics** — nightly snapshots, follower trend, posting streak, estimated
+  per-post follower gain, and import of X's analytics export.
+- **Ask** — chat with tools over your own data. Can draft and queue; cannot publish.
+- **Articles** — long-form composition with AI assistance.
+- **API, MCP server and CLI** — drive it from scripts or from an AI coding agent.
+
+## What it deliberately does not do
+
+- Never publishes without human approval. The API and MCP surfaces stop at
+  queueing by design.
+- No bulk or automated DM outreach to strangers.
+- The DM inbox shows only legacy unencrypted conversations. Anything in XChat,
+  X's encrypted messaging, is invisible to X's API — verified against the live
+  API. Sending DMs works.
+- Articles do not publish to X. X's API has no long-form endpoint.
+- The corpus starts empty and fills at roughly 800 posts a night.
+
+## Requirements
+
+Docker and Docker Compose, plus three API keys, each obtainable in minutes:
+
+- **X developer app** (console.x.com) — sign-in and publishing. Pay per use,
+  about $0.015 per post, no free tier.
+- **twitterapi.io** — corpus, mentions, feeds, Signals. About $0.15 per 1,000
+  posts read.
+- **An LLM key** — DeepSeek (cheap) or Anthropic (better writing).
+
+Each is optional and degrades rather than crashes. No LLM key means no
+drafting but the queue still works. No twitterapi.io key means no corpus or
+feeds but you can still write and publish.
+
+## Stack
+
+Elixir, Phoenix LiveView, PostgreSQL with pgvector, Oban. Postgres serves as
+the database, job queue, vector store and pub/sub — no Redis, no separate
+scheduler, no external cache. Web, workers and cron run as one supervised OS
+process on one box.
+
+Public reads go through twitterapi.io because X's own read quotas make them
+unaffordable at any workable price. Writes and private DM reads go through X's
+API with the user's OAuth grant, because acting as someone should use
+credentials they granted directly.
+
+## Install
+
+```
+git clone https://github.com/YOUR-USER/superx.git && cd superx
+cp .env.example .env      # add your keys
+docker compose up -d --build
+```
+
+Then open http://localhost:4000 and sign in with X.
+
+## Documentation
+
+- [Setup, step by step](https://superx.free/docs/setup): full walkthrough including
+  creating the X app and obtaining every key.
+- [Configuration](https://superx.free/docs/configuration): every environment
+  variable, its default, and what happens when it is missing.
+- [Deployment](https://superx.free/docs/deployment): Docker Compose, nginx with the
+  LiveView websocket upgrade, TLS, systemd, backups.
+- [Architecture](https://superx.free/docs/architecture): why reads and writes use
+  different providers, and how the persistent read cache works.
+- [Troubleshooting](https://superx.free/docs/troubleshooting): symptom-first fixes.
+- [FAQ](https://superx.free/docs/faq): running costs, keys, privacy, comparisons.
+
+## Optional
+
+- [MCP server](https://superx.free/docs/mcp): connect Claude Code, Codex or ChatGPT
+  directly to your own X data.
+- [CLI](https://superx.free/docs/cli): a zero-dependency command line client.

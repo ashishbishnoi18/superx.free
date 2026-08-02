@@ -544,7 +544,7 @@ defmodule SuperXWeb.QueueLive do
       description={queue_description(@next_slot, @upcoming_slot_groups, @current_user)}
     >
       <:action>
-        <button phx-click="compose" class="act-key whitespace-nowrap">Create a post</button>
+        <button phx-click="compose" class="btn-primary whitespace-nowrap">Create a post</button>
       </:action>
     </Layouts.page_header>
 
@@ -584,7 +584,7 @@ defmodule SuperXWeb.QueueLive do
         :for={tab <- @tabs}
         patch={~p"/queue?tab=#{tab}"}
         class="tab"
-        aria-selected={@tab == tab}
+        aria-selected={to_string(@tab == tab)}
       >
         {tab_label(tab)}
         <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, tab, 0)}</span>

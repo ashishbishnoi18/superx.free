@@ -109,6 +109,14 @@ defmodule SuperXWeb.VoiceLive do
   defp split_lines(value) when is_list(value), do: value
   defp split_lines(_), do: []
 
+  # The field takes one handle per line, so the placeholder has to contain a
+  # real newline. Written inline as `placeholder="@paulg\n@shl"` it is an
+  # HTML attribute literal, where `\n` is not an escape and renders as the
+  # two characters; written as `placeholder={"@paulg\n@shl"}` the HEEx
+  # formatter unwraps the braces back to the literal form. A function call
+  # is the form that survives both.
+  defp handles_placeholder, do: "@paulg\n@shl"
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -233,7 +241,7 @@ defmodule SuperXWeb.VoiceLive do
           value={Enum.join(@form[:inspiration_handles].value || [], "\n")}
           rows="3"
           class="w-full textarea"
-          placeholder="@paulg\n@shl"
+          placeholder={handles_placeholder()}
         />
 
         <p
@@ -298,8 +306,10 @@ defmodule SuperXWeb.VoiceLive do
         />
       </.field>
 
-      <div class="flex items-center gap-6 border-t border-border pt-6 text-xs">
-        <button type="submit" class="act-key">Save voice</button>
+      <div class="flex items-center gap-6 border-t border-border pt-6">
+        <button type="submit" class="btn-primary">
+          <.icon name="hero-check" class="size-4" /> Save voice
+        </button>
       </div>
     </.form>
     """

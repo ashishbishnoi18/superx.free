@@ -320,20 +320,24 @@ defmodule SuperXWeb.EngageLive do
     </p>
 
     <div class="mb-6 flex gap-6 border-b border-border">
-      <.link patch={~p"/engage"} class="tab" aria-selected={is_nil(@kind)}>
+      <.link patch={~p"/engage"} class="tab" aria-selected={to_string(is_nil(@kind))}>
         All <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "all", 0)}</span>
       </.link>
-      <.link patch={~p"/engage?kind=mention"} class="tab" aria-selected={@kind == "mention"}>
+      <.link
+        patch={~p"/engage?kind=mention"}
+        class="tab"
+        aria-selected={to_string(@kind == "mention")}
+      >
         Mentions
         <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "mention", 0)}</span>
       </.link>
-      <.link patch={~p"/engage?kind=feed"} class="tab" aria-selected={@kind == "feed"}>
+      <.link patch={~p"/engage?kind=feed"} class="tab" aria-selected={to_string(@kind == "feed")}>
         Feeds <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "feed", 0)}</span>
       </.link>
       <.link
         patch={~p"/engage?kind=replied"}
         class="tab"
-        aria-selected={@kind == "replied"}
+        aria-selected={to_string(@kind == "replied")}
       >
         My replies
         <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "replied", 0)}</span>
@@ -392,12 +396,12 @@ defmodule SuperXWeb.EngageLive do
           }
           segments={[%{"text" => engagement.text}]}
           clamp={8}
+          timestamp={ago(engagement.posted_at)}
         >
           <:meta>
-            <span class={["nb-mono", priority_class(engagement.priority)]}>
+            <span class="score" data-tier={score_tier(engagement.priority)}>
               {engagement.priority || 0}
             </span>
-            <span class="ml-2">{ago(engagement.posted_at)}</span>
             <span :if={engagement.priority_reason} class="ml-2">
               · {engagement.priority_reason}
             </span>
@@ -541,7 +545,7 @@ defmodule SuperXWeb.EngageLive do
                 phx-value-id={feed.id}
                 phx-value-ranking="relevance"
                 class={if(feed.ranking == "relevance", do: "act-key", else: "act")}
-                aria-pressed={feed.ranking == "relevance"}
+                aria-pressed={to_string(feed.ranking == "relevance")}
                 title="Ask X for its top matches"
               >
                 Top
@@ -552,7 +556,7 @@ defmodule SuperXWeb.EngageLive do
                 phx-value-id={feed.id}
                 phx-value-ranking="newest"
                 class={if(feed.ranking == "newest", do: "act-key", else: "act")}
-                aria-pressed={feed.ranking == "newest"}
+                aria-pressed={to_string(feed.ranking == "newest")}
                 title="Ask X for the newest matches"
               >
                 Latest
@@ -642,9 +646,11 @@ defmodule SuperXWeb.EngageLive do
 
   # Priority is the reason the inbox is ordered the way it is, so it earns
   # the accent when it's high rather than being another grey number.
-  defp priority_class(p) when is_integer(p) and p >= 70, do: "text-primary"
-  defp priority_class(p) when is_integer(p) and p >= 40, do: "text-muted-foreground"
-  defp priority_class(_), do: "text-faint"
+  # Three steps, matching the `.score` ramp used for match scores on
+  # Contacts, so a number in this product always means the same thing.
+  defp score_tier(p) when is_integer(p) and p >= 70, do: "strong"
+  defp score_tier(p) when is_integer(p) and p >= 40, do: "mid"
+  defp score_tier(_), do: "weak"
 
   defp reply_state_label(%Post{status: "posted"}), do: "Your reply"
   defp reply_state_label(%Post{status: "failed"}), do: "Reply failed"

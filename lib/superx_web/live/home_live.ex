@@ -231,10 +231,10 @@ defmodule SuperXWeb.HomeLive do
 
             <:actions>
               <button phx-click="accept" phx-value-id={generation.id} class="act-key">
-                Add to queue
+                <.icon name="hero-plus-circle" class="size-4" /> Add to queue
               </button>
               <button phx-click="dismiss" phx-value-id={generation.id} class="act-danger">
-                Discard
+                <.icon name="hero-no-symbol" class="size-4" /> Discard
               </button>
             </:actions>
           </.post>

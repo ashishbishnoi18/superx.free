@@ -217,17 +217,33 @@ defmodule SuperXWeb.AccountsLive do
         :for={account <- @accounts}
         class="flex items-center gap-4 border-t border-border py-4 last:border-b"
       >
-        <Layouts.avatar src={account.avatar_url} size="size-8" />
+        <Layouts.avatar
+          src={account.avatar_url}
+          name={account.display_name || account.handle}
+          size="size-8"
+        />
 
         <div class="min-w-0 flex-1">
-          <p class="truncate">
-            <span class="font-medium">{account.display_name || account.handle}</span>
-            <span class="ml-1.5 text-faint">@{account.handle}</span>
+          <%!-- Two different facts, so two badges. "active" alone was doing
+                both jobs and read as connection health, which produced an
+                account badged active directly above "X rejected the stored
+                credentials". --%>
+          <p class="flex flex-wrap items-center gap-2">
+            <span class="truncate">
+              <span class="font-medium">{account.display_name || account.handle}</span>
+              <span class="ml-1.5 text-faint">@{account.handle}</span>
+            </span>
             <span
               :if={@current_x_account && account.id == @current_x_account.id}
-              class="nb-mono ml-2 text-[11px] text-primary"
+              class="badge badge-ember"
             >
-              active
+              selected
+            </span>
+            <span class={[
+              "badge",
+              if(account.reauth_needed, do: "badge-danger", else: "badge-success")
+            ]}>
+              {if account.reauth_needed, do: "needs reconnect", else: "connected"}
             </span>
           </p>
           <p class="nb-mono mt-0.5 text-[11px] text-faint">
@@ -338,7 +354,7 @@ defmodule SuperXWeb.AccountsLive do
                 required
               />
             </div>
-            <button type="submit" class="act-key mb-4 shrink-0 text-xs">Create invitation</button>
+            <button type="submit" class="btn-primary mb-4 shrink-0">Create invitation</button>
           </.form>
 
           <div class="mt-7">
@@ -410,8 +426,8 @@ defmodule SuperXWeb.AccountsLive do
               phx-click="set_theme"
               phx-value-theme={value}
               class="tab"
-              aria-pressed={@theme == value}
-              aria-selected={@theme == value}
+              aria-pressed={to_string(@theme == value)}
+              aria-selected={to_string(@theme == value)}
             >
               {label}
             </button>

@@ -37,14 +37,106 @@ defmodule SuperXWeb.Layouts do
         active={@active}
       />
 
-      <main id="main-scroll" class="flex-1 overflow-y-auto">
-        <div class="measure px-6 py-9 lg:px-8">
-          {@inner_content}
+      <div class="flex min-w-0 flex-1 flex-col">
+        <%!-- Below `md` the sidebar is display:none. Without this bar the
+              product has no navigation at all on a phone. --%>
+        <div class="mobile-bar md:hidden">
+          <button
+            type="button"
+            class="icon-act"
+            aria-label="Open navigation"
+            aria-controls="mobile-nav"
+            aria-expanded="false"
+            phx-click={open_mobile_nav()}
+          >
+            <.icon name="hero-bars-3" class="size-5" />
+          </button>
+          <.logo class="text-[15px]" />
         </div>
-      </main>
+
+        <main id="main-scroll" class="flex-1 overflow-y-auto">
+          <div class="measure page">
+            {@inner_content}
+          </div>
+        </main>
+      </div>
     </div>
 
+    <.mobile_nav
+      current_user={@current_user}
+      current_x_account={@current_x_account}
+      quota={@quota}
+      active={@active}
+    />
+
     <.flash_group flash={@flash} />
+    """
+  end
+
+  defp open_mobile_nav(js \\ %JS{}) do
+    js
+    |> JS.remove_attribute("hidden", to: "#mobile-nav")
+    |> JS.set_attribute({"aria-expanded", "true"}, to: "[aria-controls='mobile-nav']")
+    |> JS.focus_first(to: "#mobile-nav .mobile-drawer-panel")
+  end
+
+  defp close_mobile_nav(js \\ %JS{}) do
+    js
+    |> JS.set_attribute({"hidden", ""}, to: "#mobile-nav")
+    |> JS.set_attribute({"aria-expanded", "false"}, to: "[aria-controls='mobile-nav']")
+  end
+
+  attr :current_user, :map, default: nil
+  attr :current_x_account, :map, default: nil
+  attr :quota, :map, default: nil
+  attr :active, :atom, default: nil
+
+  defp mobile_nav(assigns) do
+    ~H"""
+    <div
+      id="mobile-nav"
+      class="mobile-drawer md:hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Navigation"
+      phx-window-keydown={close_mobile_nav()}
+      phx-key="escape"
+      hidden
+    >
+      <div class="mobile-drawer-scrim" phx-click={close_mobile_nav()} />
+
+      <div class="mobile-drawer-panel">
+        <div class="flex items-center justify-between px-[1.125rem] pb-3.5 pt-4">
+          <.logo class="text-[15px]" />
+          <button
+            type="button"
+            class="icon-act"
+            aria-label="Close navigation"
+            phx-click={close_mobile_nav()}
+          >
+            <.icon name="hero-x-mark" class="size-5" />
+          </button>
+        </div>
+
+        <%!-- Tapping a destination must dismiss the drawer: LiveView patches
+              the page underneath without unmounting this element. --%>
+        <nav
+          class="flex flex-1 flex-col gap-7 overflow-y-auto px-3 py-1"
+          phx-click={close_mobile_nav()}
+        >
+          <.nav_items active={@active} />
+        </nav>
+
+        <div class="flex flex-col gap-2.5 border-t border-border px-[1.125rem] pb-4 pt-3.5">
+          <.credit_meter :if={@quota} quota={@quota} />
+          <.account_footer
+            current_user={@current_user}
+            current_x_account={@current_x_account}
+            quota={@quota}
+          />
+        </div>
+      </div>
+    </div>
     """
   end
 
@@ -56,46 +148,12 @@ defmodule SuperXWeb.Layouts do
   defp sidebar(assigns) do
     ~H"""
     <aside class="hidden w-56 shrink-0 flex-col border-r border-border md:flex">
-      <div class="flex items-baseline gap-1 px-[1.125rem] pb-3.5 pt-4">
-        <span class="nb-display text-[15px] font-semibold">superx</span>
-        <span class="text-[15px] leading-none text-primary">·</span>
+      <div class="px-[1.125rem] pb-3.5 pt-4">
+        <.logo class="text-[15px]" />
       </div>
 
       <nav class="flex flex-1 flex-col gap-7 overflow-y-auto px-3 py-1">
-        <.nav_section label="Today">
-          <.nav_link navigate={~p"/home"} active={@active == :home}>Home</.nav_link>
-          <.nav_link navigate={~p"/ask"} active={@active == :ask}>Ask</.nav_link>
-          <.nav_link navigate={~p"/ready-to-post"} active={@active == :ready_to_post}>
-            Ready to Post
-          </.nav_link>
-          <.nav_link navigate={~p"/queue"} active={@active == :queue}>Queue</.nav_link>
-          <.nav_link navigate={~p"/articles"} active={@active == :articles}>Articles</.nav_link>
-          <.nav_link navigate={~p"/engage"} active={@active == :engage}>Engage</.nav_link>
-        </.nav_section>
-
-        <.nav_section label="Create">
-          <.nav_link navigate={~p"/workers"} active={@active == :workers}>Workers</.nav_link>
-        </.nav_section>
-
-        <.nav_section label="Research">
-          <.nav_link navigate={~p"/inspiration"} active={@active == :inspiration}>
-            Inspiration
-          </.nav_link>
-          <.nav_link navigate={~p"/analytics"} active={@active == :analytics}>Analytics</.nav_link>
-        </.nav_section>
-
-        <.nav_section label="Network">
-          <.nav_link navigate={~p"/signals"} active={@active == :signals}>Signals</.nav_link>
-          <.nav_link navigate={~p"/contacts"} active={@active == :contacts}>Contacts</.nav_link>
-          <.nav_link navigate={~p"/dms"} active={@active == :dms}>DMs</.nav_link>
-        </.nav_section>
-
-        <.nav_section label="Settings">
-          <.nav_link navigate={~p"/voice"} active={@active == :voice}>Voice</.nav_link>
-          <.nav_link navigate={~p"/settings"} active={@active == :settings}>Schedule</.nav_link>
-          <.nav_link navigate={~p"/accounts"} active={@active == :accounts}>Accounts</.nav_link>
-          <.nav_link navigate={~p"/upgrade"} active={@active == :upgrade}>Plan</.nav_link>
-        </.nav_section>
+        <.nav_items active={@active} />
       </nav>
 
       <div class="flex flex-col gap-2.5 border-t border-border px-[1.125rem] pb-4 pt-3.5">
@@ -107,6 +165,75 @@ defmodule SuperXWeb.Layouts do
         />
       </div>
     </aside>
+    """
+  end
+
+  # One definition of the navigation, rendered by both the desktop sidebar
+  # and the mobile drawer. Two copies drift the moment a route is added.
+  attr :active, :atom, default: nil
+
+  defp nav_items(assigns) do
+    ~H"""
+    <.nav_section label="Today">
+      <.nav_link navigate={~p"/home"} icon="hero-home" active={@active == :home}>Home</.nav_link>
+      <.nav_link navigate={~p"/ask"} icon="hero-sparkles" active={@active == :ask}>Ask</.nav_link>
+      <.nav_link
+        navigate={~p"/ready-to-post"}
+        icon="hero-inbox-stack"
+        active={@active == :ready_to_post}
+      >
+        Ready to Post
+      </.nav_link>
+      <.nav_link navigate={~p"/queue"} icon="hero-queue-list" active={@active == :queue}>
+        Queue
+      </.nav_link>
+      <.nav_link navigate={~p"/articles"} icon="hero-document-text" active={@active == :articles}>
+        Articles
+      </.nav_link>
+      <.nav_link navigate={~p"/engage"} icon="hero-chat-bubble-left-right" active={@active == :engage}>
+        Engage
+      </.nav_link>
+    </.nav_section>
+
+    <.nav_section label="Create">
+      <.nav_link navigate={~p"/workers"} icon="hero-bolt" active={@active == :workers}>
+        Workers
+      </.nav_link>
+    </.nav_section>
+
+    <.nav_section label="Research">
+      <.nav_link navigate={~p"/inspiration"} icon="hero-light-bulb" active={@active == :inspiration}>
+        Inspiration
+      </.nav_link>
+      <.nav_link navigate={~p"/analytics"} icon="hero-chart-bar" active={@active == :analytics}>
+        Analytics
+      </.nav_link>
+    </.nav_section>
+
+    <.nav_section label="Network">
+      <.nav_link navigate={~p"/signals"} icon="hero-signal" active={@active == :signals}>
+        Signals
+      </.nav_link>
+      <.nav_link navigate={~p"/contacts"} icon="hero-users" active={@active == :contacts}>
+        Contacts
+      </.nav_link>
+      <.nav_link navigate={~p"/dms"} icon="hero-envelope" active={@active == :dms}>DMs</.nav_link>
+    </.nav_section>
+
+    <.nav_section label="Settings">
+      <.nav_link navigate={~p"/voice"} icon="hero-microphone" active={@active == :voice}>
+        Voice
+      </.nav_link>
+      <.nav_link navigate={~p"/settings"} icon="hero-calendar-days" active={@active == :settings}>
+        Schedule
+      </.nav_link>
+      <.nav_link navigate={~p"/accounts"} icon="hero-user-circle" active={@active == :accounts}>
+        Accounts
+      </.nav_link>
+      <.nav_link navigate={~p"/upgrade"} icon="hero-credit-card" active={@active == :upgrade}>
+        Plan
+      </.nav_link>
+    </.nav_section>
     """
   end
 
@@ -123,13 +250,15 @@ defmodule SuperXWeb.Layouts do
   end
 
   attr :navigate, :string, required: true
+  attr :icon, :string, default: nil
   attr :active, :boolean, default: false
   slot :inner_block, required: true
 
   defp nav_link(assigns) do
     ~H"""
     <.link navigate={@navigate} class="nav-link" aria-current={@active && "page"}>
-      {render_slot(@inner_block)}
+      <.icon :if={@icon} name={@icon} class="size-4" />
+      <span class="truncate">{render_slot(@inner_block)}</span>
     </.link>
     """
   end
@@ -222,8 +351,15 @@ defmodule SuperXWeb.Layouts do
     """
   end
 
-  @doc "A round avatar with a neutral fallback."
+  @doc """
+  A round avatar.
+
+  When there is no image the fallback is the author's initial rather than
+  an empty grey disc, so a column of contacts without avatars still reads
+  as a list of distinct people.
+  """
   attr :src, :string, default: nil
+  attr :name, :string, default: nil, doc: "used for the initial when src is missing"
   attr :size, :string, default: "size-6"
   attr :class, :string, default: ""
 
@@ -236,8 +372,28 @@ defmodule SuperXWeb.Layouts do
       loading="lazy"
       class={["shrink-0 rounded-full object-cover bg-muted", @size, @class]}
     />
-    <div :if={!@src} class={["shrink-0 rounded-full bg-muted", @size, @class]} />
+    <div
+      :if={!@src}
+      aria-hidden="true"
+      class={[
+        "shrink-0 rounded-full bg-muted grid place-items-center",
+        "text-[0.65em] font-medium uppercase text-faint select-none",
+        @size,
+        @class
+      ]}
+    >
+      {initial(@name)}
+    </div>
     """
+  end
+
+  defp initial(nil), do: ""
+
+  defp initial(name) do
+    name
+    |> String.trim_leading("@")
+    |> String.first()
+    |> Kernel.||("")
   end
 
   @doc """
@@ -290,15 +446,52 @@ defmodule SuperXWeb.Layouts do
     """
   end
 
-  @doc "The SuperX mark — a single ember tick, no illustration."
+  @doc """
+  The SuperX lockup: mark plus wordmark.
+
+  The mark is an X crossing whose rising arm stops short, with the ember
+  tick completing it — the same "growth that resolves into something
+  published" idea the product is built around, and the same two-colour
+  rule (ink plus one ember) as everything else. It is drawn inline rather
+  than loaded from `/images/logo.svg` so it inherits `currentColor` and
+  works in both themes; the file exists for the favicon and for anywhere
+  outside the app that needs a static asset.
+  """
   attr :class, :string, default: ""
+  attr :mark_only, :boolean, default: false
 
   def logo(assigns) do
     ~H"""
-    <span class={["inline-flex items-baseline gap-1", @class]}>
-      <span class="nb-display font-semibold">superx</span>
-      <span class="leading-none text-primary">·</span>
+    <span class={["inline-flex items-center gap-2", @class]}>
+      <.logo_mark class="size-[1.15em] shrink-0" />
+      <span :if={!@mark_only} class="inline-flex items-baseline gap-1">
+        <span class="nb-display font-semibold tracking-[-0.03em]">superx</span>
+        <span class="leading-none text-primary">·</span>
+      </span>
     </span>
+    """
+  end
+
+  @doc "The bare mark, for favicons, avatars and tight chrome."
+  attr :class, :string, default: "size-4"
+
+  def logo_mark(assigns) do
+    ~H"""
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" class={@class}>
+      <path
+        d="M4.75 4.75 19.25 19.25"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+      />
+      <path
+        d="M4.75 19.25 13.6 10.4"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+      />
+      <circle cx="18.25" cy="5.75" r="3" fill="var(--primary)" />
+    </svg>
     """
   end
 end

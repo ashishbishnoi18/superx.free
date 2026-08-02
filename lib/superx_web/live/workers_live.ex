@@ -193,13 +193,10 @@ defmodule SuperXWeb.WorkersLive do
         class="grid grid-cols-1 gap-5 border-b border-border py-6 sm:grid-cols-[minmax(0,1fr)_12rem_auto]"
       >
         <div class="min-w-0">
-          <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h2 class="truncate text-[1rem] font-semibold">{worker.name}</h2>
-            <span class={[
-              "nb-mono text-[10px] uppercase tracking-[0.12em]",
-              if(worker.enabled, do: "text-success", else: "text-faint")
-            ]}>
-              {if worker.enabled, do: "Enabled", else: "Disabled"}
+            <span class={["badge", if(worker.enabled, do: "badge-success", else: "")]}>
+              {if worker.enabled, do: "enabled", else: "paused"}
             </span>
           </div>
           <p class="mt-1 text-[12px] text-muted-foreground">

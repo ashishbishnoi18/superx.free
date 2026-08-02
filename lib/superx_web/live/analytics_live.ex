@@ -190,13 +190,17 @@ defmodule SuperXWeb.AnalyticsLive do
       </div>
     </section>
 
+    <%!-- A hard 0 beside three em-dashes reads as "you have no followers"
+          rather than "nothing recorded yet", so an unrecorded follower
+          count is dashed like every other metric on the row. --%>
     <div class="mb-9 grid grid-cols-2 gap-px border-t border-border bg-border lg:grid-cols-4">
       <.metric
         id="analytics-metric-followers"
         label="Followers"
-        value={@summary.followers}
+        value={recorded_value(@summary.followers, @summary.coverage)}
         change={@summary.followers_change}
         change_known={@summary.follower_change_available?}
+        note={if(@summary.coverage.recorded == 0, do: "No snapshots")}
       />
       <.metric
         id="analytics-metric-posts"
@@ -415,7 +419,11 @@ defmodule SuperXWeb.AnalyticsLive do
             No change
         <% end %>
       </p>
-      <p :if={@change_known == false} class="mt-0.5 text-[11px] text-faint">Change unavailable</p>
+      <%!-- "No snapshots" already says why there is no change to show;
+            printing both stacks two apologies under one dash. --%>
+      <p :if={@change_known == false and is_nil(@note)} class="mt-0.5 text-[11px] text-faint">
+        Change unavailable
+      </p>
       <p :if={@note} class="mt-0.5 text-[11px] text-faint">{@note}</p>
     </div>
     """

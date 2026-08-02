@@ -231,7 +231,7 @@ defmodule SuperXWeb.InspirationLive do
             else: "act border-transparent"
           )
         ]}
-        aria-pressed={@tab == value}
+        aria-pressed={to_string(@tab == value)}
       >
         {label}
       </button>
@@ -395,7 +395,7 @@ defmodule SuperXWeb.InspirationLive do
         phx-click="set_sort"
         phx-value-sort={value}
         class={if @sort == value, do: "act-key", else: "act"}
-        aria-pressed={@sort == value}
+        aria-pressed={to_string(@sort == value)}
       >
         {label}
       </button>

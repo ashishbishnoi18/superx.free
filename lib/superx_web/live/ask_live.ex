@@ -205,7 +205,7 @@ defmodule SuperXWeb.AskLive do
           disabled={@thinking}
         >{@draft}</textarea>
         <div class="mt-3">
-          <button type="submit" class="act-key text-xs" disabled={@thinking}>
+          <button type="submit" class="btn-primary" disabled={@thinking}>
             {if @thinking, do: "Working…", else: "Send"}
           </button>
         </div>

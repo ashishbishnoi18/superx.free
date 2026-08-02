@@ -294,7 +294,7 @@ defmodule SuperXWeb.ContactsLive do
       <.link
         patch={contacts_path(@selected_list && @selected_list.id, nil)}
         class="tab"
-        aria-selected={is_nil(@status)}
+        aria-selected={to_string(is_nil(@status))}
       >
         All <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "all", 0)}</span>
       </.link>
@@ -302,7 +302,7 @@ defmodule SuperXWeb.ContactsLive do
         :for={status <- @statuses}
         patch={contacts_path(@selected_list && @selected_list.id, status)}
         class="tab"
-        aria-selected={@status == status}
+        aria-selected={to_string(@status == status)}
       >
         {String.capitalize(status)}
         <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, status, 0)}</span>
@@ -335,7 +335,11 @@ defmodule SuperXWeb.ContactsLive do
       >
         <div class="min-w-0">
           <div class="flex items-start gap-3">
-            <Layouts.avatar src={lead.avatar_url} size="size-8" />
+            <Layouts.avatar
+              src={lead.avatar_url}
+              name={lead.display_name || lead.handle}
+              size="size-8"
+            />
 
             <div class="min-w-0 flex-1">
               <p class="flex flex-wrap items-baseline gap-2">
@@ -348,7 +352,7 @@ defmodule SuperXWeb.ContactsLive do
                   {lead.display_name || lead.handle}
                 </a>
                 <span class="text-faint">@{lead.handle}</span>
-                <span :if={lead.score} class={["nb-mono text-[11px]", score_class(lead.score)]}>
+                <span :if={lead.score} class="score" data-tier={score_tier(lead.score)}>
                   {lead.score}
                 </span>
               </p>
@@ -488,7 +492,8 @@ defmodule SuperXWeb.ContactsLive do
   defp status_label("archived"), do: "Archive"
   defp status_label("new"), do: "Restore"
 
-  defp score_class(score) when score >= 80, do: "text-primary"
-  defp score_class(score) when score >= 60, do: "text-muted-foreground"
-  defp score_class(_score), do: "text-faint"
+  # Same three-step ramp as Engage priority, so a number means one thing.
+  defp score_tier(score) when score >= 80, do: "strong"
+  defp score_tier(score) when score >= 60, do: "mid"
+  defp score_tier(_score), do: "weak"
 end

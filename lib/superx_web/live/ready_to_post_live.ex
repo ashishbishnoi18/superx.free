@@ -197,14 +197,14 @@ defmodule SuperXWeb.ReadyToPostLive do
     </p>
 
     <div class="mb-6 flex gap-6 border-b border-border">
-      <.link patch={~p"/ready-to-post"} class="tab" aria-selected={is_nil(@kind)}>
+      <.link patch={~p"/ready-to-post"} class="tab" aria-selected={to_string(is_nil(@kind))}>
         All <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "all", 0)}</span>
       </.link>
       <.link
         :for={kind <- ["for_you", "products", "trending", "viral"]}
         patch={~p"/ready-to-post?kind=#{kind}"}
         class="tab"
-        aria-selected={@kind == kind}
+        aria-selected={to_string(@kind == kind)}
       >
         {label_for(kind)}
         <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, kind, 0)}</span>
@@ -296,7 +296,7 @@ defmodule SuperXWeb.ReadyToPostLive do
               class="act-key"
               disabled={generation_uploading?(@uploads, generation)}
             >
-              Add to queue
+              <.icon name="hero-plus-circle" class="size-4" /> Add to queue
             </button>
             <button
               type="button"
@@ -305,7 +305,7 @@ defmodule SuperXWeb.ReadyToPostLive do
               class="act"
               disabled={generation_uploading?(@uploads, generation)}
             >
-              Edit
+              <.icon name="hero-pencil-square" class="size-4" /> Edit
             </button>
             <button
               type="button"
@@ -313,7 +313,7 @@ defmodule SuperXWeb.ReadyToPostLive do
               phx-value-id={generation.id}
               class="act-danger"
             >
-              Discard
+              <.icon name="hero-no-symbol" class="size-4" /> Discard
             </button>
           </:actions>
         </.post>

@@ -30,6 +30,8 @@ defmodule SuperXWeb.PostComponents do
   attr :segments, :list, required: true
   attr :class, :any, default: nil
   attr :clamp, :integer, default: nil, doc: "cap the body at N lines, for scannable lists"
+  attr :timestamp, :string, default: nil, doc: "already-formatted age, shown on the head line"
+  attr :compact, :boolean, default: false, doc: "denser card for previews and sidebars"
   attr :media_uploads, :map, default: %{}
   attr :media_owner_id, :string, default: nil
   attr :media_remove_event, :string, default: nil
@@ -42,25 +44,37 @@ defmodule SuperXWeb.PostComponents do
 
   def post(assigns) do
     ~H"""
-    <article class={["post", @class]} {@rest}>
+    <article class={["post", @compact && "post-compact", @class]} {@rest}>
       <div class="post-thread">
         <div :for={{segment, index} <- Enum.with_index(@segments)} class="post-seg">
           <% upload = Map.get(@media_uploads, index) %>
-          <div class="flex gap-2.5">
-            <Layouts.avatar src={@author[:avatar_url]} size="size-6" class="mt-0.5" />
+          <div class="flex gap-[var(--post-gutter)]">
+            <Layouts.avatar
+              src={@author[:avatar_url]}
+              name={@author[:name] || @author[:handle]}
+              size="post-avatar"
+            />
 
             <div class="min-w-0 flex-1">
-              <p :if={index == 0} class="post-head text-[13px]">
+              <p :if={index == 0} class="post-head">
                 <span class="post-name truncate">{@author[:name] || @author[:handle]}</span>
                 <span class="post-handle truncate">@{@author[:handle]}</span>
+                <span :if={@timestamp} class="post-time">{@timestamp}</span>
               </p>
+              <%!-- `phx-no-format` is load-bearing, not a style preference.
+                    This element is `white-space: pre-wrap` so the author's
+                    own line breaks survive — which means the template's
+                    whitespace survives too. Left to itself the formatter
+                    puts `{segment["text"]}` on its own indented line, and
+                    every post in the product renders with a blank first
+                    line and a stray indent. The tag must close onto the
+                    interpolation, so the formatter is told to keep out. --%>
               <p
-                class={["post-body", index == 0 && "mt-0.5"]}
+                class={["post-body", index == 0 && "mt-1"]}
                 data-clamp={@clamp && "true"}
                 style={@clamp && "--clamp-lines: #{@clamp}"}
-              >
-                {segment["text"]}
-              </p>
+                phx-no-format
+              >{segment["text"]}</p>
               <.post_media
                 media_ids={segment["media_ids"] || []}
                 media={segment["media"] || []}
@@ -75,17 +89,17 @@ defmodule SuperXWeb.PostComponents do
         </div>
       </div>
 
-      <%!-- Meta and actions are stacked rather than justified apart. Side
-            by side they fit on one line for some cards and wrap for others
-            depending on how long the attribution runs, so a column of cards
-            ends up with a ragged, accidental-looking footer. Stacking costs
-            one thin line and is the same on every card. --%>
-      <div :if={@meta != [] or @footer != []} class="mt-3 flex items-center gap-4">
-        <span :if={@meta != []} class="text-[11px] text-faint">{render_slot(@meta)}</span>
-        <span :if={@footer != []}>{render_slot(@footer)}</span>
+      <%!-- Attribution sits left, figures right, on one line above the
+            hairline. They were previously stacked because a justified row
+            wrapped unevenly between cards — but that was with the figures
+            spelled out in words. As glyphs they are short and fixed-width,
+            so the row holds its shape down a column. --%>
+      <div :if={@meta != [] or @footer != []} class="post-foot">
+        <span :if={@meta != []} class="post-meta truncate">{render_slot(@meta)}</span>
+        <span :if={@footer != []} class="ml-auto">{render_slot(@footer)}</span>
       </div>
 
-      <div :if={@actions != []} class="mt-2 flex flex-wrap items-center gap-4 text-xs">
+      <div :if={@actions != []} class="post-actions">
         {render_slot(@actions)}
       </div>
     </article>
@@ -222,10 +236,18 @@ defmodule SuperXWeb.PostComponents do
   def metrics(assigns) do
     ~H"""
     <div class="metrics">
-      <span :if={@likes}><b>{compact(@likes)}</b> likes</span>
-      <span :if={@reposts}>{compact(@reposts)} reposts</span>
-      <span :if={@replies}>{compact(@replies)} replies</span>
-      <span :if={@impressions}>{compact(@impressions)} views</span>
+      <span :if={@likes} title={"#{@likes} likes"}>
+        <.icon name="hero-heart" class="size-3" /><b>{compact(@likes)}</b>
+      </span>
+      <span :if={@reposts} title={"#{@reposts} reposts"}>
+        <.icon name="hero-arrow-path-rounded-square" class="size-3" />{compact(@reposts)}
+      </span>
+      <span :if={@replies} title={"#{@replies} replies"}>
+        <.icon name="hero-chat-bubble-oval-left" class="size-3" />{compact(@replies)}
+      </span>
+      <span :if={@impressions} title={"#{@impressions} views"}>
+        <.icon name="hero-chart-bar" class="size-3" />{compact(@impressions)}
+      </span>
     </div>
     """
   end

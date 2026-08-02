@@ -447,9 +447,13 @@ defmodule SuperXWeb.CoreComponents do
   attr :class, :any, default: "size-4"
   attr :rest, :global, doc: "arbitrary attributes, e.g. style or title"
 
+  # The bare `hero` class is an inert hook — the Tailwind plugin only emits
+  # `hero-<name>` — but it lets components style the glyphs they contain
+  # (`.nav-link > .hero`, `.metrics .hero`) without every call site having
+  # to hand-tune a size utility.
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
-    <span class={[@name, @class]} {@rest} />
+    <span class={["hero", @name, @class]} aria-hidden="true" {@rest} />
     """
   end
 

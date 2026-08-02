@@ -383,7 +383,7 @@ defmodule SuperXWeb.ArticlesLive do
         id={"articles-tab-#{tab}"}
         patch={~p"/articles?tab=#{tab}"}
         class="tab"
-        aria-selected={@tab == tab}
+        aria-selected={to_string(@tab == tab)}
       >
         {tab_label(tab)}
         <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, tab, 0)}</span>
