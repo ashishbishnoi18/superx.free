@@ -95,7 +95,7 @@ defmodule SuperXWeb.PostComponents do
             spelled out in words. As glyphs they are short and fixed-width,
             so the row holds its shape down a column. --%>
       <div :if={@meta != [] or @footer != []} class="post-foot">
-        <span :if={@meta != []} class="post-meta truncate">{render_slot(@meta)}</span>
+        <span :if={@meta != []} class="post-meta">{render_slot(@meta)}</span>
         <span :if={@footer != []} class="ml-auto">{render_slot(@footer)}</span>
       </div>
 

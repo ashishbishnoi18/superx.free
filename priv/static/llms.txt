@@ -13,7 +13,7 @@ own, with no telemetry, no account, and no vendor. You supply your own API
 keys and pay the underlying providers directly — typically $5–15 a month
 for one person.
 
-Source: https://github.com/ashishbishnoi18/superx
+Source: https://github.com/ashishbishnoi18/superx.free
 Site: https://superx.free
 Licence: MIT
 
@@ -84,7 +84,7 @@ credentials they granted directly.
 ## Install
 
 ```
-git clone https://github.com/ashishbishnoi18/superx.git && cd superx
+git clone https://github.com/ashishbishnoi18/superx.free.git superx && cd superx
 cp .env.example .env      # add your keys
 docker compose up -d --build
 ```
@@ -93,18 +93,18 @@ Then open http://localhost:4000 and sign in with X.
 
 ## Documentation
 
-- [Setup, step by step](https://github.com/ashishbishnoi18/superx/blob/main/docs/SETUP.md): full walkthrough including
+- [Setup, step by step](https://github.com/ashishbishnoi18/superx.free/blob/main/docs/SETUP.md): full walkthrough including
   creating the X app and obtaining every key.
-- [Configuration](https://github.com/ashishbishnoi18/superx/blob/main/docs/CONFIGURATION.md): every environment
+- [Configuration](https://github.com/ashishbishnoi18/superx.free/blob/main/docs/CONFIGURATION.md): every environment
   variable, its default, and what happens when it is missing.
-- [Deployment](https://github.com/ashishbishnoi18/superx/blob/main/docs/DEPLOYMENT.md): Docker Compose, nginx with the
+- [Deployment](https://github.com/ashishbishnoi18/superx.free/blob/main/docs/DEPLOYMENT.md): Docker Compose, nginx with the
   LiveView websocket upgrade, TLS, systemd, backups.
-- [Architecture](https://github.com/ashishbishnoi18/superx/blob/main/docs/ARCHITECTURE.md): why reads and writes use
+- [Architecture](https://github.com/ashishbishnoi18/superx.free/blob/main/docs/ARCHITECTURE.md): why reads and writes use
   different providers, and how the persistent read cache works.
-- [Troubleshooting](https://github.com/ashishbishnoi18/superx/blob/main/docs/TROUBLESHOOTING.md): symptom-first fixes.
-- [FAQ](https://github.com/ashishbishnoi18/superx/blob/main/docs/FAQ.md): running costs, keys, privacy, comparisons.
+- [Troubleshooting](https://github.com/ashishbishnoi18/superx.free/blob/main/docs/TROUBLESHOOTING.md): symptom-first fixes.
+- [FAQ](https://github.com/ashishbishnoi18/superx.free/blob/main/docs/FAQ.md): running costs, keys, privacy, comparisons.
 
 ## Optional
 
 - MCP server and CLI: see the Programmatic access section of the
-  [README](https://github.com/ashishbishnoi18/superx#readme).
+  [README](https://github.com/ashishbishnoi18/superx.free#readme).

@@ -14,7 +14,7 @@ screen with seeded data and no accounts at all.
 ## 1. Get the code
 
 ```bash
-git clone https://github.com/ashishbishnoi18/superx.git
+git clone https://github.com/ashishbishnoi18/superx.free.git superx
 cd superx
 cp .env.example .env
 ```

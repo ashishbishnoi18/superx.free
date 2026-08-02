@@ -761,10 +761,20 @@
     gap: 0.5rem 0.875rem;
     margin-top: 0.75rem;
   }
+  /* Attribution carries real information on Engage — the model's reason
+     for surfacing the post — so it wraps to a second line rather than
+     truncating. Two lines is the ceiling; past that it competes with the
+     post itself. */
   .post-meta {
     font-size: 0.6875rem;
+    line-height: 1.45;
     color: var(--faint);
     min-width: 0;
+    flex: 1 1 20rem;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
   }
   .post-foot .metrics { margin-left: auto; }
 

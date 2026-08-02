@@ -10,7 +10,7 @@ except it runs on your own machine, with your own API keys, and nothing
 leaves the box.
 
 ```
-git clone <your-fork> superx && cd superx
+git clone https://github.com/ashishbishnoi18/superx.free.git superx && cd superx
 cp .env.example .env      # add your keys — see docs/SETUP.md
 docker compose up -d --build
 ```
