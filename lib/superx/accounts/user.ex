@@ -20,7 +20,6 @@ defmodule SuperX.Accounts.User do
     field :settings, :map, default: %{}
 
     field :onboarding_completed_at, :utc_datetime
-    field :last_seen_at, :utc_datetime
 
     belongs_to :default_x_account, XAccount
     belongs_to :team_owner, __MODULE__
@@ -45,7 +44,6 @@ defmodule SuperX.Accounts.User do
       :timezone,
       :settings,
       :onboarding_completed_at,
-      :last_seen_at,
       :default_x_account_id
     ])
     |> validate_length(:name, max: 120)
@@ -69,11 +67,6 @@ defmodule SuperX.Accounts.User do
   def default_settings do
     %{
       "theme" => "light",
-      "week_start" => "monday",
-      "sidebar_pinned" => true,
-      "composer_visible" => false,
-      "queue_view" => "list",
-      "inspiration_layout" => "masonry",
       # How many of each content type to keep on the Ready to Post shelf.
       "daily_mix" => %{"for_you" => 6, "trending" => 3, "viral" => 3, "products" => 0}
     }

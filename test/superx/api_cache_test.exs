@@ -8,12 +8,14 @@ defmodule SuperX.ApiCacheTest do
   use SuperX.DataCase, async: true
 
   alias SuperX.ApiCache
+  alias SuperX.ApiCache.ApiResponse
+  alias SuperX.Repo
 
   defp body(n) do
     %{"tweets" => Enum.map(1..n, &%{"id" => to_string(&1)})}
   end
 
-  describe "fetch/4" do
+  describe "fetch/3" do
     test "buys once and serves the rest from storage" do
       calls = :counters.new(1, [])
 
@@ -101,32 +103,17 @@ defmodule SuperX.ApiCacheTest do
     test "an answer older than the endpoint's window is refetched" do
       calls = :counters.new(1, [])
 
-      run = fn opts ->
-        ApiCache.fetch("/twitter/user/mentions", %{"userName" => "x"}, opts, fn ->
+      run = fn ->
+        ApiCache.fetch("/twitter/user/mentions", %{"userName" => "x"}, fn ->
           :counters.add(calls, 1, 1)
           {:ok, body(2)}
         end)
       end
 
-      run.([])
-      # Same call, but nothing older than a second is acceptable.
-      run.(ttl: 0)
-
-      assert :counters.get(calls, 1) == 2
-    end
-
-    test "refresh: true skips a perfectly good answer" do
-      calls = :counters.new(1, [])
-
-      run = fn opts ->
-        ApiCache.fetch("/twitter/user/info", %{"userName" => "x"}, opts, fn ->
-          :counters.add(calls, 1, 1)
-          {:ok, body(1)}
-        end)
-      end
-
-      run.([])
-      run.(refresh: true)
+      run.()
+      stale_at = DateTime.add(DateTime.utc_now(), -301, :second)
+      Repo.update_all(ApiResponse, set: [fetched_at: stale_at])
+      run.()
 
       assert :counters.get(calls, 1) == 2
     end
@@ -151,18 +138,6 @@ defmodule SuperX.ApiCacheTest do
       # Two reads answered without paying: 40 records not bought.
       assert row.served_from_cache == 2
       assert row.saved == 40
-    end
-  end
-
-  describe "cached?/3" do
-    test "answers whether a call can be made for free" do
-      params = %{"query" => "ai"}
-
-      refute ApiCache.cached?("/twitter/tweet/advanced_search", params)
-
-      ApiCache.fetch("/twitter/tweet/advanced_search", params, fn -> {:ok, body(1)} end)
-
-      assert ApiCache.cached?("/twitter/tweet/advanced_search", params)
     end
   end
 end

@@ -15,7 +15,7 @@ defmodule SuperX.AccountsTest do
       assert Accounts.theme(user) == "system"
 
       assert {:error, :invalid_theme} = Accounts.update_theme(user, "sepia")
-      assert Accounts.get_user!(user.id) |> Accounts.theme() == "system"
+      assert Accounts.get_user(user.id) |> Accounts.theme() == "system"
     end
   end
 

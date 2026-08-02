@@ -3,7 +3,7 @@ defmodule SuperX.Billing.Plan do
   Static plan definitions: what each tier costs and what it allows.
 
   Limits live in code rather than the database because they are product
-  decisions, not per-user state. `SuperX.Billing.Quotas` reads them when
+  decisions, not per-user state. `SuperX.Billing.Quota` reads them when
   it rolls a usage window.
   """
 
@@ -21,8 +21,7 @@ defmodule SuperX.Billing.Plan do
         replies_day: 10,
         api_requests_minute: 15,
         signal_agents: 0,
-        leads_day: 0,
-        auto_dms_month: 0
+        leads_day: 0
       },
       features: [
         "1 connected X account",
@@ -45,8 +44,7 @@ defmodule SuperX.Billing.Plan do
         replies_day: 25,
         api_requests_minute: 60,
         signal_agents: 1,
-        leads_day: 750,
-        auto_dms_month: 1000
+        leads_day: 750
       },
       features: [
         "5 connected X accounts",
@@ -70,8 +68,7 @@ defmodule SuperX.Billing.Plan do
         replies_day: 75,
         api_requests_minute: 120,
         signal_agents: 3,
-        leads_day: 3000,
-        auto_dms_month: 1000
+        leads_day: 3000
       },
       features: [
         "Everything in Pro",
@@ -94,8 +91,7 @@ defmodule SuperX.Billing.Plan do
         replies_day: 300,
         api_requests_minute: 300,
         signal_agents: 5,
-        leads_day: 7500,
-        auto_dms_month: 5000
+        leads_day: 7500
       },
       features: [
         "Everything in Advanced",

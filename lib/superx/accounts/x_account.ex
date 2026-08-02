@@ -35,7 +35,6 @@ defmodule SuperX.Accounts.XAccount do
     field :reauth_needed, :boolean, default: false
     field :reauth_reason, :string
 
-    field :connected_at, :utc_datetime
     field :last_synced_at, :utc_datetime
 
     has_one :voice_profile, SuperX.Content.VoiceProfile
@@ -69,7 +68,7 @@ defmodule SuperX.Accounts.XAccount do
   @doc "Changeset applied after a successful OAuth exchange or refresh."
   def token_changeset(x_account, attrs) do
     x_account
-    |> cast(attrs, [:access_token, :refresh_token, :token_expires_at, :scopes, :connected_at])
+    |> cast(attrs, [:access_token, :refresh_token, :token_expires_at, :scopes])
     |> validate_required([:access_token])
     # A successful token write always clears a prior reauth flag.
     |> put_change(:reauth_needed, false)

@@ -38,7 +38,6 @@ defmodule SuperX.Workers.ContentWorker do
   end
 
   def topic_sources, do: @topic_sources
-  def cadences, do: @cadences
 
   @doc false
   def changeset(worker, attrs) do

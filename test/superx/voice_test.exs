@@ -19,7 +19,7 @@ defmodule SuperX.Content.VoiceTest do
     Application.put_env(
       :superx,
       TwitterAPI,
-      Keyword.put(previous_twitter, :api_key, nil)
+      Keyword.merge(previous_twitter, api_key: "test-key", min_interval_ms: 0)
     )
 
     on_exit(fn ->
@@ -30,14 +30,16 @@ defmodule SuperX.Content.VoiceTest do
     user_fixture()
   end
 
-  test "does not turn a failed post read into a successful bio-only derivation", %{
+  test "does not fall back to an official X public read", %{
     account: account
   } do
-    Req.Test.stub(X, fn conn ->
+    Req.Test.stub(TwitterAPI, fn conn ->
       conn
       |> Plug.Conn.put_resp_content_type("application/json")
       |> Plug.Conn.send_resp(400, Jason.encode!(%{"error" => "read failed"}))
     end)
+
+    Req.Test.stub(X, fn _conn -> flunk("public reads must not cross into the X client") end)
 
     Req.Test.stub(AI, fn _conn ->
       flunk("the model must not run after the post read failed")

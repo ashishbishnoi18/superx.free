@@ -10,9 +10,8 @@ defmodule SuperX.TwitterAPI do
 
   Two things shape every call here:
 
-    * **Rate.** The free tier is 0.2 QPS — one request per five seconds.
-      Exceeding it earns 429s, so requests are serialised through a token
-      bucket rather than fired concurrently and retried.
+    * **Rate.** Calls are serialised through a token bucket so concurrent
+      workers stay within the upstream plan's shared QPS.
 
     * **Cost.** Calls bill per record returned (advanced search is roughly
       15 credits per tweet). A loop that pages "until done" can spend a
@@ -27,12 +26,6 @@ defmodule SuperX.TwitterAPI do
   alias SuperX.ApiCache
 
   @base "https://api.twitterapi.io"
-
-  # The free tier is 0.2 QPS — one call per five seconds. Pacing at exactly
-  # 5000ms still earns 429s, because the server's window and ours drift, so
-  # the default carries a margin. Paid plans raise QPS; set
-  # TWITTERAPI_IO_MIN_INTERVAL_MS to match whatever you're actually on.
-  @default_interval_ms 6_000
 
   # --- Rate limiter --------------------------------------------------------
 
@@ -81,12 +74,12 @@ defmodule SuperX.TwitterAPI do
       is far cheaper than pulling everything and discarding it here
     * `:lang`, `:since`, `:until`
     * `:type` — `"Top"` (default) or `"Latest"`
-    * `:max` — hard ceiling on tweets returned (default 40)
+    * `:max` — required hard ceiling on tweets returned
   """
   @spec search(String.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
-  def search(query, opts \\ []) do
+  def search(query, opts) do
     full_query = build_query(query, opts)
-    max = opts[:max] || 40
+    max = Keyword.fetch!(opts, :max)
 
     paginate(
       "/twitter/tweet/advanced_search",
@@ -100,11 +93,11 @@ defmodule SuperX.TwitterAPI do
   end
 
   @doc "Recent posts by one account — used to derive a voice profile."
-  def user_tweets(handle, opts \\ []) do
+  def user_tweets(handle, opts) do
     paginate(
       "/twitter/user/last_tweets",
       %{"userName" => strip(handle)},
-      opts[:max] || 40,
+      Keyword.fetch!(opts, :max),
       "tweets"
     )
   end
@@ -115,34 +108,35 @@ defmodule SuperX.TwitterAPI do
   Takes `userName`, not `screen_name` — the published docs say otherwise
   and the API rejects it with a 400.
   """
-  def mentions(handle, opts \\ []) do
-    paginate("/twitter/user/mentions", %{"userName" => strip(handle)}, opts[:max] || 40, "tweets")
+  def mentions(handle, opts) do
+    paginate(
+      "/twitter/user/mentions",
+      %{"userName" => strip(handle)},
+      Keyword.fetch!(opts, :max),
+      "tweets"
+    )
   end
 
   @doc "Replies to a specific post."
-  def replies(tweet_id, opts \\ []) do
+  def replies(tweet_id, opts) do
     # The published docs say this endpoint returns a "replies" array. It
     # does not — verified against the live API, it returns "tweets" like
     # everything else. Changing to match the docs would silently return
     # nothing, because extract/2 falls back to an empty list.
-    paginate("/twitter/tweet/replies", %{"tweetId" => tweet_id}, opts[:max] || 40, "tweets")
-  end
-
-  @doc "Profile for a single handle."
-  def user_info(handle) do
-    case get("/twitter/user/info", %{"userName" => strip(handle)}) do
-      {:ok, %{"data" => data}} when is_map(data) -> {:ok, normalize_author(data)}
-      {:ok, body} -> {:error, {:unexpected_response, body}}
-      error -> error
-    end
+    paginate(
+      "/twitter/tweet/replies",
+      %{"tweetId" => tweet_id},
+      Keyword.fetch!(opts, :max),
+      "tweets"
+    )
   end
 
   @doc "Followers of an account — the Signals follower watch."
-  def followers(handle, opts \\ []) do
+  def followers(handle, opts) do
     case paginate(
            "/twitter/user/followers",
            %{"userName" => strip(handle)},
-           opts[:max] || 40,
+           Keyword.fetch!(opts, :max),
            "followers"
          ) do
       {:ok, items} -> {:ok, Enum.map(items, &normalize_author/1)}
@@ -151,9 +145,14 @@ defmodule SuperX.TwitterAPI do
   end
 
   @doc "Timeline of an X list — the Signals list watch."
-  def list_timeline(list_id, opts \\ []) do
+  def list_timeline(list_id, opts) do
     # /twitter/list/tweets, not /tweets_timeline — the latter does not exist.
-    paginate("/twitter/list/tweets", %{"listId" => list_id}, opts[:max] || 40, "tweets")
+    paginate(
+      "/twitter/list/tweets",
+      %{"listId" => list_id},
+      Keyword.fetch!(opts, :max),
+      "tweets"
+    )
   end
 
   # --- Normalisation -------------------------------------------------------
@@ -407,6 +406,8 @@ defmodule SuperX.TwitterAPI do
   end
 
   defp interval_ms do
-    Application.get_env(:superx, __MODULE__, [])[:min_interval_ms] || @default_interval_ms
+    :superx
+    |> Application.fetch_env!(__MODULE__)
+    |> Keyword.fetch!(:min_interval_ms)
   end
 end

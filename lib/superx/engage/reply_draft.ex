@@ -20,17 +20,14 @@ defmodule SuperX.Engage.ReplyDraft do
     field :status, :string, default: "shelf"
 
     field :model, :string
-    field :credits_cost, :integer, default: 0
 
     timestamps(type: :utc_datetime)
   end
 
-  def statuses, do: @statuses
-
   @doc false
   def changeset(draft, attrs) do
     draft
-    |> cast(attrs, [:engagement_id, :user_id, :text, :status, :model, :credits_cost])
+    |> cast(attrs, [:engagement_id, :user_id, :text, :status, :model])
     |> validate_required([:engagement_id, :user_id, :text])
     |> validate_inclusion(:status, @statuses)
     |> validate_length(:text,

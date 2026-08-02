@@ -12,7 +12,7 @@ defmodule SuperX.Billing.CreditEntry do
 
   alias SuperX.Accounts.User
 
-  @reasons ~w(generation ask reply_draft voice_profile monthly_grant purchase refund adjustment)
+  @reasons ~w(generation ask refund)
 
   schema "credit_ledger" do
     belongs_to :user, User
@@ -27,8 +27,6 @@ defmodule SuperX.Billing.CreditEntry do
 
     timestamps(type: :utc_datetime, updated_at: false)
   end
-
-  def reasons, do: @reasons
 
   @doc false
   def changeset(entry, attrs) do

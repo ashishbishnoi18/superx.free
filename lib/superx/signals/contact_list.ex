@@ -13,8 +13,6 @@ defmodule SuperX.Signals.ContactList do
 
   alias SuperX.Accounts.XAccount
 
-  @kinds ~w(manual followers engage)
-
   schema "contact_lists" do
     belongs_to :x_account, XAccount
 
@@ -43,6 +41,4 @@ defmodule SuperX.Signals.ContactList do
   def deletable?(%__MODULE__{}), do: false
   def derived?(%__MODULE__{kind: "engage"}), do: true
   def derived?(%__MODULE__{}), do: false
-
-  def kinds, do: @kinds
 end

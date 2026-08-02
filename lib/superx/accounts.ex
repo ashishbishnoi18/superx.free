@@ -12,7 +12,6 @@ defmodule SuperX.Accounts do
   # --- Users ---------------------------------------------------------------
 
   def get_user(id), do: Repo.get(User, id)
-  def get_user!(id), do: Repo.get!(User, id)
 
   @doc "Loads a user with everything the app shell needs on each page."
   def get_user_with_context!(id) do
@@ -50,15 +49,6 @@ defmodule SuperX.Accounts do
       theme when theme in ~w(light dark system) -> theme
       _theme -> User.default_settings()["theme"]
     end
-  end
-
-  def touch_last_seen(%User{} = user) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    {1, _} =
-      User |> where(id: ^user.id) |> Repo.update_all(set: [last_seen_at: now, updated_at: now])
-
-    :ok
   end
 
   # --- X accounts ----------------------------------------------------------
@@ -222,12 +212,6 @@ defmodule SuperX.Accounts do
   end
 
   def delete_session_token(_), do: :ok
-
-  @doc "Revokes every session for a user."
-  def delete_all_sessions(%User{} = user) do
-    Session |> where(user_id: ^user.id) |> Repo.delete_all()
-    :ok
-  end
 
   def prune_sessions do
     now = DateTime.utc_now()

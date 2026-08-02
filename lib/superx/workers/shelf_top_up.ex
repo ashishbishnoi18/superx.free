@@ -19,13 +19,6 @@ defmodule SuperX.Workers.ShelfTopUp do
   alias SuperX.Content.Writer
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"x_account_id" => id}}) do
-    case Accounts.get_x_account(id) do
-      nil -> :ok
-      account -> top_up(account)
-    end
-  end
-
   def perform(_job) do
     if SuperX.AI.configured?() do
       XAccount

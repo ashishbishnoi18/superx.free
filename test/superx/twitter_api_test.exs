@@ -52,7 +52,7 @@ defmodule SuperX.TwitterAPITest do
         json(conn, %{"tweets" => [tweet("1"), tweet("2")], "has_next_page" => false})
       end)
 
-      assert {:ok, [%{"id" => "1"}, %{"id" => "2"}]} = TwitterAPI.search("elixir")
+      assert {:ok, [%{"id" => "1"}, %{"id" => "2"}]} = TwitterAPI.search("elixir", max: 40)
     end
 
     test "reads tweets nested under data, as last_tweets returns them" do
@@ -60,7 +60,7 @@ defmodule SuperX.TwitterAPITest do
         json(conn, %{"data" => %{"tweets" => [tweet("3")], "pin_tweet" => nil}})
       end)
 
-      assert {:ok, [%{"id" => "3"}]} = TwitterAPI.user_tweets("someone")
+      assert {:ok, [%{"id" => "3"}]} = TwitterAPI.user_tweets("someone", max: 40)
     end
 
     test "treats a non-list payload as empty rather than crashing" do
@@ -68,7 +68,7 @@ defmodule SuperX.TwitterAPITest do
       # concatenated onto a list and blew up in length/1.
       stub(fn conn -> json(conn, %{"data" => %{"unexpected" => "shape"}}) end)
 
-      assert {:ok, []} = TwitterAPI.search("elixir")
+      assert {:ok, []} = TwitterAPI.search("elixir", max: 40)
     end
   end
 
@@ -137,7 +137,7 @@ defmodule SuperX.TwitterAPITest do
         json(conn, %{"tweets" => []})
       end)
 
-      assert {:ok, []} = TwitterAPI.search("elixir", type: "Latest")
+      assert {:ok, []} = TwitterAPI.search("elixir", max: 40, type: "Latest")
     end
 
     test "mentions sends userName, not the screen_name the docs claim" do
@@ -148,7 +148,7 @@ defmodule SuperX.TwitterAPITest do
         json(conn, %{"tweets" => []})
       end)
 
-      assert {:ok, []} = TwitterAPI.mentions("@someone")
+      assert {:ok, []} = TwitterAPI.mentions("@someone", max: 40)
     end
 
     test "engagement filters are pushed into the query, not applied locally" do
@@ -160,7 +160,7 @@ defmodule SuperX.TwitterAPITest do
         json(conn, %{"tweets" => []})
       end)
 
-      assert {:ok, []} = TwitterAPI.search("elixir", min_likes: 500, lang: "en")
+      assert {:ok, []} = TwitterAPI.search("elixir", max: 40, min_likes: 500, lang: "en")
     end
   end
 
@@ -168,13 +168,13 @@ defmodule SuperX.TwitterAPITest do
     test "surfaces exhausted credits distinctly so callers can stop retrying" do
       stub(fn conn -> Plug.Conn.send_resp(conn, 402, ~s({"error":"no credits"})) end)
 
-      assert {:error, :out_of_credits} = TwitterAPI.search("elixir")
+      assert {:error, :out_of_credits} = TwitterAPI.search("elixir", max: 40)
     end
 
     test "surfaces auth failure distinctly" do
       stub(fn conn -> Plug.Conn.send_resp(conn, 401, "nope") end)
 
-      assert {:error, :unauthorized} = TwitterAPI.search("elixir")
+      assert {:error, :unauthorized} = TwitterAPI.search("elixir", max: 40)
     end
 
     test "refuses to call at all without a key" do
@@ -183,7 +183,7 @@ defmodule SuperX.TwitterAPITest do
       on_exit(fn -> Application.put_env(:superx, TwitterAPI, previous) end)
 
       refute TwitterAPI.configured?()
-      assert {:error, :not_configured} = TwitterAPI.search("elixir")
+      assert {:error, :not_configured} = TwitterAPI.search("elixir", max: 40)
     end
   end
 
@@ -239,7 +239,7 @@ defmodule SuperX.TwitterAPITest do
         json(conn, %{"tweets" => [tweet("1")], "has_next_page" => false})
       end)
 
-      assert {:ok, [%{"id" => "1"}]} = TwitterAPI.list_timeline("123")
+      assert {:ok, [%{"id" => "1"}]} = TwitterAPI.list_timeline("123", max: 40)
     end
 
     test "replies come back under tweets, whatever the docs say" do
@@ -251,7 +251,7 @@ defmodule SuperX.TwitterAPITest do
         json(conn, %{"tweets" => [tweet("9")], "has_next_page" => false})
       end)
 
-      assert {:ok, [%{"id" => "9"}]} = TwitterAPI.replies("555")
+      assert {:ok, [%{"id" => "9"}]} = TwitterAPI.replies("555", max: 40)
     end
   end
 end

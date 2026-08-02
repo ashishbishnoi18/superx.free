@@ -35,7 +35,7 @@ defmodule SuperXWeb.AccountsLiveTest do
     assert has_element?(view, "#api-tokens-empty")
 
     view |> element("#theme-system") |> render_click()
-    assert Accounts.get_user!(user.id) |> Accounts.theme() == "system"
+    assert Accounts.get_user(user.id) |> Accounts.theme() == "system"
 
     view
     |> form("#api-token-form", api_token: %{name: "Dashboard export"})

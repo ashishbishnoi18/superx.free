@@ -54,45 +54,14 @@ defmodule SuperX.Content.Voice do
 
   defp fetch_posts(_account, posts) when is_list(posts), do: {:ok, posts}
 
-  # Prefers twitterapi.io: it returns more history than the official API's
-  # free read quota allows, and spending that quota on a once-per-account
-  # operation would leave nothing for publishing.
   defp fetch_posts(%XAccount{} = account, _nil) do
-    if SuperX.TwitterAPI.configured?() do
-      case SuperX.TwitterAPI.user_tweets(account.handle, max: 60) do
-        {:ok, tweets} ->
-          {:ok, Enum.map(tweets, &%{"id" => &1["id"], "text" => &1["text"]})}
-
-        {:error, reason} ->
-          Logger.warning("Could not read posts for @#{account.handle}: #{inspect(reason)}")
-          fetch_posts_via_x(account)
-      end
-    else
-      fetch_posts_via_x(account)
-    end
-  end
-
-  defp fetch_posts_via_x(%XAccount{} = account) do
-    case SuperX.X.Tokens.fresh_token(account) do
-      {:ok, token, account} ->
-        case SuperX.X.get_user_posts(token, account.x_user_id, limit: 100) do
-          {:ok, posts} ->
-            {:ok, posts}
-
-          {:error, reason} ->
-            Logger.warning("Could not fetch posts for @#{account.handle}: #{inspect(reason)}")
-            # An account that genuinely has no posts is represented by a
-            # successful empty response above. Converting a failed read into
-            # that same value makes the UI claim it analysed posts it never
-            # saw, and can overwrite a good profile with a bio-only guess.
-            {:error, {:post_fetch_failed, reason}}
-        end
-
-      {:error, :reauth_required} ->
-        {:error, :reauth_required}
+    case TwitterAPI.user_tweets(account.handle, max: 60) do
+      {:ok, tweets} ->
+        {:ok, Enum.map(tweets, &%{"id" => &1["id"], "text" => &1["text"]})}
 
       {:error, reason} ->
-        {:error, reason}
+        Logger.warning("Could not read posts for @#{account.handle}: #{inspect(reason)}")
+        {:error, {:post_fetch_failed, reason}}
     end
   end
 
