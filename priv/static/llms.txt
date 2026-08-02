@@ -53,6 +53,9 @@ Licence: MIT
 - The DM inbox reads legacy and encrypted XChat one-to-one conversations.
   XChat cryptography runs locally through X's official Chat XDK. Group DMs are
   skipped because replies need one safe participant address.
+- Encrypted messages sent before this instance first synced cannot be read:
+  XChat hands the conversation key to the devices registered at the time.
+- Publishing an Article requires an X Premium subscription on the account.
 - The corpus starts empty and fills at roughly 800 posts a night.
 
 ## Requirements

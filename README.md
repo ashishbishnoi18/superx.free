@@ -43,20 +43,29 @@ directly, which is a few dollars a month rather than a few hundred.
 **Create** — Derives a voice profile from your own posts, retrieves a
 high-performing post from a shared corpus, and rewrites its *structure*
 onto one of your topics in your voice. Drafts land on an approval shelf;
-nothing publishes without you accepting it.
+nothing publishes without you accepting it. The composer autosaves drafts
+as you type and can tighten a draft in your voice with a one-credit
+"improve" pass.
 
 **Queue** — Recurring weekly slots in your local time. Approved drafts fill
 the next opening and publish automatically, with retries, DST-correct
-scheduling, and a visible failure state when X refuses.
+scheduling, and a visible failure state when X refuses. Optional random
+publish delay (up to 5 minutes) so posts don't fire at exact minutes, and
+tags to organise and filter drafts. Per-post automations, always explicit
+opt-ins set on the post itself: repost after N hours (and undo it later),
+reply with a plug once the post hits a like threshold, or delete the post
+if it stays under a views floor.
 
 **Workers** — Named, configurable generators. Pick a voice, a topic source
 and a batch size; run on demand or on a schedule. Output goes to the same
 approval shelf.
 
 **Engage** — Mentions and topic feeds in one inbox. Mentions are scored
-0–100 for whether they are worth answering and ordered by that; feeds read
-newest first. Replies are drafted in your voice and send immediately,
-because a reply two days late is not a reply.
+0–100 for whether they are worth answering and ordered by that, with
+filters on likes, author followers, verification and mention type; feeds
+read newest first and can exclude whole topic categories. Replies are
+drafted in your voice and send immediately, because a reply two days late
+is not a reply. Sent replies track their own likes and views.
 
 **Signals** — Standing watches on X: posts matching a search, followers of
 an account, people replying to an account, people posting in a list. Each
@@ -96,6 +105,12 @@ Honest limitations, because you will find them anyway:
 - **No group DM replies.** Legacy and encrypted XChat one-to-one threads share
   the inbox. Group conversations are skipped because there is no single safe
   participant address for a reply.
+- **Encrypted DMs sent before you connected stay unreadable.** XChat gives a
+  conversation key to the devices registered at the time. This instance
+  registers its own on first sync, so it can read everything from that moment
+  and nothing from before it. No copy of the history exists to decrypt.
+- **Articles need X Premium.** The API rejects long-form publishing without it,
+  and says so plainly when you try.
 - **The corpus starts empty** and fills at ~800 posts a night. A hosted
   competitor hands you millions on day one; you build yours.
 - **No bulk DM outreach.** Sending automated DMs to strangers is the one

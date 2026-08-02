@@ -228,6 +228,12 @@ The current boundaries are intentional or explicit limitations in the code:
 - It does not ingest group DMs. Legacy and encrypted XChat one-to-one threads
   are supported; groups are skipped because the existing conversation model
   has no safe single participant to address when replying.
+- It cannot read encrypted messages that predate its first sync. XChat
+  distributes a conversation key to the devices registered at the time, and
+  this instance registers its own when it first runs. Everything after that
+  point decrypts; nothing before it ever will, on any client.
+- It cannot publish Articles for an account without X Premium. The endpoint
+  returns 403 and the article is left retryable with X’s reason recorded.
 - It does not provide full per-post X analytics. Daily totals come from the
   authenticated profile and locally published rows; users can import an X
   analytics CSV for history.
