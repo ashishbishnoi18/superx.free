@@ -29,7 +29,7 @@ FROM ${BUILDER_IMAGE} AS builder
 
 # install build dependencies
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git \
+  && apt-get install -y --no-install-recommends git nodejs npm \
   && rm -rf /var/lib/apt/lists/*
 
 # prepare build dir
@@ -55,6 +55,10 @@ RUN mix deps.compile
 
 RUN mix assets.setup
 
+COPY xchat/package.json xchat/package-lock.json xchat/
+RUN npm ci --omit=dev --prefix xchat
+COPY xchat/sidecar.mjs xchat/
+
 COPY priv priv
 
 COPY lib lib
@@ -78,7 +82,7 @@ RUN mix release
 FROM ${RUNNER_IMAGE} AS final
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 locales ca-certificates \
+  && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 locales ca-certificates nodejs \
   && rm -rf /var/lib/apt/lists/*
 
 # Set the locale
@@ -98,6 +102,7 @@ ENV MIX_ENV="prod"
 
 # Only copy the final release from the build stage
 COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/superx ./
+COPY --from=builder --chown=nobody:root /app/xchat ./xchat
 
 USER nobody
 

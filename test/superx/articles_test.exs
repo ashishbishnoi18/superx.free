@@ -1,5 +1,5 @@
 defmodule SuperX.ArticlesTest do
-  use SuperX.DataCase, async: true
+  use SuperX.DataCase, async: false
 
   import SuperX.Fixtures
 
@@ -62,8 +62,8 @@ defmodule SuperX.ArticlesTest do
     end
   end
 
-  describe "publication seam" do
-    test "only records a confirmed destination" do
+  describe "publication" do
+    test "only records a complete confirmed destination" do
       %{user: user, account: account} = user_fixture()
 
       {:ok, article} =
@@ -74,17 +74,136 @@ defmodule SuperX.ArticlesTest do
         })
 
       assert {:error, changeset} = Articles.record_published(article, %{})
-      assert "or an X article id is required" in errors_on(changeset).permalink
+      assert "can't be blank" in errors_on(changeset).permalink
+      assert "can't be blank" in errors_on(changeset).x_post_id
 
       assert {:ok, published} =
                Articles.record_published(article, %{
                  x_article_id: "x-article-1",
-                 permalink: "https://x.com/i/article/x-article-1"
+                 x_post_id: "x-post-1",
+                 permalink: "https://x.com/i/status/x-post-1"
                })
 
       assert %Article{status: "published"} = published
       assert published.published_at
       assert published.x_article_id == "x-article-1"
+      assert published.x_post_id == "x-post-1"
     end
+
+    test "creates and publishes the X draft in order, then refuses a second publish" do
+      %{user: user, account: account} = user_fixture()
+
+      {:ok, article} =
+        Articles.create_article(user, account, %{
+          title: "A careful argument",
+          body: "First paragraph.\n\nSecond paragraph.",
+          status: "ready"
+        })
+
+      counter = start_supervised!({Agent, fn -> 0 end})
+
+      Req.Test.stub(SuperX.X, fn conn ->
+        request = Agent.get_and_update(counter, &{&1 + 1, &1 + 1})
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+        case request do
+          1 ->
+            assert conn.method == "POST"
+            assert conn.request_path == "/2/articles/draft"
+
+            assert Jason.decode!(body) == %{
+                     "title" => "A careful argument",
+                     "content_state" => %{
+                       "blocks" => [
+                         %{"text" => "First paragraph.", "type" => "unstyled"},
+                         %{"text" => "Second paragraph.", "type" => "unstyled"}
+                       ],
+                       "entities" => []
+                     }
+                   }
+
+            json(conn, 201, %{"data" => %{"id" => "x-article-1", "title" => article.title}})
+
+          2 ->
+            assert conn.method == "POST"
+            assert conn.request_path == "/2/articles/x-article-1/publish"
+            assert Jason.decode!(body) == %{}
+            json(conn, 200, %{"data" => %{"post_id" => "x-post-1"}})
+        end
+      end)
+
+      assert {:ok, published} = Articles.publish(article, "access-token")
+      assert published.status == "published"
+      assert published.x_article_id == "x-article-1"
+      assert published.x_post_id == "x-post-1"
+      assert published.permalink == "https://x.com/i/status/x-post-1"
+      assert Agent.get(counter, & &1) == 2
+
+      assert {:error, :already_published} = Articles.publish(article, "access-token")
+      assert Agent.get(counter, & &1) == 2
+    end
+
+    test "keeps a rejected article unpublished and retains X's detail" do
+      %{user: user, account: account} = user_fixture()
+
+      {:ok, article} =
+        Articles.create_article(user, account, %{
+          title: "Ready for review",
+          body: "Prose that passed local review.",
+          status: "ready"
+        })
+
+      counter = start_supervised!({Agent, fn -> 0 end})
+
+      Req.Test.stub(SuperX.X, fn conn ->
+        request = Agent.get_and_update(counter, &{&1 + 1, &1 + 1})
+
+        case request do
+          1 ->
+            json(conn, 201, %{"data" => %{"id" => "x-article-rejected"}})
+
+          2 ->
+            json(conn, 400, %{
+              "errors" => [%{"detail" => "Article text violates an X rule."}]
+            })
+        end
+      end)
+
+      assert {:error, {:http_error, 400, _body}} =
+               Articles.publish(article, "access-token")
+
+      rejected = Articles.get_article(user, account, article.id)
+      assert rejected.status == "ready"
+      assert rejected.published_at == nil
+      assert rejected.x_post_id == nil
+      assert rejected.permalink == nil
+      assert rejected.x_article_id == "x-article-rejected"
+      assert rejected.publish_error == "X returned 400: Article text violates an X rule."
+    end
+
+    test "a stale editor cannot return a claimed article to ready" do
+      %{user: user, account: account} = user_fixture()
+
+      {:ok, article} =
+        Articles.create_article(user, account, %{
+          title: "One publisher",
+          body: "The review state must survive stale browser tabs.",
+          status: "ready"
+        })
+
+      assert {:ok, claimed} = Articles.claim_for_publishing(article.id)
+      assert claimed.status == "publishing"
+
+      assert {:error, :read_only} =
+               Articles.update_article(article, %{status: "ready", title: "Stale edit"})
+
+      assert Articles.get_article(user, account, article.id).status == "publishing"
+    end
+  end
+
+  defp json(conn, status, body) do
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(status, Jason.encode!(body))
   end
 end

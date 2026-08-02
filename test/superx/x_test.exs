@@ -113,6 +113,21 @@ defmodule SuperX.XTest do
     end
   end
 
+  describe "Article content state" do
+    test "maps blank-line paragraphs to unstyled DraftJS blocks" do
+      assert X.article_content_state(
+               "First line\ncontinues.\n\n  Second paragraph.  \r\n\t\r\nThird."
+             ) == %{
+               "blocks" => [
+                 %{"text" => "First line\ncontinues.", "type" => "unstyled"},
+                 %{"text" => "Second paragraph.", "type" => "unstyled"},
+                 %{"text" => "Third.", "type" => "unstyled"}
+               ],
+               "entities" => []
+             }
+    end
+  end
+
   describe "conversation event reads" do
     test "uses both supported conversation lookup paths" do
       Req.Test.stub(X, fn conn ->

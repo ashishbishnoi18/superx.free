@@ -54,10 +54,10 @@ the number of moving parts an operator must back up and keep alive.
 
 ### Database
 
-Ecto schemas store users, encrypted X tokens, browser sessions, API tokens,
-voice profiles, drafts, scheduled posts, analytics snapshots, engagement
-inboxes, contacts, DMs, subscriptions, quotas, and the corpus. Migrations also
-enable:
+Ecto schemas store users, encrypted X tokens and XChat identities, browser
+sessions, API tokens, voice profiles, drafts, scheduled posts, analytics
+snapshots, engagement inboxes, contacts, DMs, subscriptions, quotas, and the
+corpus. Migrations also enable:
 
 - `citext` for case-insensitive emails and handles;
 - `pg_trgm` for fuzzy handle and keyword matching;
@@ -144,7 +144,7 @@ The main boundaries are:
   links.
 - `SuperX.Billing`: static plans, subscriptions, rolling quotas, and an
   append-only AI credit ledger.
-- `SuperX.Articles`: long-form drafts and their local lifecycle.
+- `SuperX.Articles`: long-form drafts, review state, and X publication outcomes.
 - `SuperX.Ask`: an LLM tool loop over the same contexts.
 
 Oban workers are thin orchestration layers around those contexts. LiveViews
@@ -179,8 +179,8 @@ Signals. It uses X’s public web GraphQL surface and carries the operational an
 
 - OAuth exchange, refresh, and revocation;
 - reading the authenticated profile;
-- publishing posts, replies, threads, images, and GIFs;
-- reading and sending private DMs;
+- publishing posts, replies, threads, Articles, images, and GIFs;
+- reading and sending legacy and encrypted XChat DMs;
 - reading the user’s own recent posts as a voice-derivation fallback when
   twitterapi.io is unavailable.
 
@@ -188,10 +188,13 @@ Writes must be attributable to the user’s grant. DMs cannot be read from a
 public-data provider at all. These narrower, lower-volume operations therefore
 stay behind X OAuth even though bulk public reads use another provider.
 
-X access and refresh tokens are encrypted in PostgreSQL with AES-256-GCM.
-`SUPERX_VAULT_KEY` is the key boundary. Token refresh is serialized per
-account with a PostgreSQL advisory lock because X rotates refresh tokens: two
-concurrent refreshes could otherwise store the already-invalidated loser.
+X access and refresh tokens and opaque XChat private-key blobs are encrypted in
+PostgreSQL with AES-256-GCM. `SUPERX_VAULT_KEY` is the key boundary. XChat
+encryption, signature verification, and decryption run in the official Chat
+XDK through a local Node Port; OAuth tokens remain in the Elixir HTTP client.
+Token refresh is serialized per account with a PostgreSQL advisory lock because
+X rotates refresh tokens: two concurrent refreshes could otherwise store the
+already-invalidated loser.
 
 ## The paid read cache
 

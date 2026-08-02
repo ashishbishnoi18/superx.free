@@ -1,22 +1,27 @@
 defmodule SuperXWeb.ArticlesLive do
   @moduledoc """
-  The long-form desk: account-scoped drafts, review states, and a writing
-  surface that keeps the prose central.
-
-  Nothing here publishes. A ready article is a completed draft, not a
-  queued network action.
+  The long-form desk: account-scoped composition, review, and explicit
+  publication through X's Article endpoints.
   """
 
   use SuperXWeb, :live_view
 
   alias SuperX.Articles
   alias SuperX.Articles.{Article, Writer}
+  alias SuperX.Workers.PublishArticle
 
   @tabs ~w(draft ready published)
 
   @impl true
   def mount(_params, _session, socket) do
     article = %Article{}
+
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(
+        SuperX.PubSub,
+        "articles:#{socket.assigns.current_x_account.id}"
+      )
+    end
 
     {:ok,
      socket
@@ -121,6 +126,10 @@ defmodule SuperXWeb.ArticlesLive do
     {:noreply, save_article(socket, params["article"] || %{}, "ready")}
   end
 
+  def handle_event("article_action", %{"intent" => "publish"} = params, socket) do
+    {:noreply, publish_from_editor(socket, params["article"] || %{})}
+  end
+
   def handle_event("article_action", params, socket) do
     {:noreply, save_article(socket, params["article"] || %{}, "draft")}
   end
@@ -135,12 +144,29 @@ defmodule SuperXWeb.ArticlesLive do
     end
   end
 
+  def handle_event("publish", %{"id" => id}, socket) do
+    case scoped_article(socket, id) do
+      %Article{status: "ready"} = article ->
+        {:noreply, enqueue_publish(socket, article) |> load_list()}
+
+      %Article{status: "published"} ->
+        {:noreply, put_flash(socket, :error, "That article is already published.")}
+
+      %Article{status: "publishing"} ->
+        {:noreply, put_flash(socket, :info, "That article is already publishing.")}
+
+      _article ->
+        {:noreply, put_flash(socket, :error, "Only a ready article can be published.")}
+    end
+  end
+
   defp save_article(
-         %{assigns: %{article: %Article{status: "published"}}} = socket,
+         %{assigns: %{article: %Article{status: status}}} = socket,
          _params,
          _status
-       ) do
-    put_flash(socket, :error, "Published articles are read-only here.")
+       )
+       when status in ["publishing", "published"] do
+    put_flash(socket, :error, "Articles are read-only once publishing starts.")
   end
 
   defp save_article(socket, params, status) do
@@ -177,7 +203,8 @@ defmodule SuperXWeb.ArticlesLive do
 
   defp persist(socket, attrs), do: Articles.update_article(socket.assigns.article, attrs)
 
-  defp autosave(%{assigns: %{article: %Article{status: "published"}}} = socket, params, ai) do
+  defp autosave(%{assigns: %{article: %Article{status: status}}} = socket, params, ai)
+       when status in ["publishing", "published"] do
     socket
     |> assign(:form, validation_form(socket.assigns.article, params))
     |> assign(:ai_form, ai_form(ai))
@@ -313,6 +340,20 @@ defmodule SuperXWeb.ArticlesLive do
     end
   end
 
+  def handle_info({:article_publish_finished, id, :published}, socket) do
+    {:noreply,
+     socket
+     |> refresh_published_article(id)
+     |> put_flash(:info, "Article published on X.")}
+  end
+
+  def handle_info({:article_publish_finished, id, {:error, message}}, socket) do
+    {:noreply,
+     socket
+     |> refresh_published_article(id)
+     |> put_flash(:error, message)}
+  end
+
   def handle_info(
         {:article_composed, ref, {:error, :quota_exceeded, _details}},
         %{assigns: %{composition_ref: active_ref}} = socket
@@ -358,6 +399,56 @@ defmodule SuperXWeb.ArticlesLive do
     )
   end
 
+  defp publish_from_editor(%{assigns: %{article: %Article{status: "ready"}}} = socket, _params),
+    do: enqueue_publish(socket, socket.assigns.article)
+
+  defp publish_from_editor(socket, _params) do
+    put_flash(socket, :error, "Only a ready article can be published.")
+  end
+
+  defp enqueue_publish(socket, article) do
+    case PublishArticle.enqueue(article) do
+      {:ok, claimed, _job} ->
+        socket
+        |> maybe_assign_article(claimed)
+        |> put_flash(:info, "Publishing article…")
+
+      {:error, :already_published} ->
+        put_flash(socket, :error, "That article is already published.")
+
+      {:error, :already_claimed} ->
+        put_flash(socket, :info, "That article is already publishing.")
+
+      {:error, _reason} ->
+        put_flash(socket, :error, "We couldn't start publishing that article.")
+    end
+  end
+
+  defp maybe_assign_article(
+         %{assigns: %{article: %Article{id: id}}} = socket,
+         %Article{id: id} = article
+       ) do
+    socket
+    |> assign(:article, article)
+    |> assign(:form, to_form(Articles.change_article(article)))
+  end
+
+  defp maybe_assign_article(socket, _article), do: socket
+
+  defp refresh_published_article(%{assigns: %{article: nil}} = socket, _id), do: load_list(socket)
+
+  defp refresh_published_article(
+         %{assigns: %{article: %Article{id: id}}} = socket,
+         id
+       ) do
+    case scoped_article(socket, id) do
+      nil -> push_navigate(socket, to: ~p"/articles")
+      article -> maybe_assign_article(socket, article)
+    end
+  end
+
+  defp refresh_published_article(socket, _id), do: socket
+
   defp ai_form(params \\ %{}), do: to_form(params, as: :ai)
 
   @impl true
@@ -368,7 +459,7 @@ defmodule SuperXWeb.ArticlesLive do
     ~H"""
     <Layouts.page_header
       title="Articles"
-      description="A long-form desk for ideas that need more room than a post. Write, revise, and leave them ready for the publishing integration you choose."
+      description="A long-form desk for ideas that need more room than a post. Write, revise, review, and publish them to X."
     >
       <:action>
         <.link id="new-article" patch={~p"/articles/new"} class="act-key whitespace-nowrap">
@@ -418,6 +509,13 @@ defmodule SuperXWeb.ArticlesLive do
           <p class="mt-2 line-clamp-2 max-w-[66ch] text-[13px] leading-[1.65] text-muted-foreground">
             {excerpt(article.body)}
           </p>
+          <p
+            :if={article.publish_error}
+            id={"article-publish-error-#{article.id}"}
+            class="mt-2 text-[12px] leading-relaxed text-destructive"
+          >
+            {article.publish_error}
+          </p>
 
           <div class="mt-3 flex flex-wrap items-center gap-4 text-xs">
             <.link
@@ -425,7 +523,7 @@ defmodule SuperXWeb.ArticlesLive do
               patch={~p"/articles/#{article.id}/edit"}
               class="act-key"
             >
-              Edit
+              {if article.status == "publishing", do: "View", else: "Edit"}
             </.link>
             <a
               :if={article.permalink}
@@ -436,6 +534,23 @@ defmodule SuperXWeb.ArticlesLive do
             >
               View published article
             </a>
+            <button
+              :if={article.status == "ready"}
+              id={"publish-article-#{article.id}"}
+              phx-click="publish"
+              phx-value-id={article.id}
+              class="act-key"
+              phx-disable-with="Publishing…"
+            >
+              Publish
+            </button>
+            <span
+              :if={article.status == "publishing"}
+              id={"article-publishing-#{article.id}"}
+              class="nb-mono text-[11px] text-primary"
+            >
+              Publishing…
+            </span>
             <button
               :if={article.status in ["draft", "ready"]}
               phx-click="delete"
@@ -453,7 +568,7 @@ defmodule SuperXWeb.ArticlesLive do
           {article_date(article)}
         </p>
 
-        <span class={state_class(article.status)}>{article.status}</span>
+        <span class={state_class(article.status)}>{state_label(article.status)}</span>
       </article>
     </div>
     """
@@ -466,7 +581,7 @@ defmodule SuperXWeb.ArticlesLive do
         <div class="flex min-w-0 items-center gap-3">
           <.link
             id="articles-editor-back"
-            patch={~p"/articles?tab=#{@article.status}"}
+            patch={~p"/articles?tab=#{article_tab(@article.status)}"}
             class="act text-xs"
           >
             Articles
@@ -534,13 +649,50 @@ defmodule SuperXWeb.ArticlesLive do
           >
             {if @article.status == "ready", do: "Save ready", else: "Mark ready"}
           </button>
+          <button
+            :if={@article.status == "ready"}
+            id="publish-article"
+            type="submit"
+            name="intent"
+            value="publish"
+            class="act-key"
+            disabled={not is_nil(@generating)}
+            phx-disable-with="Publishing…"
+          >
+            Publish
+          </button>
+          <span
+            :if={@article.status == "publishing"}
+            id="article-publishing"
+            class="nb-mono text-[11px] text-primary"
+          >
+            Publishing…
+          </span>
           <span :if={@article.status == "published"} class="text-muted-foreground">
             Published articles are read-only here.
           </span>
+          <a
+            :if={@article.status == "published" and @article.permalink}
+            id="published-article-permalink"
+            href={@article.permalink}
+            target="_blank"
+            rel="noopener"
+            class="act"
+          >
+            View on X
+          </a>
           <span class="nb-mono ml-auto text-[11px] text-faint">
             Changes save automatically · {Article.count_words(@form[:body].value)} words
           </span>
         </div>
+
+        <p
+          :if={@article.publish_error}
+          id="article-publish-error"
+          class="mt-4 text-[13px] leading-relaxed text-destructive"
+        >
+          {@article.publish_error}
+        </p>
 
         <section
           :if={editable?(@article)}
@@ -614,11 +766,13 @@ defmodule SuperXWeb.ArticlesLive do
   defp word_label(count), do: "#{count || 0} words"
 
   defp state_class("published"), do: "nb-mono text-[11px] tracking-[0.04em] text-success"
+  defp state_class("publishing"), do: "nb-mono text-[11px] tracking-[0.04em] text-primary"
   defp state_class("ready"), do: "nb-mono text-[11px] tracking-[0.04em] text-primary"
   defp state_class(_status), do: "nb-mono text-[11px] tracking-[0.04em] text-faint"
 
   defp editor_state(%Article{id: nil}), do: "New draft"
   defp editor_state(%Article{status: "published"}), do: "Published"
+  defp editor_state(%Article{status: "publishing"}), do: "Publishing"
   defp editor_state(%Article{status: "ready"}), do: "Ready"
   defp editor_state(_article), do: "Draft"
 
@@ -630,7 +784,13 @@ defmodule SuperXWeb.ArticlesLive do
   defp empty_message("ready"), do: "Nothing ready yet. Finished drafts appear here for review."
 
   defp empty_message("published"),
-    do: "Nothing published here. Publishing to X is not connected on this surface."
+    do: "Nothing published yet. Ready articles can go to X when you approve them."
+
+  defp article_tab("publishing"), do: "ready"
+  defp article_tab(status), do: status
+
+  defp state_label("publishing"), do: "publishing…"
+  defp state_label(status), do: status
 
   defp ai_intent(body), do: if(blank?(body), do: "ai_draft", else: "ai_extend")
 
@@ -659,6 +819,7 @@ defmodule SuperXWeb.ArticlesLive do
   defp ai_error_message(_reason), do: "Couldn't write that just now. Try again in a moment."
 
   defp save_error(:account_mismatch), do: "That account doesn't belong to this user."
+  defp save_error(:read_only), do: "That article is already publishing or published."
   defp save_error(_reason), do: "We couldn't save that article."
 
   defp blank?(value), do: not is_binary(value) or String.trim(value) == ""

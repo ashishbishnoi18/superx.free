@@ -85,9 +85,9 @@ config :superx, Oban,
 # LLM provider, base URL, keys and model names are all resolved at runtime
 # from the environment — see config/runtime.exs.
 
-# X (Twitter) API. Public reads come from twitterapi.io; private DMs stay here.
+# X API. Public reads come from twitterapi.io; private DMs stay here.
 config :superx, SuperX.X,
-  api_base: "https://api.twitter.com/2",
+  api_base: "https://api.x.com/2",
   oauth_authorize_url: "https://twitter.com/i/oauth2/authorize",
   oauth_token_url: "https://api.twitter.com/2/oauth2/token",
   # Asking for a scope the X app isn't permitted for fails the whole

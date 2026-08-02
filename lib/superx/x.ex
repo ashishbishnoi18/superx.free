@@ -6,7 +6,8 @@ defmodule SuperX.X do
   public reads (the corpus, inboxes, watch agents) go through twitterapi.io
   instead, because API read quotas make them impossible at any workable
   price. DMs stay here because only the user's OAuth grant can see them and
-  their volume is small.
+  their volume is small. Encrypted Chat payloads arrive already prepared by
+  `SuperX.XChat`, so this client never handles the private identity key.
 
   Every call takes an access token rather than an account struct, so this
   module stays free of database concerns. `SuperX.X.Tokens` handles
@@ -116,6 +117,46 @@ defmodule SuperX.X do
     end
   end
 
+  @doc "Creates an Article draft and returns its X article id."
+  def create_article_draft(access_token, title, body) do
+    article = %{
+      "title" => title,
+      "content_state" => article_content_state(body)
+    }
+
+    case request(:post, "/articles/draft", json: article, token: access_token) do
+      {:ok, %{"data" => %{"id" => id}}} -> {:ok, id}
+      {:ok, other} -> {:error, {:unexpected_response, other}}
+      error -> error
+    end
+  end
+
+  @doc "Publishes an Article draft and returns the seed post id."
+  def publish_article(access_token, article_id) do
+    case request(:post, "/articles/#{URI.encode_www_form(article_id)}/publish",
+           json: %{},
+           token: access_token
+         ) do
+      {:ok, %{"data" => %{"post_id" => post_id}}} -> {:ok, post_id}
+      {:ok, other} -> {:error, {:unexpected_response, other}}
+      error -> error
+    end
+  end
+
+  # X accepts Article prose as DraftJS rather than plain text. Blank-line
+  # paragraphs therefore become unstyled blocks, while entities stay empty
+  # because SuperX's editor stores no rich-text annotations.
+  @doc false
+  def article_content_state(body) do
+    blocks =
+      body
+      |> String.trim()
+      |> String.split(~r/\r?\n[\t ]*\r?\n+/u, trim: true)
+      |> Enum.map(&%{"text" => String.trim(&1), "type" => "unstyled"})
+
+    %{"blocks" => blocks, "entities" => []}
+  end
+
   @doc """
   Publishes an ordered list of segments as a thread, chaining each post
   as a reply to the previous one.
@@ -207,6 +248,11 @@ defmodule SuperX.X do
   @dm_expansions "participant_ids,sender_id"
   @dm_user_fields "id,name,profile_image_url,username"
 
+  @chat_conversation_fields "id,participant_ids,type"
+  @chat_conversation_expansions "participant_ids"
+  @chat_event_fields "conversation_id,created_at_msec,encoded_event,id,sender_id"
+  @chat_public_key_fields "identity_public_key_signature,public_key,public_key_version,signing_public_key"
+
   @doc "Fetches all recent DM events visible to the authenticated user."
   def get_dm_events(access_token, opts \\ []) do
     fetch_dm_events(access_token, "/dm_events", opts)
@@ -243,6 +289,170 @@ defmodule SuperX.X do
 
       error ->
         error
+    end
+  end
+
+  @doc "Registers the public half of an XChat identity for the authenticated user."
+  def register_chat_public_key(access_token, user_id, registration) do
+    path = "/users/#{URI.encode_www_form(user_id)}/public_keys"
+
+    case request(:post, path, json: registration, token: access_token) do
+      {:ok, %{"data" => data}} -> {:ok, data}
+      {:ok, other} -> {:error, {:unexpected_response, other}}
+      error -> error
+    end
+  end
+
+  @doc "Lists every encrypted Chat conversation visible to the authenticated user."
+  def get_chat_conversations(access_token, opts \\ []) do
+    params = %{
+      "max_results" => opts[:max_results] || 100,
+      "chat_conversation.fields" => @chat_conversation_fields,
+      "expansions" => @chat_conversation_expansions,
+      "user.fields" => @dm_user_fields
+    }
+
+    paginate_chat_conversations(access_token, params, [], %{}, MapSet.new())
+  end
+
+  @doc "Fetches a user's public XChat identities for signature verification."
+  def get_chat_user_public_keys(access_token, user_id) do
+    path = "/users/#{URI.encode_www_form(user_id)}/public_keys"
+    params = %{"public_key.fields" => @chat_public_key_fields}
+
+    case request(:get, path, params: params, token: access_token) do
+      {:ok, %{"data" => keys}} when is_list(keys) -> {:ok, keys}
+      {:ok, other} -> {:error, {:unexpected_response, other}}
+      error -> error
+    end
+  end
+
+  @doc "Fetches all encrypted events and conversation-key changes for one Chat thread."
+  def get_chat_conversation_events(access_token, conversation_id, opts \\ []) do
+    conversation_id = URI.encode_www_form(conversation_id)
+
+    params = %{
+      "max_results" => opts[:max_results] || 100,
+      "chat_message_event.fields" => @chat_event_fields
+    }
+
+    paginate_chat_events(
+      access_token,
+      "/chat/conversations/#{conversation_id}/events",
+      params,
+      [],
+      [],
+      MapSet.new()
+    )
+  end
+
+  @doc "Submits a message encrypted and signed by the official Chat XDK."
+  def send_chat_message(access_token, conversation_id, payload) do
+    path = "/chat/conversations/#{URI.encode_www_form(conversation_id)}/messages"
+
+    case request(:post, path, json: payload, token: access_token) do
+      {:ok, %{"data" => %{"encoded_message_event" => _event}}} ->
+        {:ok,
+         %{
+           conversation_id: conversation_id,
+           message_id: payload["message_id"] || payload[:message_id]
+         }}
+
+      {:ok, other} ->
+        {:error, {:unexpected_response, other}}
+
+      error ->
+        error
+    end
+  end
+
+  defp paginate_chat_conversations(access_token, params, conversations, users, seen_tokens) do
+    case request(:get, "/chat/conversations", params: params, token: access_token) do
+      {:ok, body} when is_map(body) ->
+        with {:ok, page_conversations} <- list_field(body, "data"),
+             {:ok, page_users} <- dm_page_users(body) do
+          conversations = Enum.reverse(page_conversations, conversations)
+          users = Map.merge(users, page_users)
+
+          case next_page(body, seen_tokens) do
+            {:next, token, seen_tokens} ->
+              paginate_chat_conversations(
+                access_token,
+                Map.put(params, "pagination_token", token),
+                conversations,
+                users,
+                seen_tokens
+              )
+
+            :done ->
+              {:ok, %{conversations: Enum.reverse(conversations), users: users}}
+
+            error ->
+              error
+          end
+        end
+
+      {:ok, other} ->
+        {:error, {:unexpected_response, other}}
+
+      error ->
+        error
+    end
+  end
+
+  defp paginate_chat_events(access_token, path, params, events, key_events, seen_tokens) do
+    case request(:get, path, params: params, token: access_token) do
+      {:ok, body} when is_map(body) ->
+        with {:ok, page_events} <- list_field(body, "data"),
+             {:ok, page_key_events} <- list_field(body["meta"] || %{}, "conversation_key_events") do
+          events = Enum.reverse(page_events, events)
+          key_events = Enum.reverse(page_key_events, key_events)
+
+          case next_page(body, seen_tokens) do
+            {:next, token, seen_tokens} ->
+              paginate_chat_events(
+                access_token,
+                path,
+                Map.put(params, "pagination_token", token),
+                events,
+                key_events,
+                seen_tokens
+              )
+
+            :done ->
+              {:ok, %{events: Enum.reverse(events), key_events: Enum.reverse(key_events)}}
+
+            error ->
+              error
+          end
+        end
+
+      {:ok, other} ->
+        {:error, {:unexpected_response, other}}
+
+      error ->
+        error
+    end
+  end
+
+  defp list_field(body, key) do
+    case Map.get(body, key, []) do
+      values when is_list(values) -> {:ok, values}
+      other -> {:error, {:unexpected_response, other}}
+    end
+  end
+
+  defp next_page(body, seen_tokens) do
+    case get_in(body, ["meta", "next_token"]) do
+      token when is_binary(token) and token != "" ->
+        if MapSet.member?(seen_tokens, token) do
+          {:error, :repeated_pagination_token}
+        else
+          {:next, token, MapSet.put(seen_tokens, token)}
+        end
+
+      _no_next_page ->
+        :done
     end
   end
 

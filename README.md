@@ -80,7 +80,8 @@ backfill history.
 inbox, contacts, feeds, articles and the library. It can create drafts on
 Ready to Post. Scheduling and publishing require a deterministic user action.
 
-**Articles** — Long-form composition with AI assistance.
+**Articles** — Long-form composition with AI assistance, review, and explicit
+publishing through X's Articles API.
 
 **API, MCP and CLI** — A read-write HTTP API, an [MCP](https://modelcontextprotocol.io)
 server so Claude Code, Codex or ChatGPT can drive your account directly,
@@ -92,11 +93,9 @@ Honest limitations, because you will find them anyway:
 
 - **It never publishes without your approval.** There is no autopilot, and
   the API and MCP surfaces stop at queueing on purpose.
-- **The DM inbox will look empty.** X's API only exposes legacy,
-  unencrypted conversations. Anything in XChat is invisible to it —
-  verified against the live API, not assumed. Sending works.
-- **Articles do not publish to X.** X's API has no long-form endpoint at
-  all; the create-post body has no field for one.
+- **No group DM replies.** Legacy and encrypted XChat one-to-one threads share
+  the inbox. Group conversations are skipped because there is no single safe
+  participant address for a reply.
 - **The corpus starts empty** and fills at ~800 posts a night. A hosted
   competitor hands you millions on day one; you build yours.
 - **No bulk DM outreach.** Sending automated DMs to strangers is the one
@@ -111,6 +110,7 @@ browser
   → Oban              (scheduling, publishing, ingestion, generation)
   → twitterapi.io     (public reads: corpus, mentions, feeds, watches)
   → X API v2          (writes, and private DM reads, with your OAuth token)
+  → Node + Chat XDK   (local XChat encryption, decryption, and signing)
 ```
 
 No Redis, no separate queue service, no separate scheduler, no external
@@ -140,7 +140,8 @@ those providers. See [docs/FAQ.md](docs/FAQ.md) for the arithmetic.
 
 ## Local development
 
-Needs Elixir 1.19 and Postgres 17+ with pgvector.
+Needs Elixir 1.19 and Postgres 17+ with pgvector. XChat additionally needs
+Node 18+ and `npm ci` in `xchat/`; it stays disabled when either is absent.
 
 ```bash
 mix setup

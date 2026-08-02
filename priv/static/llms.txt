@@ -41,7 +41,8 @@ Licence: MIT
 - **Analytics** — nightly snapshots, follower trend, posting streak, estimated
   per-post follower gain, and import of X's analytics export.
 - **Ask** — chat with tools over your own data. Can create Ready to Post drafts; cannot schedule or publish.
-- **Articles** — long-form composition with AI assistance.
+- **Articles** — long-form composition with AI assistance, review, and explicit
+  publishing through X's Articles API.
 - **API, MCP server and CLI** — drive it from scripts or from an AI coding agent.
 
 ## What it deliberately does not do
@@ -49,10 +50,9 @@ Licence: MIT
 - Never schedules model output or publishes without human approval. Ask and
   MCP stop at Ready to Post drafts; API and CLI scheduling is explicit.
 - No bulk or automated DM outreach to strangers.
-- The DM inbox shows only legacy unencrypted conversations. Anything in XChat,
-  X's encrypted messaging, is invisible to X's API — verified against the live
-  API. Sending DMs works.
-- Articles do not publish to X. X's API has no long-form endpoint.
+- The DM inbox reads legacy and encrypted XChat one-to-one conversations.
+  XChat cryptography runs locally through X's official Chat XDK. Group DMs are
+  skipped because replies need one safe participant address.
 - The corpus starts empty and fills at roughly 800 posts a night.
 
 ## Requirements

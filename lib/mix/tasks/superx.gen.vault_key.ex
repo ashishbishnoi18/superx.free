@@ -1,5 +1,5 @@
 defmodule Mix.Tasks.Superx.Gen.VaultKey do
-  @shortdoc "Generates a SUPERX_VAULT_KEY for encrypting stored OAuth tokens"
+  @shortdoc "Generates a SUPERX_VAULT_KEY for encrypting stored X secrets"
 
   @moduledoc """
   Prints a fresh 32-byte key, base64-encoded, for `SUPERX_VAULT_KEY`.
@@ -7,8 +7,9 @@ defmodule Mix.Tasks.Superx.Gen.VaultKey do
       $ mix superx.gen.vault_key
 
   Store it with the rest of your production secrets. Rotating it without
-  re-encrypting existing rows will invalidate every stored X token and
-  force all users to reconnect their accounts.
+  re-encrypting existing rows will invalidate every stored X token and XChat
+  identity. It forces all users to reconnect and can make encrypted chat
+  history unreadable.
   """
 
   use Mix.Task

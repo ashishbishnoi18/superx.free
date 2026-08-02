@@ -22,6 +22,7 @@ defmodule SuperX.DMs.Conversation do
     field :participant_handle, :string
     field :participant_name, :string
     field :participant_avatar_url, :string
+    field :encrypted, :boolean, default: false
 
     field :last_message_text, :string
     field :last_message_at, :utc_datetime
@@ -41,6 +42,7 @@ defmodule SuperX.DMs.Conversation do
       :participant_handle,
       :participant_name,
       :participant_avatar_url,
+      :encrypted,
       :last_message_text,
       :last_message_at,
       :last_synced_at
