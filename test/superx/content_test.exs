@@ -90,6 +90,51 @@ defmodule SuperX.ContentTest do
 
       assert "post 1 must attach a GIF on its own" in errors_on(changeset).segments
     end
+
+    test "rejects automation thresholds that are not positive", %{user: user, account: account} do
+      assert {:error, changeset} =
+               Content.create_post(user, account, %{
+                 segments: [%{"text" => "hi"}],
+                 status: "draft",
+                 auto_retweet_hours: -2
+               })
+
+      assert "must be greater than 0" in errors_on(changeset).auto_retweet_hours
+
+      assert {:error, changeset} =
+               Content.create_post(user, account, %{
+                 segments: [%{"text" => "hi"}],
+                 status: "draft",
+                 auto_delete_min_views: 0
+               })
+
+      assert "must be greater than 0" in errors_on(changeset).auto_delete_min_views
+    end
+
+    test "requires plug text when plug likes is set", %{user: user, account: account} do
+      assert {:error, changeset} =
+               Content.create_post(user, account, %{
+                 segments: [%{"text" => "hi"}],
+                 status: "draft",
+                 auto_plug_likes: 50
+               })
+
+      assert "is required when auto plug likes is set" in errors_on(changeset).auto_plug_text
+    end
+
+    test "accepts a valid automation setup", %{user: user, account: account} do
+      assert {:ok, post} =
+               Content.create_post(user, account, %{
+                 segments: [%{"text" => "hi"}],
+                 status: "draft",
+                 auto_retweet_hours: 12,
+                 auto_plug_likes: 50,
+                 auto_plug_text: "follow for more"
+               })
+
+      assert post.auto_retweet_hours == 12
+      assert post.auto_plug_text == "follow for more"
+    end
   end
 
   describe "next_open_slot_at/2" do
@@ -247,6 +292,29 @@ defmodule SuperX.ContentTest do
 
       assert {:error, :partial_publish} = Content.retry_post(partial)
       assert Content.get_post(user, partial.id).status == "failed"
+    end
+  end
+
+  describe "automation bookkeeping" do
+    setup %{user: user, account: account} do
+      {:ok, post} =
+        Content.create_post(user, account, %{segments: [%{"text" => "hi"}], status: "draft"})
+
+      %{post: post}
+    end
+
+    test "update_automation_state merges markers instead of replacing them", %{post: post} do
+      assert {:ok, post} = Content.update_automation_state(post, %{"auto_retweeted_at" => "t1"})
+      assert {:ok, post} = Content.update_automation_state(post, %{"auto_plugged_at" => "t2"})
+
+      assert post.automation_state == %{"auto_retweeted_at" => "t1", "auto_plugged_at" => "t2"}
+    end
+
+    test "update_metrics stamps when the metrics were fetched", %{post: post} do
+      assert {:ok, post} = Content.update_metrics(post, %{"views" => 42})
+
+      assert post.metrics == %{"views" => 42}
+      assert %DateTime{} = post.metrics_updated_at
     end
   end
 

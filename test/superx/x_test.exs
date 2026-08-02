@@ -135,6 +135,28 @@ defmodule SuperX.XTest do
     end
   end
 
+  describe "revoke_token/2" do
+    test "sends the token_type_hint X requires" do
+      # Without it X answers 400 and the credential stays live, so a
+      # disconnect leaves a working token behind. Found when a real
+      # disconnect failed to revoke.
+      Req.Test.stub(X, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        params = URI.decode_query(body)
+
+        assert conn.request_path == "/2/oauth2/revoke"
+        assert params["token"] == "some-token"
+        assert params["token_type_hint"] == "access_token"
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, ~s({"revoked":true}))
+      end)
+
+      assert {:ok, _} = X.revoke_token("some-token")
+    end
+  end
+
   defp configure_dms(enabled) do
     config = Application.get_env(:superx, X, [])
     Application.put_env(:superx, X, Keyword.put(config, :dm_enabled, enabled))

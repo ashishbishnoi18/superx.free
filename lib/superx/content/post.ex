@@ -43,11 +43,36 @@ defmodule SuperX.Content.Post do
     field :reply_to_x_post_id, :string
     field :tags, {:array, :string}, default: []
 
+    # Post automations. A nil field means the automation is off — zero is
+    # rejected in the changeset because "retweet after 0 hours" would fire
+    # on the first worker tick.
+    field :auto_retweet_hours, :integer
+    field :auto_retweet_undo_hours, :integer
+    field :auto_plug_likes, :integer
+    field :auto_plug_text, :string
+    field :auto_delete_min_views, :integer
+    field :auto_delete_hours, :integer
+
+    # Which automations already fired, so a re-run acts once.
+    field :automation_state, :map, default: %{}
+
+    # Last metrics pulled from X, and when, for performance-gated automations.
+    field :metrics, :map, default: %{}
+    field :metrics_updated_at, :utc_datetime
+
     timestamps(type: :utc_datetime)
   end
 
   def statuses, do: @statuses
   def max_media_per_segment, do: @max_media_per_segment
+
+  @positive_automation_fields [
+    :auto_retweet_hours,
+    :auto_retweet_undo_hours,
+    :auto_plug_likes,
+    :auto_delete_min_views,
+    :auto_delete_hours
+  ]
 
   @doc false
   def changeset(post, attrs) do
@@ -61,15 +86,37 @@ defmodule SuperX.Content.Post do
       :scheduled_at,
       :source,
       :reply_to_x_post_id,
-      :tags
+      :tags,
+      :auto_retweet_hours,
+      :auto_retweet_undo_hours,
+      :auto_plug_likes,
+      :auto_plug_text,
+      :auto_delete_min_views,
+      :auto_delete_hours,
+      :automation_state,
+      :metrics,
+      :metrics_updated_at
     ])
     |> validate_required([:user_id, :x_account_id])
     |> validate_inclusion(:status, @statuses)
     |> validate_inclusion(:source, @sources)
+    |> validate_positive_automations()
+    |> validate_auto_plug_text()
     |> normalize_segments()
     |> validate_segments()
     |> validate_media()
     |> validate_scheduled_at()
+  end
+
+  @doc """
+  Persists automation bookkeeping without re-running composer validations.
+
+  Workers write state and metrics on posts that are already live; routing
+  those writes through `changeset/2` would let an unrelated draft-era rule
+  block a metrics refresh.
+  """
+  def automation_changeset(post, attrs) do
+    cast(post, attrs, [:automation_state, :metrics, :metrics_updated_at])
   end
 
   @doc "Marks a post as successfully published."
@@ -152,6 +199,24 @@ defmodule SuperX.Content.Post do
     case {get_field(changeset, :status), get_field(changeset, :scheduled_at)} do
       {"scheduled", nil} ->
         add_error(changeset, :scheduled_at, "is required to schedule a post")
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp validate_positive_automations(changeset) do
+    Enum.reduce(@positive_automation_fields, changeset, fn field, changeset ->
+      validate_number(changeset, field, greater_than: 0)
+    end)
+  end
+
+  # A plug without text would post nothing once the like threshold hits, so
+  # the two fields must arrive together.
+  defp validate_auto_plug_text(changeset) do
+    case {get_field(changeset, :auto_plug_likes), get_field(changeset, :auto_plug_text)} do
+      {likes, text} when not is_nil(likes) and (is_nil(text) or text == "") ->
+        add_error(changeset, :auto_plug_text, "is required when auto plug likes is set")
 
       _ ->
         changeset

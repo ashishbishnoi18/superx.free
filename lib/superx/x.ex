@@ -60,9 +60,16 @@ defmodule SuperX.X do
   end
 
   @doc "Revokes a token when a user disconnects an account."
-  def revoke_token(token) do
+  def revoke_token(token, type \\ "access_token") when type in ~w(access_token refresh_token) do
+    # token_type_hint is required, not optional: without it X answers 400
+    # and the token stays live. Verified against the live endpoint after a
+    # disconnect silently left a working credential behind.
     request(:post, "/oauth2/revoke",
-      form: %{"token" => token, "client_id" => config(:client_id)},
+      form: %{
+        "token" => token,
+        "token_type_hint" => type,
+        "client_id" => config(:client_id)
+      },
       auth: basic_auth()
     )
   end
@@ -146,6 +153,39 @@ defmodule SuperX.X do
   defp maybe_put_media(body, nil), do: body
   defp maybe_put_media(body, []), do: body
   defp maybe_put_media(body, ids), do: Map.put(body, "media", %{"media_ids" => ids})
+
+  @doc """
+  Reposts a post as the token's user.
+
+  Needs only the `tweet.write` and `users.read` scopes, which the OAuth
+  handshake already requests.
+  """
+  def retweet(x_user_id, tweet_id, token) do
+    request(:post, "/users/#{x_user_id}/retweets",
+      json: %{"tweet_id" => tweet_id},
+      token: token
+    )
+  end
+
+  @doc """
+  Undoes a repost by the token's user.
+
+  Needs only the `tweet.write` and `users.read` scopes, which the OAuth
+  handshake already requests.
+  """
+  def unretweet(x_user_id, source_tweet_id, token) do
+    request(:delete, "/users/#{x_user_id}/retweets/#{source_tweet_id}", token: token)
+  end
+
+  @doc """
+  Deletes a post owned by the token's user.
+
+  Needs only the `tweet.write` and `users.read` scopes, which the OAuth
+  handshake already requests.
+  """
+  def delete_post(tweet_id, token) do
+    request(:delete, "/tweets/#{tweet_id}", token: token)
+  end
 
   # --- Direct Messages -----------------------------------------------------
 

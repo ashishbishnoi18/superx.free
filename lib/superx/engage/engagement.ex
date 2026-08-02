@@ -40,6 +40,7 @@ defmodule SuperX.Engage.Engagement do
     field :likes, :integer, default: 0
     field :reposts, :integer, default: 0
     field :replies, :integer, default: 0
+    field :views, :integer, default: 0
 
     field :posted_at, :utc_datetime
 
@@ -74,6 +75,7 @@ defmodule SuperX.Engage.Engagement do
       :likes,
       :reposts,
       :replies,
+      :views,
       :posted_at,
       :priority,
       :priority_reason

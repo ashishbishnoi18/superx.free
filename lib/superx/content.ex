@@ -300,6 +300,28 @@ defmodule SuperX.Content do
   end
 
   @doc """
+  Merges new keys into a post's automation state and persists them.
+
+  Workers record what has fired one marker at a time; merging here keeps a
+  stale full-map write from erasing another automation's marker.
+  """
+  def update_automation_state(%Post{} = post, state) when is_map(state) do
+    post
+    |> Post.automation_changeset(%{automation_state: Map.merge(post.automation_state, state)})
+    |> Repo.update()
+  end
+
+  @doc "Stores the latest metrics pulled from X for a post."
+  def update_metrics(%Post{} = post, metrics) when is_map(metrics) do
+    post
+    |> Post.automation_changeset(%{
+      metrics: metrics,
+      metrics_updated_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+    |> Repo.update()
+  end
+
+  @doc """
   Returns a failed post to the queue for another attempt.
 
   Retries publish as soon as the next dispatcher tick runs rather than
