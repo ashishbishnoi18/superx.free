@@ -186,6 +186,11 @@ defmodule SuperX.Engage do
     end
   end
 
+  @doc "One of the account's feeds, or nil."
+  def get_feed(%XAccount{} = account, id) do
+    Repo.get_by(Feed, id: id, x_account_id: account.id)
+  end
+
   def toggle_feed(%XAccount{} = account, id) do
     case Repo.get_by(Feed, id: id, x_account_id: account.id) do
       nil -> {:error, :not_found}

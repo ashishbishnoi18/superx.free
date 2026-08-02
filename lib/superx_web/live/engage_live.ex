@@ -9,6 +9,7 @@ defmodule SuperXWeb.EngageLive do
   alias SuperX.Content
   alias SuperX.Engage
   alias SuperX.Engage.{Engagement, Feed, Replier}
+  alias SuperX.Workers.MentionSync
 
   @kinds ~w(mention feed)
 
@@ -22,6 +23,7 @@ defmodule SuperXWeb.EngageLive do
      |> assign(:ai_configured, SuperX.AI.configured?())
      |> assign(:api_configured, SuperX.TwitterAPI.configured?())
      |> assign(:feed_form, feed_form())
+     |> assign(:fetching_feed, nil)
      |> load()}
   end
 
@@ -120,11 +122,11 @@ defmodule SuperXWeb.EngageLive do
     attrs = %{query: String.trim(query), min_likes: 50}
 
     case Engage.create_feed(socket.assigns.current_x_account, attrs) do
-      {:ok, _feed} ->
+      {:ok, feed} ->
         {:noreply,
          socket
          |> assign(:feed_form, feed_form())
-         |> put_flash(:info, "Feed added.")
+         |> fetch_now(feed)
          |> load()}
 
       {:error, _} ->
@@ -138,8 +140,15 @@ defmodule SuperXWeb.EngageLive do
            name: name,
            min_likes: 30
          }) do
-      {:ok, _feed} -> {:noreply, load(socket)}
+      {:ok, feed} -> {:noreply, socket |> fetch_now(feed) |> load()}
       {:error, _changeset} -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("fetch_feed", %{"id" => id}, socket) do
+    case Engage.get_feed(socket.assigns.current_x_account, id) do
+      nil -> {:noreply, socket}
+      feed -> {:noreply, socket |> fetch_now(feed) |> load()}
     end
   end
 
@@ -162,7 +171,45 @@ defmodule SuperXWeb.EngageLive do
 
   # --- Async ---------------------------------------------------------------
 
+  # A feed nobody has fetched is indistinguishable from a broken one, so
+  # adding a subject fetches it there and then. Off the render because a
+  # search is a couple of seconds of somebody else's network, and the page
+  # should not sit blank for it.
+  defp fetch_now(socket, feed) do
+    account = socket.assigns.current_x_account
+    parent = self()
+
+    Task.Supervisor.start_child(SuperX.TaskSupervisor, fn ->
+      send(parent, {:feed_fetched, MentionSync.sync_feed(%{feed | x_account: account})})
+    end)
+
+    socket
+    |> assign(:fetching_feed, feed.id)
+    |> put_flash(:info, "Looking for posts about #{feed.name || feed.query}…")
+  end
+
   @impl true
+  def handle_info({:feed_fetched, result}, socket) do
+    socket = assign(socket, :fetching_feed, nil)
+
+    {:noreply,
+     case result do
+       {:ok, 0} ->
+         socket
+         |> put_flash(:info, "Nothing matched yet. SuperX checks again every twenty minutes.")
+         |> load()
+
+       {:ok, n} ->
+         socket |> put_flash(:info, "Found #{n} post(s) worth a look.") |> load()
+
+       {:error, :out_of_credits} ->
+         put_flash(socket, :error, "The read API is out of credits.")
+
+       {:error, _reason} ->
+         put_flash(socket, :error, "Couldn't reach the search API. It'll retry on the next poll.")
+     end}
+  end
+
   def handle_info({:drafted, id, result}, socket) do
     socket = update(socket, :drafting, &MapSet.delete(&1, id))
 
@@ -218,6 +265,7 @@ defmodule SuperXWeb.EngageLive do
       feeds={@feeds}
       starter_feeds={@starter_feeds}
       feed_form={@feed_form}
+      fetching_feed={@fetching_feed}
     />
 
     <div :if={@engagements == []} class="py-16 text-center">
@@ -303,6 +351,7 @@ defmodule SuperXWeb.EngageLive do
   attr :feeds, :list, required: true
   attr :starter_feeds, :list, required: true
   attr :feed_form, :map, required: true
+  attr :fetching_feed, :string, default: nil, doc: "id of the feed being fetched right now"
 
   defp feed_manager(assigns) do
     ~H"""
@@ -346,6 +395,15 @@ defmodule SuperXWeb.EngageLive do
             </div>
 
             <div class="flex items-center gap-4 text-xs">
+              <button
+                id={"feed-#{feed.id}-fetch"}
+                phx-click="fetch_feed"
+                phx-value-id={feed.id}
+                class="act-key"
+                disabled={@fetching_feed == feed.id}
+              >
+                {if @fetching_feed == feed.id, do: "Fetching…", else: "Fetch now"}
+              </button>
               <button
                 id={"feed-#{feed.id}-toggle"}
                 phx-click="toggle_feed"

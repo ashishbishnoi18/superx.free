@@ -60,15 +60,30 @@ defmodule SuperX.Workers.MentionSync do
   end
 
   defp sync_feeds do
-    Engage.feeds_due()
-    |> Enum.each(fn feed ->
-      case TwitterAPI.search(feed.query,
-             min_likes: feed.min_likes,
-             max: @feed_posts_per_feed,
-             lang: "en",
-             type: Feed.search_type(feed)
-           ) do
-        {:ok, tweets} ->
+    Engage.feeds_due() |> Enum.each(&sync_feed/1)
+  end
+
+  @doc """
+  Fetches one feed now.
+
+  Public because adding a feed has to fill it immediately. Waiting for the
+  next scheduled poll leaves someone staring at an empty list wondering
+  whether the thing works, and a read at the moment a subject is asked for
+  is the most requested read there is — not an unprompted cost.
+
+  Expects `:x_account` preloaded, and returns how many items it filed so
+  the caller can say something truthful about the result.
+  """
+  @spec sync_feed(Feed.t()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def sync_feed(%Feed{} = feed) do
+    case TwitterAPI.search(feed.query,
+           min_likes: feed.min_likes,
+           max: @feed_posts_per_feed,
+           lang: "en",
+           type: Feed.search_type(feed)
+         ) do
+      {:ok, tweets} ->
+        count =
           tweets
           |> Enum.filter(&Feed.passes_quality_floor?/1)
           |> Enum.map(&to_engagement(&1, feed.x_account, "feed", feed.id))
@@ -79,12 +94,13 @@ defmodule SuperX.Workers.MentionSync do
           )
           |> store(feed.x_account)
 
-          Engage.touch_feed(feed)
+        Engage.touch_feed(feed)
+        {:ok, count}
 
-        {:error, reason} ->
-          Logger.warning("Feed sync failed for #{inspect(feed.query)}: #{inspect(reason)}")
-      end
-    end)
+      {:error, reason} ->
+        Logger.warning("Feed sync failed for #{inspect(feed.query)}: #{inspect(reason)}")
+        {:error, reason}
+    end
   end
 
   # Scoring happens before the write so the inbox is ordered the moment it
@@ -102,6 +118,7 @@ defmodule SuperX.Workers.MentionSync do
 
     {count, _} = Engage.upsert_many(rows)
     if count > 0, do: Logger.info("Filed #{count} engagement(s) for @#{account.handle}")
+    count
   end
 
   defp to_engagement(tweet, account, kind, feed_id \\ nil) do
