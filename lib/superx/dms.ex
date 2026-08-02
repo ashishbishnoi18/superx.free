@@ -455,11 +455,15 @@ defmodule SuperX.DMs do
       if identity.registered_at do
         identity
       else
-        with {:ok, _public_key} <-
+        with {:ok, registered} <-
                X.register_chat_public_key(token, account.x_user_id, identity.registration),
+             version <- assigned_key_version(registered, identity, account, token),
              {:ok, identity} <-
                identity
-               |> Identity.registered_changeset(DateTime.utc_now() |> DateTime.truncate(:second))
+               |> Identity.registered_changeset(
+                 DateTime.utc_now() |> DateTime.truncate(:second),
+                 version
+               )
                |> Repo.update() do
           identity
         else
@@ -467,6 +471,30 @@ defmodule SuperX.DMs do
         end
       end
     end)
+  end
+
+  # The registration response is the first authority on the version X chose.
+  # Reading the published key back and matching our own public half covers
+  # the case where it does not carry one, because guessing wrong here is
+  # silent: every signature check fails much later, against a valid key.
+  defp assigned_key_version(response, identity, account, token) when is_map(response) do
+    response["version"] || response["public_key_version"] ||
+      published_key_version(identity, account, token)
+  end
+
+  defp assigned_key_version(_response, identity, account, token),
+    do: published_key_version(identity, account, token)
+
+  defp published_key_version(identity, account, token) do
+    with public_key when is_binary(public_key) <-
+           get_in(identity.registration, ["public_key", "public_key"]),
+         {:ok, keys} <- X.get_chat_user_public_keys(token, account.x_user_id),
+         %{"public_key_version" => version} <-
+           Enum.find(keys, &(&1["public_key"] == public_key)) do
+      version
+    else
+      _unmatched -> nil
+    end
   end
 
   defp direct_chat_conversations(conversations, own_x_user_id) do

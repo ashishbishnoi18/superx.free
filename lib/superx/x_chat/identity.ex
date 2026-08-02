@@ -31,8 +31,24 @@ defmodule SuperX.XChat.Identity do
     |> unique_constraint(:x_account_id)
   end
 
-  @doc false
-  def registered_changeset(identity, registered_at) do
-    change(identity, registered_at: registered_at)
+  @doc """
+  Records a completed registration, taking the key version from X.
+
+  The XDK asks X to assign the version rather than supplying one, so the
+  locally generated version is a placeholder. Keeping it means every later
+  `importKeys` labels the key with a version no peer has ever seen, and
+  signature verification fails against a key that is otherwise perfectly
+  valid.
+  """
+  def registered_changeset(identity, registered_at, key_version \\ nil) do
+    identity
+    |> change(registered_at: registered_at)
+    |> then(fn changeset ->
+      if is_binary(key_version) and key_version != "" do
+        change(changeset, key_version: key_version)
+      else
+        changeset
+      end
+    end)
   end
 end

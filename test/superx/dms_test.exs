@@ -298,6 +298,68 @@ defmodule SuperX.DMsTest do
       assert Repo.aggregate(Message, :count) == 2
     end
 
+    test "labels the identity with the version X assigned, not the generated one", %{
+      account: account
+    } do
+      # The XDK asks X to assign the version, so the locally generated one is a
+      # placeholder. Keeping it made every later signature check fail against a
+      # key that was registered and valid, and the only symptom was an inbox
+      # that stayed empty.
+      Application.put_env(:superx, :xchat_stub_handler, fn
+        :available, _params ->
+          true
+
+        :register_keys, _params ->
+          {:ok,
+           %{
+             "private_key" => "private",
+             "key_version" => "7",
+             "registration" => %{
+               "version" => "7",
+               "generate_version" => true,
+               "public_key" => %{"public_key" => "identity-public"}
+             }
+           }}
+
+        :decrypt_events, params ->
+          assert params["key_version"] == "9"
+          {:ok, %{"events" => [], "errors" => %{}}}
+      end)
+
+      Req.Test.stub(X, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+
+        case {conn.method, conn.request_path} do
+          {"GET", "/2/dm_events"} ->
+            json(conn, 200, %{"meta" => %{"result_count" => 0}})
+
+          {"POST", "/2/users/100/public_keys"} ->
+            json(conn, 200, %{"data" => public_key("9")})
+
+          {"GET", "/2/users/" <> _rest} ->
+            json(conn, 200, %{"data" => [public_key("9")]})
+
+          {"GET", "/2/chat/conversations"} ->
+            json(conn, 200, %{
+              "data" => [
+                %{"id" => "conv-1", "type" => "direct", "participant_ids" => ["100", "200"]}
+              ],
+              "includes" => %{"users" => []}
+            })
+
+          {"GET", "/2/chat/conversations/conv-1/events"} ->
+            json(conn, 200, %{"data" => [], "includes" => %{"key_events" => []}})
+        end
+      end)
+
+      assert {:ok, _counts} = DMs.sync(account)
+
+      assert %Identity{key_version: "9", registered_at: registered_at} =
+               Repo.one!(Identity)
+
+      refute is_nil(registered_at)
+    end
+
     test "decrypts XChat history idempotently without exposing its private identity", %{
       account: account
     } do
@@ -548,9 +610,9 @@ defmodule SuperX.DMsTest do
     |> Plug.Conn.send_resp(status, Jason.encode!(body))
   end
 
-  defp public_key do
+  defp public_key(version \\ "7") do
     %{
-      "public_key_version" => "7",
+      "public_key_version" => version,
       "public_key" => "identity-public",
       "signing_public_key" => "signing-public",
       "identity_public_key_signature" => "binding-signature"
