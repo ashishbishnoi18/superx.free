@@ -20,7 +20,11 @@ defmodule SuperX.Workers.PublishPostTest do
     user_fixture()
   end
 
-  test "never creates a text-only post when X rejects its media", %{user: user, account: account} do
+  test "surfaces a permanent X rejection on the first attempt without creating a text-only post",
+       %{
+         user: user,
+         account: account
+       } do
     media_id = stored_png()
     post = scheduled_post(user, account, media_id)
     calls = start_supervised!({Agent, fn -> [] end})
@@ -30,12 +34,12 @@ defmodule SuperX.Workers.PublishPostTest do
       Plug.Conn.send_resp(conn, 400, ~s({"detail":"bad media"}))
     end)
 
-    assert :ok = PublishPost.perform(%Oban.Job{args: %{"post_id" => post.id}, attempt: 5})
+    assert :ok = PublishPost.perform(%Oban.Job{args: %{"post_id" => post.id}, attempt: 1})
 
     failed = Repo.get!(Post, post.id)
     assert failed.status == "failed"
     assert failed.x_post_ids == []
-    assert failed.error =~ "X returned 400"
+    assert failed.error == "X returned 400: bad media"
     refute "/2/tweets" in Agent.get(calls, & &1)
   end
 

@@ -23,8 +23,9 @@ defmodule SuperX.Engage do
     |> where(x_account_id: ^account.id)
     |> filter_kind(opts[:kind])
     |> where(status: ^(opts[:status] || "open"))
-    |> order_engagements(opts[:kind])
+    |> order_engagements(opts[:kind], opts[:status] || "open")
     |> limit(^(opts[:limit] || 50))
+    |> preload(:replied_post)
     |> preload(reply_drafts: ^drafts_query())
     |> Repo.all()
   end
@@ -38,11 +39,18 @@ defmodule SuperX.Engage do
   # stale — whatever its score, you have already seen it. Sorting a feed by
   # score also made the per-feed Top/Latest control look broken: it changed
   # which posts arrived and then the list reordered them anyway.
-  defp order_engagements(query, "feed") do
+  # A reply history is scanned by what happened most recently, not by the
+  # priority of the original mention. Otherwise an older high-scoring reply
+  # can make a newly sent one appear to have vanished.
+  defp order_engagements(query, _kind, "replied") do
+    order_by(query, [e], desc_nulls_last: e.replied_at, desc: e.posted_at)
+  end
+
+  defp order_engagements(query, "feed", _status) do
     order_by(query, [e], desc: e.posted_at)
   end
 
-  defp order_engagements(query, _kind) do
+  defp order_engagements(query, _kind, _status) do
     order_by(query, [e], desc: fragment("coalesce(?, 0)", e.priority), desc: e.posted_at)
   end
 
@@ -65,7 +73,14 @@ defmodule SuperX.Engage do
       |> Repo.all()
       |> Map.new()
 
-    Map.put(counts, "all", counts |> Map.values() |> Enum.sum())
+    replied_count =
+      Engagement
+      |> where(x_account_id: ^account.id, status: "replied")
+      |> Repo.aggregate(:count, :id)
+
+    counts
+    |> Map.put("all", counts |> Map.values() |> Enum.sum())
+    |> Map.put("replied", replied_count)
   end
 
   @doc """
@@ -226,8 +241,13 @@ defmodule SuperX.Engage do
   end
 
   @doc "Feeds due for a sync, oldest first."
-  def feeds_due(within_minutes \\ 60) do
-    cutoff = DateTime.utc_now() |> DateTime.add(-within_minutes * 60, :second)
+  def feeds_due(within_minutes \\ 20) do
+    # The cron starts every twenty minutes but a successful sync finishes a
+    # few seconds after that boundary. A one-minute allowance keeps those
+    # seconds from making every feed miss the next tick and update every
+    # forty minutes instead.
+    age_seconds = max(within_minutes * 60 - 60, 0)
+    cutoff = DateTime.utc_now() |> DateTime.add(-age_seconds, :second)
 
     Feed
     |> where([f], f.enabled)

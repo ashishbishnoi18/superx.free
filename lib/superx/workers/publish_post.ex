@@ -64,7 +64,7 @@ defmodule SuperX.Workers.PublishPost do
         )
 
       {:error, reason} ->
-        if attempt >= 5 do
+        if permanent_failure?(reason) or attempt >= 5 do
           fail(post, describe(reason))
         else
           # Let Oban retry with backoff; the post goes back to scheduled so
@@ -153,8 +153,28 @@ defmodule SuperX.Workers.PublishPost do
   defp describe(other) when is_binary(other), do: other
   defp describe(other), do: inspect(other)
 
+  # X documents 4xx responses as request/auth problems and recommends
+  # retries for 429 and 5xx responses. Keeping a rejected post labelled as
+  # scheduled for five attempts hides a fixable error from the person who
+  # can edit it, so permanent client failures become visible immediately.
+  defp permanent_failure?({:http_error, status, _body}) when status in 400..499,
+    do: status not in [408, 429]
+
+  defp permanent_failure?({:unauthorized, _body}), do: true
+  defp permanent_failure?({:media_missing, _key}), do: true
+  defp permanent_failure?({:media_processing_failed, _error}), do: true
+  defp permanent_failure?(_reason), do: false
+
   defp summarise(%{"detail" => detail}), do: detail
+  defp summarise(%{"errors" => [%{"detail" => detail} | _]}), do: detail
   defp summarise(%{"errors" => [%{"message" => message} | _]}), do: message
-  defp summarise(body) when is_binary(body), do: String.slice(body, 0, 200)
+
+  defp summarise(body) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, decoded} when is_map(decoded) or is_list(decoded) -> summarise(decoded)
+      _ -> String.slice(body, 0, 200)
+    end
+  end
+
   defp summarise(other), do: inspect(other) |> String.slice(0, 200)
 end

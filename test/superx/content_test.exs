@@ -165,9 +165,15 @@ defmodule SuperX.ContentTest do
 
       assert {:ok, claimed} = Content.claim_for_publishing(scheduled.id)
       assert claimed.status == "publishing"
+      assert Content.post_counts(account)["scheduled"] == 1
 
       # A second dispatcher tick must not publish the same post again.
       assert {:error, :already_claimed} = Content.claim_for_publishing(scheduled.id)
+
+      # Nor may a stale queue page move a post back to drafts after the
+      # publisher has claimed it.
+      assert {:error, :not_scheduled} = Content.unschedule_post(claimed)
+      assert Content.get_post(user, claimed.id).status == "publishing"
     end
 
     test "list_due_posts only returns posts whose time has passed", %{
@@ -225,8 +231,22 @@ defmodule SuperX.ContentTest do
       assert {:ok, retried} = Content.retry_post(failed)
       assert retried.status == "scheduled"
       assert retried.error == nil
+      assert retried.segments == post.segments
 
       assert {:error, :not_failed} = Content.retry_post(retried)
+    end
+
+    test "does not retry a thread after some segments already published", %{
+      user: user,
+      post: post
+    } do
+      partial =
+        post
+        |> Ecto.Changeset.change(status: "failed", x_post_ids: ["already-live"])
+        |> SuperX.Repo.update!()
+
+      assert {:error, :partial_publish} = Content.retry_post(partial)
+      assert Content.get_post(user, partial.id).status == "failed"
     end
   end
 

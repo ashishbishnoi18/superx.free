@@ -36,6 +36,7 @@ defmodule SuperX.Content.SlotTest do
       })
 
     {:ok, slotted} = Content.schedule_post(slotted, at: opening.at)
+    {:ok, _publishing} = Content.claim_for_publishing(slotted.id)
 
     {:ok, immediate} =
       Content.create_post(user, account, %{
@@ -48,7 +49,11 @@ defmodule SuperX.Content.SlotTest do
 
     timeline = Slot.timeline(account, user)
 
-    assert Enum.any?(timeline.occurrences, &(&1.post && &1.post.id == slotted.id))
+    assert Enum.any?(
+             timeline.occurrences,
+             &(&1.post && &1.post.id == slotted.id && &1.post.status == "publishing")
+           )
+
     assert Enum.map(timeline.unslotted_posts, & &1.id) == [immediate.id]
   end
 end

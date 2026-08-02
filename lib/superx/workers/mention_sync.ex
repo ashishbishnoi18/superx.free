@@ -3,9 +3,10 @@ defmodule SuperX.Workers.MentionSync do
   Polls mentions and topic feeds, scores what comes back, and files it in
   the Engage inbox.
 
-  Both reads bill per record, so each account gets a bounded pull per run
-  rather than "everything since last time" — an account that gets a
-  thousand mentions overnight should cost the same as one that gets ten.
+  Both reads bill per record, so each account still gets a safety ceiling.
+  The ceiling is deliberately large enough to absorb an ordinary mention
+  burst: this endpoint is newest-first, so items beyond the ceiling are not
+  recovered by the next identical poll.
   """
 
   use Oban.Worker, queue: :ingestion, max_attempts: 2, unique: [period: 300]
@@ -18,13 +19,13 @@ defmodule SuperX.Workers.MentionSync do
   alias SuperX.Engage.{Feed, Replier}
   alias SuperX.{Engage, Repo, TwitterAPI}
 
-  @mentions_per_account 25
+  @mentions_per_account 100
   @feed_posts_per_feed 20
 
   @impl Oban.Worker
   def perform(_job) do
     if TwitterAPI.configured?() do
-      sync_mentions()
+      sync_all_mentions()
       sync_feeds()
     else
       Logger.debug("Skipping engagement sync: twitterapi.io not configured")
@@ -33,29 +34,36 @@ defmodule SuperX.Workers.MentionSync do
     :ok
   end
 
-  defp sync_mentions do
+  defp sync_all_mentions do
     XAccount
     |> where([a], not a.reauth_needed)
     |> Repo.all()
-    |> Enum.each(&sync_account_mentions/1)
+    |> Enum.each(&sync_mentions/1)
   end
 
-  defp sync_account_mentions(%XAccount{} = account) do
+  @doc "Fetches and files mentions for one account immediately."
+  @spec sync_mentions(XAccount.t()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def sync_mentions(%XAccount{} = account) do
     case TwitterAPI.mentions(account.handle, max: @mentions_per_account) do
       {:ok, []} ->
-        :ok
+        {:ok, 0}
 
       {:ok, tweets} ->
-        tweets
-        |> Enum.map(&to_engagement(&1, account, "mention"))
-        |> Enum.reject(&is_nil/1)
-        |> store(account)
+        count =
+          tweets
+          |> Enum.map(&to_engagement(&1, account, "mention"))
+          |> Enum.reject(&is_nil/1)
+          |> store(account)
+
+        {:ok, count}
 
       {:error, :out_of_credits} ->
         Logger.error("Mention sync halted: twitterapi.io is out of credits")
+        {:error, :out_of_credits}
 
       {:error, reason} ->
         Logger.warning("Mention sync failed for @#{account.handle}: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
@@ -80,7 +88,12 @@ defmodule SuperX.Workers.MentionSync do
            min_likes: feed.min_likes,
            max: @feed_posts_per_feed,
            lang: "en",
-           type: Feed.search_type(feed)
+           type: Feed.search_type(feed),
+           # Saved searches normally have a 24-hour cache. Moving the
+           # boundary with each successful sync makes the twenty-minute
+           # poll a fresh incremental read; a short overlap avoids losing
+           # posts on a timestamp boundary and upsert_many/1 deduplicates it.
+           since: feed_since(feed)
          ) do
       {:ok, tweets} ->
         count =
@@ -102,6 +115,11 @@ defmodule SuperX.Workers.MentionSync do
         {:error, reason}
     end
   end
+
+  defp feed_since(%Feed{last_synced_at: %DateTime{} = at}),
+    do: DateTime.add(at, -60, :second)
+
+  defp feed_since(%Feed{}), do: nil
 
   # Scoring happens before the write so the inbox is ordered the moment it
   # renders, rather than briefly showing an arbitrary order then reshuffling.
