@@ -8,7 +8,9 @@ defmodule SuperXWeb.Endpoint do
     store: :cookie,
     key: "_superx_key",
     signing_salt: "wui88HuE",
-    same_site: "Lax"
+    same_site: "Lax",
+    http_only: true,
+    secure: Application.compile_env(:superx, :secure_cookies, false)
   ]
 
   socket "/live", Phoenix.LiveView.Socket,

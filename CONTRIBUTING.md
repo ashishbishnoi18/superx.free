@@ -61,9 +61,10 @@ not. Where behaviour was checked against the real API, the comment says so.
 optional. Missing an LLM key disables drafting and leaves everything else
 working. Keep that property.
 
-**Nothing publishes without human approval.** The API, the MCP server and
-Ask can all draft and queue. None of them can post. This is deliberate and
-not up for negotiation in a PR.
+**Nothing schedules or publishes from model output without human approval.**
+Ask and the MCP server may create Ready to Post drafts, but cannot schedule
+them. The API and CLI may schedule an existing draft only when explicitly
+invoked. This boundary is deliberate and not up for negotiation in a PR.
 
 ## Design
 

@@ -151,7 +151,12 @@ defmodule SuperXWeb.ReadyToPostLive do
         %{"owner" => id, "index" => index, "media-id" => media_id},
         socket
       ) do
-    with %Generation{} = generation <- Content.get_generation(socket.assigns.current_user, id),
+    with %Generation{} = generation <-
+           Content.get_generation(
+             socket.assigns.current_user,
+             socket.assigns.current_x_account,
+             id
+           ),
          segments <- remove_generation_media(generation.segments, index, media_id),
          {:ok, _generation} <- Content.update_generation(generation, %{segments: segments}) do
       {:noreply, load(socket)}
@@ -161,7 +166,11 @@ defmodule SuperXWeb.ReadyToPostLive do
   end
 
   def handle_event("dismiss", %{"id" => id}, socket) do
-    case Content.get_generation(socket.assigns.current_user, id) do
+    case Content.get_generation(
+           socket.assigns.current_user,
+           socket.assigns.current_x_account,
+           id
+         ) do
       nil ->
         {:noreply, socket}
 
@@ -389,7 +398,11 @@ defmodule SuperXWeb.ReadyToPostLive do
   end
 
   defp prepare_generation(socket, id) do
-    case Content.get_generation(socket.assigns.current_user, id) do
+    case Content.get_generation(
+           socket.assigns.current_user,
+           socket.assigns.current_x_account,
+           id
+         ) do
       %Generation{} = generation -> consume_generation_media(socket, generation)
       nil -> {:error, :not_found}
     end

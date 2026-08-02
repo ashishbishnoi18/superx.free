@@ -30,7 +30,17 @@ export function normaliseHost(value = DEFAULT_HOST) {
     throw new CliError("Host must not include a path, query, or fragment.", {code: "invalid_host"})
   }
 
+  if (url.protocol === "http:" && !isLoopback(url.hostname)) {
+    throw new CliError("Plain HTTP is allowed only for localhost. Use HTTPS for remote hosts.", {
+      code: "insecure_host"
+    })
+  }
+
   return url.origin
+}
+
+function isLoopback(hostname) {
+  return hostname === "localhost" || hostname === "[::1]" || /^127(?:\.\d{1,3}){3}$/.test(hostname)
 }
 
 export async function readConfig(path = defaultConfigPath()) {

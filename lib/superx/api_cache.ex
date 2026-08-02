@@ -51,11 +51,19 @@ defmodule SuperX.ApiCache do
   cached — a 500 is not an answer, and caching one would turn a blip into
   an outage lasting the whole TTL.
 
-  """
-  def fetch(path, params, fun) when is_function(fun, 0) do
-    hash = hash(params)
+  ## Options
 
-    case lookup(@provider, path, hash, ttl(path)) do
+    * `:ttl` — seconds the answer stays good for, overriding the
+      endpoint's entry in `@ttls`. Callers whose freshness needs differ
+      from the default (metrics feeding automations, versus a voice
+      profile) use this rather than weakening the default for everyone.
+
+  """
+  def fetch(path, params, fun, opts \\ []) when is_function(fun, 0) do
+    hash = hash(params)
+    ttl = Keyword.get(opts, :ttl) || ttl(path)
+
+    case lookup(@provider, path, hash, ttl) do
       {:ok, body} ->
         {:ok, body}
 

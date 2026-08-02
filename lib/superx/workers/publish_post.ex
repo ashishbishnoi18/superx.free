@@ -79,14 +79,14 @@ defmodule SuperX.Workers.PublishPost do
     # X media ids expire, so segments retain durable local keys until the
     # post is claimed. Uploading here keeps a draft scheduled days ahead
     # from reaching X with an id that died before its slot arrived.
-    with {:ok, segments} <- upload_media(token, post.segments) do
+    with {:ok, segments} <- upload_media(token, post) do
       publish_segments(token, post, segments)
     end
   end
 
-  defp upload_media(token, segments) do
-    Enum.reduce_while(segments, {:ok, []}, fn segment, {:ok, uploaded} ->
-      case upload_segment_media(token, segment["media_ids"] || []) do
+  defp upload_media(token, %Post{} = post) do
+    Enum.reduce_while(post.segments, {:ok, []}, fn segment, {:ok, uploaded} ->
+      case upload_segment_media(token, post, segment["media_ids"] || []) do
         {:ok, media_ids} ->
           {:cont, {:ok, uploaded ++ [Map.put(segment, "media_ids", media_ids)]}}
 
@@ -98,9 +98,9 @@ defmodule SuperX.Workers.PublishPost do
     end)
   end
 
-  defp upload_segment_media(token, local_ids) do
+  defp upload_segment_media(token, post, local_ids) do
     Enum.reduce_while(local_ids, {:ok, []}, fn local_id, {:ok, x_ids} ->
-      with {:ok, media} <- media_file(local_id),
+      with {:ok, media} <- media_file(post, local_id),
            {:ok, x_id} <- SuperX.X.upload_media(token, media) do
         {:cont, {:ok, x_ids ++ [x_id]}}
       else
@@ -109,8 +109,8 @@ defmodule SuperX.Workers.PublishPost do
     end)
   end
 
-  defp media_file(local_id) do
-    case Media.file(local_id) do
+  defp media_file(post, local_id) do
+    case Media.file(post, local_id) do
       {:ok, media} -> {:ok, media}
       {:error, :not_found} -> {:error, {:media_missing, local_id}}
     end

@@ -25,7 +25,7 @@ defmodule SuperX.Workers.PublishPostTest do
          user: user,
          account: account
        } do
-    media_id = stored_png()
+    media_id = stored_png(user, account)
     post = scheduled_post(user, account, media_id)
     calls = start_supervised!({Agent, fn -> [] end})
 
@@ -44,7 +44,7 @@ defmodule SuperX.Workers.PublishPostTest do
   end
 
   test "attaches the fresh X media id when it creates the post", %{user: user, account: account} do
-    media_id = stored_png()
+    media_id = stored_png(user, account)
     post = scheduled_post(user, account, media_id)
     request = start_supervised!({Agent, fn -> 0 end})
 
@@ -87,13 +87,13 @@ defmodule SuperX.Workers.PublishPostTest do
     post
   end
 
-  defp stored_png do
+  defp stored_png(user, account) do
     temporary =
       Path.join(System.tmp_dir!(), "superx-publish-media-#{System.unique_integer([:positive])}")
 
     File.write!(temporary, <<0x89, "PNG\r\n", 0x1A, "\n", 0, 0, 0, 0>>)
     on_exit(fn -> File.rm(temporary) end)
-    {:ok, media_id} = Media.store_upload(%{path: temporary})
+    {:ok, media_id} = Media.store_upload(user, account, %{path: temporary})
     media_id
   end
 

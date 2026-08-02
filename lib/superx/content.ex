@@ -8,7 +8,7 @@ defmodule SuperX.Content do
 
   alias SuperX.Accounts.{User, XAccount}
   alias SuperX.Content.{Generation, Post, ScheduleSlot, Slot, VoiceProfile}
-  alias SuperX.Repo
+  alias SuperX.{Media, Repo}
 
   # --- Voice profiles ------------------------------------------------------
 
@@ -67,17 +67,37 @@ defmodule SuperX.Content do
 
   # --- Posts ---------------------------------------------------------------
 
-  def get_post(%User{} = user, id) do
-    Repo.get_by(Post, id: id, user_id: user.id)
+  def get_post(%User{id: user_id}, %XAccount{id: account_id, user_id: user_id}, id) do
+    Repo.get_by(Post, id: id, user_id: user_id, x_account_id: account_id)
   end
 
-  @doc "Posts for one account in one lifecycle state."
+  def get_post(%User{}, %XAccount{}, _id), do: nil
+
+  @doc """
+  Posts for one account in one lifecycle state.
+
+  Pass `tag: "ai"` to keep only posts carrying that tag.
+  """
   def list_posts(%XAccount{} = account, status, opts \\ []) do
     Post
     |> where(x_account_id: ^account.id, status: ^status)
+    |> with_tag(opts[:tag])
     |> order_by(^order_for(status))
     |> limit(^(opts[:limit] || 100))
     |> Repo.all()
+  end
+
+  defp with_tag(query, tag) when tag in [nil, ""], do: query
+  defp with_tag(query, tag), do: where(query, [p], fragment("? = ANY(?)", ^tag, p.tags))
+
+  @doc "Every tag used on the account's posts, sorted — for filter menus."
+  def list_tags(%XAccount{} = account) do
+    Post
+    |> where(x_account_id: ^account.id)
+    |> select([p], fragment("unnest(?)", p.tags))
+    |> Repo.all()
+    |> Enum.uniq()
+    |> Enum.sort()
   end
 
   # Upcoming work reads best soonest-first; history reads newest-first.
@@ -104,16 +124,20 @@ defmodule SuperX.Content do
     Map.update!(counts, "scheduled", &(&1 + counts["publishing"]))
   end
 
-  def create_post(%User{} = user, %XAccount{} = account, attrs) do
-    attrs = attrs |> Map.put(:user_id, user.id) |> Map.put(:x_account_id, account.id)
-
-    %Post{}
-    |> Post.changeset(attrs)
+  def create_post(
+        %User{id: user_id},
+        %XAccount{id: account_id, user_id: user_id},
+        attrs
+      ) do
+    %Post{user_id: user_id, x_account_id: account_id}
+    |> post_changeset(attrs)
     |> Repo.insert()
   end
 
+  def create_post(%User{}, %XAccount{}, _attrs), do: {:error, :account_mismatch}
+
   def update_post(%Post{} = post, attrs) do
-    post |> Post.changeset(attrs) |> Repo.update()
+    post |> post_changeset(attrs) |> Repo.update()
   end
 
   def delete_post(%Post{} = post), do: Repo.delete(post)
@@ -197,11 +221,12 @@ defmodule SuperX.Content do
       |> Repo.update()
       |> unwrap_transaction()
 
-      %Post{}
-      |> Post.changeset(%{
+      %Post{
         user_id: user.id,
         x_account_id: generation.x_account_id,
-        generation_id: generation.id,
+        generation_id: generation.id
+      }
+      |> post_changeset(%{
         segments: generation.segments,
         source: "generated",
         status: "scheduled",
@@ -308,8 +333,81 @@ defmodule SuperX.Content do
   def update_automation_state(%Post{} = post, state) when is_map(state) do
     post
     |> Post.automation_changeset(%{automation_state: Map.merge(post.automation_state, state)})
+    |> Ecto.Changeset.optimistic_lock(:automation_version)
     |> Repo.update()
   end
+
+  @automation_actions ~w(retweet unretweet plug delete)
+
+  @doc "Durably claims one external automation action before it reaches X."
+  def claim_automation_action(%Post{} = post, action, %DateTime{} = now)
+      when action in @automation_actions do
+    state = post.automation_state || %{}
+
+    if action_finished?(state, action) or automation_claimed?(state) do
+      {:error, :already_claimed}
+    else
+      state = Map.put(state, claim_marker(action), DateTime.to_iso8601(now))
+      optimistic_automation_update(post, state)
+    end
+  end
+
+  @doc "Records a claimed action as complete without opening a duplicate-execution window."
+  def complete_automation_action(%Post{} = post, action, %DateTime{} = now)
+      when action in @automation_actions do
+    state =
+      (post.automation_state || %{})
+      |> Map.delete(claim_marker(action))
+      |> Map.put(done_marker(action), DateTime.to_iso8601(now))
+
+    optimistic_automation_update(post, state)
+  end
+
+  @doc "Records a terminal provider rejection for a claimed automation."
+  def fail_automation_action(%Post{} = post, action, reason) when action in @automation_actions do
+    state =
+      (post.automation_state || %{})
+      |> Map.delete(claim_marker(action))
+      |> Map.put("failed_#{action}", reason)
+
+    optimistic_automation_update(post, state)
+  end
+
+  @doc "Releases a claim after a provider response proves no side effect occurred."
+  def release_automation_action(%Post{} = post, action) when action in @automation_actions do
+    state = Map.delete(post.automation_state || %{}, claim_marker(action))
+    optimistic_automation_update(post, state)
+  end
+
+  defp optimistic_automation_update(post, state) do
+    post
+    |> Post.automation_changeset(%{automation_state: state})
+    |> Ecto.Changeset.optimistic_lock(:automation_version)
+    |> Repo.update(stale_error_field: :automation_state)
+    |> case do
+      {:error, changeset} ->
+        if changeset.errors[:automation_state],
+          do: {:error, :already_claimed},
+          else: {:error, changeset}
+
+      result ->
+        result
+    end
+  end
+
+  defp action_finished?(state, action) do
+    not is_nil(state[done_marker(action)]) or not is_nil(state["failed_#{action}"])
+  end
+
+  defp automation_claimed?(state) do
+    Enum.any?(state, fn {key, _value} -> String.starts_with?(key, "claimed_") end)
+  end
+
+  defp claim_marker(action), do: "claimed_#{action}_at"
+  defp done_marker("retweet"), do: "retweeted_at"
+  defp done_marker("unretweet"), do: "unretweeted_at"
+  defp done_marker("plug"), do: "plugged_at"
+  defp done_marker("delete"), do: "deleted_at"
 
   @doc "Stores the latest metrics pulled from X for a post."
   def update_metrics(%Post{} = post, metrics) when is_map(metrics) do
@@ -379,16 +477,20 @@ defmodule SuperX.Content do
     Map.put(counts, "all", counts |> Map.values() |> Enum.sum())
   end
 
-  def get_generation(%User{} = user, id) do
-    Generation |> Repo.get_by(id: id, user_id: user.id) |> Repo.preload(:source_corpus_post)
+  def get_generation(%User{id: user_id}, %XAccount{id: account_id, user_id: user_id}, id) do
+    Generation
+    |> Repo.get_by(id: id, user_id: user_id, x_account_id: account_id)
+    |> Repo.preload(:source_corpus_post)
   end
 
+  def get_generation(%User{}, %XAccount{}, _id), do: nil
+
   def create_generation(attrs) do
-    %Generation{} |> Generation.changeset(attrs) |> Repo.insert()
+    %Generation{} |> Generation.changeset(attrs) |> generation_media_changeset() |> Repo.insert()
   end
 
   def update_generation(%Generation{} = generation, attrs) do
-    generation |> Generation.changeset(attrs) |> Repo.update()
+    generation |> Generation.changeset(attrs) |> generation_media_changeset() |> Repo.update()
   end
 
   def dismiss_generation(%Generation{} = generation) do
@@ -399,23 +501,57 @@ defmodule SuperX.Content do
   Turns a shelf item into a real draft and marks it used, so the same
   generation can't be accepted twice.
   """
-  def accept_generation(%User{} = user, %Generation{} = generation) do
+  def accept_generation(%User{id: user_id} = user, %Generation{user_id: user_id} = generation) do
     Ecto.Multi.new()
     |> Ecto.Multi.update(:generation, Generation.changeset(generation, %{status: "used"}))
     |> Ecto.Multi.insert(:post, fn _ ->
-      Post.changeset(%Post{}, %{
-        user_id: user.id,
-        x_account_id: generation.x_account_id,
-        generation_id: generation.id,
-        segments: generation.segments,
-        source: "generated",
-        status: "draft"
-      })
+      post_changeset(
+        %Post{
+          user_id: user.id,
+          x_account_id: generation.x_account_id,
+          generation_id: generation.id
+        },
+        %{
+          segments: generation.segments,
+          source: "generated",
+          status: "draft"
+        }
+      )
     end)
     |> Repo.transaction()
     |> case do
       {:ok, %{post: post}} -> {:ok, post}
       {:error, _step, reason, _} -> {:error, reason}
+    end
+  end
+
+  def accept_generation(%User{}, %Generation{}), do: {:error, :not_found}
+
+  defp post_changeset(post, attrs) do
+    post |> Post.changeset(attrs) |> media_ownership_changeset(post.user_id, post.x_account_id)
+  end
+
+  defp generation_media_changeset(changeset) do
+    media_ownership_changeset(
+      changeset,
+      Ecto.Changeset.get_field(changeset, :user_id),
+      Ecto.Changeset.get_field(changeset, :x_account_id)
+    )
+  end
+
+  defp media_ownership_changeset(changeset, user_id, account_id) do
+    media_ids =
+      changeset
+      |> Ecto.Changeset.get_field(:segments, [])
+      |> Enum.flat_map(fn
+        segment when is_map(segment) -> Map.get(segment, "media_ids", [])
+        _segment -> []
+      end)
+
+    if media_ids == [] or Media.owned_by?(user_id, account_id, media_ids) do
+      changeset
+    else
+      Ecto.Changeset.add_error(changeset, :segments, "contains an unavailable attachment")
     end
   end
 

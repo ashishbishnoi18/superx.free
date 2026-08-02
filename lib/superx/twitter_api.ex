@@ -92,13 +92,21 @@ defmodule SuperX.TwitterAPI do
     )
   end
 
-  @doc "Recent posts by one account — used to derive a voice profile."
+  @doc """
+  Recent posts by one account — used to derive a voice profile.
+
+  Pass `:ttl` to shorten the cache lifetime for callers that need fresher
+  numbers than the default six hours, e.g. metrics feeding automations.
+  """
   def user_tweets(handle, opts) do
     paginate(
       "/twitter/user/last_tweets",
       %{"userName" => strip(handle)},
       Keyword.fetch!(opts, :max),
-      "tweets"
+      "tweets",
+      [],
+      nil,
+      cache_opts(opts)
     )
   end
 
@@ -223,10 +231,10 @@ defmodule SuperX.TwitterAPI do
 
   # Pages until `max` items or the API says there's nothing more. The
   # ceiling is mandatory rather than optional because each page costs money.
-  defp paginate(path, params, max, key, acc \\ [], cursor \\ nil) do
+  defp paginate(path, params, max, key, acc \\ [], cursor \\ nil, cache_opts \\ []) do
     params = if cursor, do: Map.put(params, "cursor", cursor), else: params
 
-    case get(path, params) do
+    case get(path, params, cache_opts) do
       {:ok, body} ->
         acc = acc ++ extract(body, key)
 
@@ -236,7 +244,7 @@ defmodule SuperX.TwitterAPI do
 
           body["has_next_page"] == true and is_binary(body["next_cursor"]) and
             body["next_cursor"] != "" and extract(body, key) != [] ->
-            paginate(path, params, max, key, acc, body["next_cursor"])
+            paginate(path, params, max, key, acc, body["next_cursor"], cache_opts)
 
           true ->
             {:ok, acc}
@@ -266,8 +274,15 @@ defmodule SuperX.TwitterAPI do
   # Every read goes through the cache. The rate limiter is acquired inside
   # the miss branch rather than around it, so a cache hit is not made to
   # wait its turn behind calls that actually cost money.
-  defp get(path, params) do
-    ApiCache.fetch(path, params, fn -> do_get(path, params) end)
+  defp get(path, params, cache_opts) do
+    ApiCache.fetch(path, params, fn -> do_get(path, params) end, cache_opts)
+  end
+
+  defp cache_opts(opts) do
+    case Keyword.fetch(opts, :ttl) do
+      {:ok, ttl} -> [ttl: ttl]
+      :error -> []
+    end
   end
 
   defp do_get(path, params) do

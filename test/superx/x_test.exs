@@ -157,6 +157,30 @@ defmodule SuperX.XTest do
     end
   end
 
+  describe "post_metrics/2" do
+    test "reads an authoritative impression count from X" do
+      Req.Test.stub(X, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        assert conn.method == "GET"
+        assert conn.request_path == "/2/tweets/post-1"
+        assert conn.query_params["tweet.fields"] =~ "public_metrics"
+        assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer user-token"]
+
+        json(conn, 200, %{
+          "data" => %{"public_metrics" => %{"impression_count" => 1_234}}
+        })
+      end)
+
+      assert {:ok, %{views: 1_234}} = X.post_metrics("post-1", "user-token")
+    end
+
+    test "fails closed when X omits the impression count" do
+      Req.Test.stub(X, fn conn -> json(conn, 200, %{"data" => %{"public_metrics" => %{}}}) end)
+
+      assert {:error, :metrics_unavailable} = X.post_metrics("post-1", "user-token")
+    end
+  end
+
   defp configure_dms(enabled) do
     config = Application.get_env(:superx, X, [])
     Application.put_env(:superx, X, Keyword.put(config, :dm_enabled, enabled))

@@ -99,6 +99,22 @@ defmodule SuperX.AI.Prompts do
     }
   end
 
+  @doc "JSON schema for a set of composer segments rewritten in place."
+  def improve_schema do
+    %{
+      type: "object",
+      properties: %{
+        segments: %{
+          type: "array",
+          items: %{type: "string"},
+          description:
+            "The rewritten segments, in the same order and the same number as the input, each under 280 characters."
+        }
+      },
+      required: ["segments"]
+    }
+  end
+
   @doc "JSON schema for drafting or extending a long-form article."
   def article_schema(mode)
 
@@ -285,6 +301,49 @@ defmodule SuperX.AI.Prompts do
 
     Someone shown both posts should be unable to tell that one came from
     the other.
+    """
+  end
+
+  @doc """
+  Prompt that rewrites the composer's own segments — an edit, not a draft.
+
+  The voice mechanics ride in the system prompt as usual; the summary is
+  repeated here only so the model can check tone without re-deriving it.
+  """
+  def improve_prompt(%VoiceProfile{} = voice, texts) when is_list(texts) do
+    segments =
+      texts
+      |> Enum.with_index(1)
+      |> Enum.map_join("\n\n", fn {text, i} -> "<segment_#{i}>\n#{text}\n</segment_#{i}>" end)
+
+    voice_hint =
+      case voice.about do
+        about when is_binary(about) and about != "" ->
+          "<voice_summary>\n#{about}\n</voice_summary>"
+
+        _ ->
+          "(no voice profile yet — keep the writing plain and specific)"
+      end
+
+    """
+    Rewrite each segment below so it reads as the author at their best:
+    tighter, clearer, same meaning, same order.
+
+    #{voice_hint}
+
+    <segments>
+    #{segments}
+    </segments>
+
+    Rules:
+    - Keep the author's voice and mechanics. This is an edit of their own
+      words, not a new post.
+    - Keep the meaning and every concrete detail: numbers, names, links.
+      Never add a claim the author did not make.
+    - Cut filler before anything else, but not at the cost of meaning.
+    - Each segment stays under 280 characters.
+    - Attachments are not shown to you, so never drop a reference to one.
+    - Return exactly #{length(texts)} segments, in the same order.
     """
   end
 

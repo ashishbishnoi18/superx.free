@@ -172,6 +172,9 @@ defmodule SuperX.Accounts.Connect do
   end
 
   defp count_accounts(%User{} = user) do
-    XAccount |> where(user_id: ^user.id) |> select(count()) |> Repo.one()
+    XAccount
+    |> where([a], a.user_id == ^user.id and is_nil(a.disconnected_at))
+    |> select(count())
+    |> Repo.one()
   end
 end

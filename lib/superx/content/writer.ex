@@ -37,6 +37,54 @@ defmodule SuperX.Content.Writer do
   def remix(%User{}, %XAccount{}, %Post{}), do: {:error, :not_published}
 
   @doc """
+  Rewrites the composer's own segments in the author's voice.
+
+  The credit boundary matches `generate/3` — claimed before the model
+  call, refunded when it fails — but there is no retry: the writer's
+  original text stays on screen as the fallback.
+  """
+  @spec improve(User.t(), XAccount.t(), [String.t()], keyword()) ::
+          {:ok, [String.t()]} | {:error, term()} | {:error, :quota_exceeded, map()}
+  def improve(%User{} = user, %XAccount{} = account, texts, opts \\ []) do
+    credit_opts = [ref_type: "post", ref_id: opts[:ref_id]]
+
+    with {:ok, voice} <- Content.get_or_create_voice_profile(account),
+         {:ok, _balance} <- Billing.spend_credits(user, @credit_cost, "improve", credit_opts) do
+      case do_improve(voice, account, texts) do
+        {:ok, improved} ->
+          {:ok, improved}
+
+        {:error, reason} ->
+          # The user shouldn't pay for our failure.
+          Billing.refund_credits(user, @credit_cost, credit_opts)
+          {:error, reason}
+      end
+    end
+  end
+
+  defp do_improve(voice, account, texts) do
+    case AI.structured(Prompts.improve_prompt(voice, texts), Prompts.improve_schema(),
+           system: Prompts.writer_system(voice, account),
+           model: AI.writer_model(),
+           temperature: 0.7,
+           # Same budget reasoning as `write/8`: thinking plus the tool call.
+           max_tokens: 4000,
+           tool_description: "Return the improved segments."
+         ) do
+      {:ok, %{"segments" => improved}} when is_list(improved) and improved != [] ->
+        # The model occasionally runs long despite the instruction; a
+        # segment that can't post is worse than a truncated one.
+        {:ok, Enum.map(improved, &(&1 |> to_string() |> String.trim() |> String.slice(0, 280)))}
+
+      {:ok, other} ->
+        {:error, {:unexpected_response, other}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
   Generates one post and puts it on the shelf.
 
   Returns `{:error, :quota_exceeded, details}` when the user is out of

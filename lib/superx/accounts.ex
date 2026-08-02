@@ -61,7 +61,10 @@ defmodule SuperX.Accounts do
 
   @doc "All accounts a user can act as, oldest first."
   def list_x_accounts(%User{} = user) do
-    XAccount |> where(user_id: ^user.id) |> order_by(asc: :inserted_at) |> Repo.all()
+    XAccount
+    |> where([a], a.user_id == ^user.id and is_nil(a.disconnected_at))
+    |> order_by(asc: :inserted_at)
+    |> Repo.all()
   end
 
   @doc """
@@ -71,21 +74,33 @@ defmodule SuperX.Accounts do
   def current_x_account(%User{} = user) do
     cond do
       user.default_x_account_id ->
-        Repo.get_by(XAccount, id: user.default_x_account_id, user_id: user.id) ||
-          first_x_account(user)
+        connected_account(user, user.default_x_account_id) || first_x_account(user)
 
       true ->
         first_x_account(user)
     end
   end
 
+  # Ecto forbids `disconnected_at: nil` in a keyword `get_by`, so every
+  # ownership check that also has to exclude disconnected accounts routes
+  # through here rather than repeating the query three times.
+  defp connected_account(%User{} = user, x_account_id) do
+    XAccount
+    |> where([a], a.id == ^x_account_id and a.user_id == ^user.id and is_nil(a.disconnected_at))
+    |> Repo.one()
+  end
+
   defp first_x_account(%User{} = user) do
-    XAccount |> where(user_id: ^user.id) |> order_by(asc: :inserted_at) |> limit(1) |> Repo.one()
+    XAccount
+    |> where([a], a.user_id == ^user.id and is_nil(a.disconnected_at))
+    |> order_by(asc: :inserted_at)
+    |> limit(1)
+    |> Repo.one()
   end
 
   @doc "Switches the account the user acts as. Refuses accounts they don't own."
   def set_default_x_account(%User{} = user, x_account_id) do
-    case Repo.get_by(XAccount, id: x_account_id, user_id: user.id) do
+    case connected_account(user, x_account_id) do
       nil -> {:error, :not_found}
       account -> update_user(user, %{default_x_account_id: account.id})
     end
@@ -114,32 +129,58 @@ defmodule SuperX.Accounts do
 
     XAccount
     |> where([a], not a.reauth_needed)
+    |> where([a], is_nil(a.disconnected_at))
     |> where([a], not is_nil(a.refresh_token))
     |> where([a], a.token_expires_at <= ^cutoff)
     |> Repo.all()
   end
 
   @doc """
-  Disconnects an account. Scheduled posts for it are cancelled rather
-  than deleted, so the user can see what didn't go out.
+  Revokes an account's X credentials and disconnects it without deleting
+  its history. Scheduled posts are cancelled so nothing can publish later.
   """
   def disconnect_x_account(%User{} = user, x_account_id) do
-    case Repo.get_by(XAccount, id: x_account_id, user_id: user.id) do
+    case connected_account(user, x_account_id) do
       nil ->
         {:error, :not_found}
 
       account ->
-        Multi.new()
-        |> Multi.update_all(
-          :cancel_scheduled,
-          from(p in SuperX.Content.Post,
-            where: p.x_account_id == ^account.id and p.status == "scheduled"
-          ),
-          set: [status: "cancelled"]
-        )
-        |> Multi.delete(:account, account)
-        |> Repo.transaction()
+        with :ok <- revoke_x_credentials(account) do
+          disconnected_at = DateTime.utc_now() |> DateTime.truncate(:second)
+
+          Multi.new()
+          |> Multi.update_all(
+            :cancel_scheduled,
+            from(p in SuperX.Content.Post,
+              where: p.x_account_id == ^account.id and p.status == "scheduled"
+            ),
+            set: [status: "cancelled"]
+          )
+          |> Multi.update(:account, XAccount.disconnect_changeset(account, disconnected_at))
+          |> Multi.update_all(
+            :clear_default,
+            from(u in User,
+              where: u.id == ^user.id and u.default_x_account_id == ^account.id
+            ),
+            set: [default_x_account_id: nil]
+          )
+          |> Repo.transaction()
+        end
     end
+  end
+
+  defp revoke_x_credentials(%XAccount{} = account) do
+    [
+      {account.access_token, "access_token"},
+      {account.refresh_token, "refresh_token"}
+    ]
+    |> Enum.reject(fn {token, _type} -> is_nil(token) or token == "" end)
+    |> Enum.reduce_while(:ok, fn {token, type}, :ok ->
+      case SuperX.X.revoke_token(token, type) do
+        {:ok, _response} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, {:revocation_failed, type, reason}}}
+      end
+    end)
   end
 
   # --- OAuth handshakes ----------------------------------------------------

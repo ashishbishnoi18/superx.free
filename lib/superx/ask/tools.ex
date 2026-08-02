@@ -4,9 +4,9 @@ defmodule SuperX.Ask.Tools do
 
   Two rules shape this list:
 
-    * **Nothing publishes.** Tools can draft and queue, never post. A chat
-      turn that puts something on X irreversibly is a bad trade for the
-      convenience, and the queue is one click from the user anyway.
+    * **No model-controlled scheduling.** Tools can save a draft to Ready to
+      Post, but only a deterministic UI or API action may schedule it. Model
+      instructions are not proof that a user approved exact copy.
     * **Reads are scoped to the acting account.** Every tool takes the
       account from the session rather than an argument, so the model can't
       be talked into reading someone else's data.
@@ -35,23 +35,6 @@ defmodule SuperX.Ask.Tools do
             }
           },
           required: ["topic"]
-        }
-      },
-      %{
-        name: "queue_post",
-        description:
-          "Save a post and schedule it into the next open slot. Use the exact text the user approved. Never invent text the user has not seen.",
-        input_schema: %{
-          type: "object",
-          properties: %{
-            text: %{
-              type: "string",
-              description: "The post text, under 280 characters.",
-              minLength: 1,
-              maxLength: 280
-            }
-          },
-          required: ["text"]
         }
       },
       %{
@@ -186,25 +169,6 @@ defmodule SuperX.Ask.Tools do
 
       {:error, reason} ->
         {:error, "Drafting failed: #{inspect(reason)}"}
-    end
-  end
-
-  defp do_run("queue_post", %{"text" => text}, ctx) do
-    with {:ok, post} <-
-           Content.create_post(ctx.user, ctx.account, %{
-             segments: [%{"text" => text, "media_ids" => []}],
-             status: "draft",
-             source: "generated"
-           }),
-         {:ok, scheduled} <- Content.schedule_post(post) do
-      when_str = format_when(scheduled.scheduled_at, ctx.user.timezone)
-      {:ok, "Queued for #{when_str}.", "Queued a post for #{when_str}"}
-    else
-      {:error, :no_slots} ->
-        {:error, "The user has no posting times configured, so nothing can be queued."}
-
-      {:error, changeset} ->
-        {:error, "Could not queue: #{inspect(changeset.errors)}"}
     end
   end
 

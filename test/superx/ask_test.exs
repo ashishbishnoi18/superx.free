@@ -82,6 +82,18 @@ defmodule SuperX.AskTest do
   end
 
   describe "tool use" do
+    test "does not expose model-controlled scheduling", %{user: user, account: account} do
+      refute Enum.any?(Tools.definitions(), &(&1.name == "queue_post"))
+
+      assert {:error, :unknown_tool, "Unknown tool: queue_post"} =
+               Tools.run("queue_post", %{"text" => "unapproved"}, %{
+                 user: user,
+                 account: account
+               })
+
+      assert Content.list_posts(account, "scheduled") == []
+    end
+
     test "runs the tool, feeds the result back, and records what it did", %{
       user: user,
       account: account,

@@ -34,7 +34,12 @@ defmodule SuperXWeb.MediaUploads do
     else
       results =
         Phoenix.LiveView.consume_uploaded_entries(socket, name, fn meta, _entry ->
-          {:ok, Media.store_upload(meta)}
+          {:ok,
+           Media.store_upload(
+             socket.assigns.current_user,
+             socket.assigns.current_x_account,
+             meta
+           )}
         end)
 
       case Enum.split_with(results, &match?({:ok, _key}, &1)) do

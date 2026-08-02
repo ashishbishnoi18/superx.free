@@ -200,7 +200,7 @@ defmodule SuperXWeb.EngageLiveTest do
 
     view |> element("#retry-reply-#{reply.id}") |> render_click()
 
-    retried = Content.get_post(user, reply.id)
+    retried = Content.get_post(user, account, reply.id)
     assert retried.status == "scheduled"
 
     assert [%{"text" => "The boundary was in the wrong place.", "media_ids" => []}] =

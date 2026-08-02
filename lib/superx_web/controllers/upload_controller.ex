@@ -1,10 +1,12 @@
 defmodule SuperXWeb.UploadController do
   use SuperXWeb, :controller
 
-  alias SuperX.Media
+  alias SuperX.{Accounts, Media}
 
   def show(conn, %{"id" => id}) do
-    case Media.file(id) do
+    account = Accounts.current_x_account(conn.assigns.current_user)
+
+    case Media.file(account, id) do
       {:ok, media} ->
         conn
         |> put_resp_content_type(media.content_type)

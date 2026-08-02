@@ -58,7 +58,7 @@ defmodule SuperXWeb.ReadyToPostLiveTest do
 
     [post] = Content.list_posts(account, "scheduled")
     assert [%{"media_ids" => [media_id]}] = post.segments
-    assert {:ok, _media} = Media.file(media_id)
+    assert {:ok, _media} = Media.file(user, media_id)
   end
 
   test "offers the product filter created by product workers", %{conn: conn} do

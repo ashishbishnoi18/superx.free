@@ -59,6 +59,7 @@ defmodule SuperX.Content.Post do
     # Last metrics pulled from X, and when, for performance-gated automations.
     field :metrics, :map, default: %{}
     field :metrics_updated_at, :utc_datetime
+    field :automation_version, :integer, default: 1
 
     timestamps(type: :utc_datetime)
   end
@@ -78,9 +79,6 @@ defmodule SuperX.Content.Post do
   def changeset(post, attrs) do
     post
     |> cast(attrs, [
-      :user_id,
-      :x_account_id,
-      :generation_id,
       :status,
       :segments,
       :scheduled_at,
@@ -92,10 +90,7 @@ defmodule SuperX.Content.Post do
       :auto_plug_likes,
       :auto_plug_text,
       :auto_delete_min_views,
-      :auto_delete_hours,
-      :automation_state,
-      :metrics,
-      :metrics_updated_at
+      :auto_delete_hours
     ])
     |> validate_required([:user_id, :x_account_id])
     |> validate_inclusion(:status, @statuses)

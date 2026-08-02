@@ -214,8 +214,9 @@ The current boundaries are intentional or explicit limitations in the code:
 
 - It does not auto-approve generated drafts. Generated work lands on Ready to
   Post for review.
-- The HTTP API, CLI, MCP, and Ask tools cannot publish directly. They can draft
-  and schedule. The Oban publisher sends approved scheduled work later.
+- Ask and MCP tools can create Ready to Post drafts but cannot schedule or
+  publish. The HTTP API and CLI can schedule an existing, explicitly approved
+  draft; the Oban publisher sends that scheduled work later.
 - Deleting a local post does not delete an already-published X post.
 - Articles stop at local `ready` or externally confirmed `published` state.
   This repository has no article publishing integration.

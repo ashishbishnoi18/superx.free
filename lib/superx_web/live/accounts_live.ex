@@ -49,7 +49,10 @@ defmodule SuperXWeb.AccountsLive do
       {:ok, _} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Account disconnected. Scheduled posts for it were cancelled.")
+         |> put_flash(
+           :info,
+           "Account disconnected and X access revoked. Its history was retained."
+         )
          |> load_accounts()}
 
       {:error, _} ->
@@ -268,7 +271,7 @@ defmodule SuperXWeb.AccountsLive do
           <button
             phx-click="disconnect"
             phx-value-id={account.id}
-            data-confirm={"Disconnect @#{account.handle}? Scheduled posts for it will be cancelled."}
+            data-confirm={"Disconnect @#{account.handle}? X access will be revoked and scheduled posts cancelled. Your history will be retained."}
             class="act-danger"
           >
             Disconnect

@@ -82,7 +82,7 @@ defmodule SuperXWeb.AnalyticsLive do
       do: {:noreply, socket}
 
   def handle_event("remix", %{"id" => id}, socket) do
-    case Content.get_post(socket.assigns.current_user, id) do
+    case Content.get_post(socket.assigns.current_user, socket.assigns.current_x_account, id) do
       %Post{status: "posted"} = post ->
         parent = self()
         user = socket.assigns.current_user

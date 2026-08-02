@@ -103,7 +103,12 @@ defmodule SuperXWeb.EngageLive do
   end
 
   def handle_event("retry_reply", %{"post_id" => post_id}, socket) do
-    with %{} = post <- Content.get_post(socket.assigns.current_user, post_id),
+    with %{} = post <-
+           Content.get_post(
+             socket.assigns.current_user,
+             socket.assigns.current_x_account,
+             post_id
+           ),
          {:ok, _retried} <- Content.retry_post(post) do
       {:noreply, socket |> put_flash(:info, "Reply queued to try again.") |> load()}
     else

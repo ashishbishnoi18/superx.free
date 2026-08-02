@@ -77,8 +77,8 @@ estimate of which posts drew followers. Import your X analytics export to
 backfill history.
 
 **Ask** — Chat with tools over your own data: analytics, queue, shelf,
-inbox, contacts, feeds, articles and the library. It can draft and queue.
-It cannot publish.
+inbox, contacts, feeds, articles and the library. It can create drafts on
+Ready to Post. Scheduling and publishing require a deterministic user action.
 
 **Articles** — Long-form composition with AI assistance.
 

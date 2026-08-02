@@ -48,8 +48,7 @@ defmodule SuperXWeb.HomeLive do
 
     account = socket.assigns.current_x_account
 
-    with %Generation{x_account_id: account_id} = generation <- Content.get_generation(user, id),
-         true <- account_id == account.id,
+    with %Generation{} = generation <- Content.get_generation(user, account, id),
          {:ok, post} <- Content.accept_generation(user, generation),
          {:ok, _scheduled} <- Content.schedule_post(post) do
       {:noreply, socket |> put_flash(:info, "Added to your queue.") |> load()}
@@ -66,9 +65,12 @@ defmodule SuperXWeb.HomeLive do
   end
 
   def handle_event("dismiss", %{"id" => id}, socket) do
-    case Content.get_generation(socket.assigns.current_user, id) do
-      %Generation{x_account_id: account_id} = generation
-      when account_id == socket.assigns.current_x_account.id ->
+    case Content.get_generation(
+           socket.assigns.current_user,
+           socket.assigns.current_x_account,
+           id
+         ) do
+      %Generation{} = generation ->
         {:ok, _} = Content.dismiss_generation(generation)
         {:noreply, load(socket)}
 

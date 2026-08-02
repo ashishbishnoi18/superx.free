@@ -6,9 +6,15 @@ import {Readable} from "node:stream"
 import test from "node:test"
 
 import {run} from "../src/cli.js"
-import {writeConfig} from "../src/config.js"
+import {normaliseHost, writeConfig} from "../src/config.js"
 
 const TOKEN = "sx_test.secret"
+
+test("plain HTTP is restricted to loopback hosts", () => {
+  assert.equal(normaliseHost("http://localhost:4000"), "http://localhost:4000")
+  assert.equal(normaliseHost("http://127.0.0.1:4000"), "http://127.0.0.1:4000")
+  assert.throws(() => normaliseHost("http://example.test"), /HTTP is allowed only for localhost/)
+})
 
 test("login verifies the token and stores it with owner-only permissions", async t => {
   const fixture = await commandFixture(t)

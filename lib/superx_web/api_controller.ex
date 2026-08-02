@@ -134,8 +134,8 @@ defmodule SuperXWeb.ApiController do
   end
 
   defp selected_post(conn, account, id) do
-    case Content.get_post(conn.assigns.current_user, id) do
-      %Post{x_account_id: account_id} = post when account_id == account.id -> {:ok, post}
+    case Content.get_post(conn.assigns.current_user, account, id) do
+      %Post{} = post -> {:ok, post}
       _post -> {:error, :not_found}
     end
   end

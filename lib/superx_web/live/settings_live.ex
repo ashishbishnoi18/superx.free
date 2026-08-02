@@ -27,6 +27,7 @@ defmodule SuperXWeb.SettingsLive do
      socket
      |> assign(page_title: "Settings")
      |> assign(:timezones, timezones(socket.assigns.current_user.timezone))
+     |> assign(:queue_jitter, queue_jitter(socket.assigns.current_user))
      |> assign(:new_day, "1")
      |> assign(:new_time, "09:00")
      |> load()}
@@ -34,6 +35,14 @@ defmodule SuperXWeb.SettingsLive do
 
   defp timezones(current) do
     Enum.uniq([current | @common_timezones])
+  end
+
+  # Old settings maps may hold anything under the key; only 0-5 is real.
+  defp queue_jitter(user) do
+    case Integer.parse(to_string(Accounts.setting(user, "queue_jitter_minutes"))) do
+      {minutes, ""} when minutes in 0..5 -> minutes
+      _ -> 0
+    end
   end
 
   defp load(socket) do
@@ -78,6 +87,22 @@ defmodule SuperXWeb.SettingsLive do
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "That time zone isn't recognised.")}
+    end
+  end
+
+  def handle_event("set_queue_jitter", %{"minutes" => minutes}, socket) do
+    with {minutes, ""} when minutes in 0..5 <- Integer.parse(minutes),
+         {:ok, user} <-
+           Accounts.update_settings(socket.assigns.current_user, %{
+             "queue_jitter_minutes" => minutes
+           }) do
+      {:noreply,
+       socket
+       |> assign(:current_user, user)
+       |> assign(:queue_jitter, minutes)
+       |> put_flash(:info, "Publish timing updated.")}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "That delay didn't look right.")}
     end
   end
 
@@ -164,8 +189,29 @@ defmodule SuperXWeb.SettingsLive do
         </form>
       </div>
     </div>
+
+    <div class="grid grid-cols-1 gap-7 border-t border-border py-6 sm:grid-cols-[14rem_minmax(0,1fr)]">
+      <div>
+        <span class="label">Publish timing</span>
+        <p class="text-[12px] leading-[1.6] text-faint">
+          Delays each post by up to this much to look natural. Never publishes early.
+        </p>
+      </div>
+      <form id="queue-jitter-form" phx-change="set_queue_jitter" class="flex items-baseline gap-3">
+        <label for="queue-jitter" class="text-[13px] text-muted-foreground">Random delay</label>
+        <select id="queue-jitter" name="minutes" class="select w-auto pr-6">
+          <option :for={minutes <- 0..5} value={minutes} selected={@queue_jitter == minutes}>
+            {jitter_label(minutes)}
+          </option>
+        </select>
+      </form>
+    </div>
     """
   end
 
   defp format_time(%Time{} = time), do: Calendar.strftime(time, "%-I:%M %p")
+
+  defp jitter_label(0), do: "Exact time"
+  defp jitter_label(1), do: "Up to 1 minute"
+  defp jitter_label(minutes), do: "Up to #{minutes} minutes"
 end

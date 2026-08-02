@@ -40,14 +40,14 @@ Licence: MIT
   a 3x post from a small account outranks a bigger post that merely had reach.
 - **Analytics** — nightly snapshots, follower trend, posting streak, estimated
   per-post follower gain, and import of X's analytics export.
-- **Ask** — chat with tools over your own data. Can draft and queue; cannot publish.
+- **Ask** — chat with tools over your own data. Can create Ready to Post drafts; cannot schedule or publish.
 - **Articles** — long-form composition with AI assistance.
 - **API, MCP server and CLI** — drive it from scripts or from an AI coding agent.
 
 ## What it deliberately does not do
 
-- Never publishes without human approval. The API and MCP surfaces stop at
-  queueing by design.
+- Never schedules model output or publishes without human approval. Ask and
+  MCP stop at Ready to Post drafts; API and CLI scheduling is explicit.
 - No bulk or automated DM outreach to strangers.
 - The DM inbox shows only legacy unencrypted conversations. Anything in XChat,
   X's encrypted messaging, is invisible to X's API — verified against the live

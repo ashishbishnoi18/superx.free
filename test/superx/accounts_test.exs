@@ -4,7 +4,8 @@ defmodule SuperX.AccountsTest do
   import SuperX.Fixtures
 
   alias SuperX.Accounts
-  alias SuperX.Accounts.ApiToken
+  alias SuperX.Accounts.{ApiToken, XAccount}
+  alias SuperX.Content
   alias SuperX.Repo
 
   describe "appearance" do
@@ -57,6 +58,63 @@ defmodule SuperX.AccountsTest do
       assert {:error, changeset} = Accounts.create_api_token(user, %{"name" => ""})
       assert "can't be blank" in errors_on(changeset).name
       assert Accounts.list_api_tokens(user) == []
+    end
+  end
+
+  describe "disconnect_x_account/2" do
+    test "revokes both credentials, cancels scheduled work, and retains history" do
+      %{user: user, account: account} = user_fixture()
+
+      {:ok, draft} =
+        Content.create_post(user, account, %{
+          segments: [%{"text" => "keep this draft"}],
+          status: "draft"
+        })
+
+      {:ok, scheduled_source} =
+        Content.create_post(user, account, %{
+          segments: [%{"text" => "cancel this post"}],
+          status: "draft"
+        })
+
+      {:ok, scheduled} = Content.schedule_post(scheduled_source)
+      calls = start_supervised!({Agent, fn -> [] end})
+
+      Req.Test.stub(SuperX.X, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        params = URI.decode_query(body)
+        Agent.update(calls, &[params["token_type_hint"] | &1])
+        Plug.Conn.send_resp(conn, 200, ~s({"revoked":true}))
+      end)
+
+      assert {:ok, _changes} = Accounts.disconnect_x_account(user, account.id)
+      assert Enum.sort(Agent.get(calls, & &1)) == ["access_token", "refresh_token"]
+
+      disconnected = Repo.get!(XAccount, account.id)
+      assert %DateTime{} = disconnected.disconnected_at
+      assert disconnected.access_token == nil
+      assert disconnected.refresh_token == nil
+      assert Accounts.list_x_accounts(user) == []
+      assert Accounts.current_x_account(user) == nil
+
+      assert Repo.get!(SuperX.Content.Post, draft.id).status == "draft"
+      assert Repo.get!(SuperX.Content.Post, scheduled.id).status == "cancelled"
+    end
+
+    test "keeps credentials locally when X revocation fails" do
+      %{user: user, account: account} = user_fixture()
+
+      Req.Test.stub(SuperX.X, fn conn ->
+        Plug.Conn.send_resp(conn, 400, ~s({"error":"rejected"}))
+      end)
+
+      assert {:error, {:revocation_failed, "access_token", _reason}} =
+               Accounts.disconnect_x_account(user, account.id)
+
+      connected = Repo.get!(XAccount, account.id)
+      assert connected.disconnected_at == nil
+      assert connected.access_token == "access-token"
+      assert connected.refresh_token == "refresh-token"
     end
   end
 end

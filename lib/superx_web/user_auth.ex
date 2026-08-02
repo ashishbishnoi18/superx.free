@@ -14,7 +14,13 @@ defmodule SuperXWeb.UserAuth do
   # through X on every visit would be hostile.
   @max_age 60 * 60 * 24 * 60
   @cookie "_superx_session"
-  @cookie_options [sign: true, max_age: @max_age, same_site: "Lax", http_only: true]
+  @cookie_options [
+    sign: true,
+    max_age: @max_age,
+    same_site: "Lax",
+    http_only: true,
+    secure: Application.compile_env(:superx, :secure_cookies, false)
+  ]
 
   @doc """
   Logs a user in, rotating the session to defend against fixation.
@@ -34,6 +40,10 @@ defmodule SuperXWeb.UserAuth do
 
   @doc "Logs the current user out and drops their session server-side."
   def log_out_user(conn) do
+    if live_socket_id = get_session(conn, :live_socket_id) do
+      SuperXWeb.Endpoint.broadcast(live_socket_id, "disconnect", %{})
+    end
+
     if token = get_session(conn, :user_token), do: Accounts.delete_session_token(token)
 
     conn

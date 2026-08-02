@@ -71,6 +71,10 @@ config :superx, Oban,
        {"*/20 * * * *", SuperX.Workers.MentionSync},
        # Private inbox volume is small enough for X's user-auth read quota.
        {"*/5 * * * *", SuperX.Workers.DMSync},
+       # Refresh metrics on recent posts so automations can gate on them.
+       {"*/30 * * * *", SuperX.Workers.PostMetrics},
+       # Fire post automations (reposts, plugs, deletions) that have come due.
+       {"*/15 * * * *", SuperX.Workers.AutomationMonitor},
        # Run the Signals watches that are due.
        {"15 */2 * * *", SuperX.Workers.SignalSweep},
        # Roll monthly/daily quota windows.

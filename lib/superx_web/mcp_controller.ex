@@ -80,7 +80,7 @@ defmodule SuperXWeb.MCPController do
       capabilities: %{tools: %{listChanged: false}},
       serverInfo: %{name: "superx", title: "SuperX", version: server_version()},
       instructions:
-        "Tools act on the X account selected in SuperX. They may draft and queue, but never publish."
+        "Tools act on the X account selected in SuperX. They may create Ready to Post drafts, but never schedule or publish."
     })
   end
 

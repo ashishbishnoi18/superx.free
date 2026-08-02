@@ -187,6 +187,20 @@ defmodule SuperX.X do
     request(:delete, "/tweets/#{tweet_id}", token: token)
   end
 
+  @doc "Reads authoritative X metrics immediately before a destructive automation."
+  def post_metrics(tweet_id, token) do
+    tweet_id = URI.encode_www_form(tweet_id)
+
+    case request(:get, "/tweets/#{tweet_id}",
+           params: %{"tweet.fields" => "public_metrics,non_public_metrics,organic_metrics"},
+           token: token
+         ) do
+      {:ok, %{"data" => data}} -> normalize_post_metrics(data)
+      {:ok, other} -> {:error, {:unexpected_response, other}}
+      error -> error
+    end
+  end
+
   # --- Direct Messages -----------------------------------------------------
 
   @dm_event_fields "created_at,dm_conversation_id,event_type,id,participant_ids,sender_id,text"
@@ -472,6 +486,19 @@ defmodule SuperX.X do
   # X returns a 48px thumbnail by default; the app shows larger avatars.
   defp normalize_avatar(nil), do: nil
   defp normalize_avatar(url), do: String.replace(url, "_normal.", "_400x400.")
+
+  defp normalize_post_metrics(data) do
+    views =
+      [data["non_public_metrics"], data["organic_metrics"], data["public_metrics"]]
+      |> Enum.find_value(fn
+        %{"impression_count" => value} when is_integer(value) and value >= 0 -> value
+        _metrics -> nil
+      end)
+
+    if is_integer(views),
+      do: {:ok, %{views: views}},
+      else: {:error, :metrics_unavailable}
+  end
 
   defp request(method, path, opts) do
     url =

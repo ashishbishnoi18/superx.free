@@ -58,7 +58,7 @@ defmodule SuperXWeb.HomeLiveTest do
     {:ok, view, _html} = live(conn, ~p"/home")
     render_click(view, "accept", %{"id" => generation.id})
 
-    assert Content.get_generation(user, generation.id).status == "shelf"
+    assert Content.get_generation(user, second_account, generation.id).status == "shelf"
     assert Content.list_posts(second_account, "scheduled") == []
     assert account.id != second_account.id
   end

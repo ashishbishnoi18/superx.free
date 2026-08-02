@@ -15,6 +15,8 @@ defmodule SuperXWeb.AuthController do
   alias SuperX.Accounts.{Connect, OAuthRequest}
   alias SuperXWeb.UserAuth
 
+  @oauth_state_session_key :oauth_state
+
   @doc "Kicks off the handshake."
   def request(conn, params) do
     if SuperX.X.configured?() do
@@ -28,7 +30,9 @@ defmodule SuperXWeb.AuthController do
 
       challenge = OAuthRequest.challenge(oauth_request.code_verifier)
 
-      redirect(conn, external: SuperX.X.authorize_url(oauth_request.state, challenge))
+      conn
+      |> put_session(@oauth_state_session_key, oauth_request.state)
+      |> redirect(external: SuperX.X.authorize_url(oauth_request.state, challenge))
     else
       conn
       |> put_flash(:error, "X sign-in is not configured on this server.")
@@ -37,25 +41,40 @@ defmodule SuperXWeb.AuthController do
   end
 
   @doc "Handles the redirect back from X."
-  def callback(conn, %{"error" => error} = params) do
-    # The user pressed Cancel, or X refused the request outright.
-    Logger.info("X OAuth returned error: #{error} #{inspect(params["error_description"])}")
+  def callback(conn, %{"error" => error, "state" => state} = params) do
+    if valid_browser_state?(conn, state) do
+      _ = Accounts.consume_oauth_request(state)
+      Logger.info("X OAuth returned error: #{error} #{inspect(params["error_description"])}")
 
-    conn
-    |> put_flash(:error, oauth_error_message(error))
-    |> redirect(to: ~p"/")
+      conn
+      |> delete_session(@oauth_state_session_key)
+      |> put_flash(:error, oauth_error_message(error))
+      |> redirect(to: ~p"/")
+    else
+      invalid_state(conn)
+    end
   end
 
   def callback(conn, %{"code" => code, "state" => state}) do
-    with {:ok, request} <- Accounts.consume_oauth_request(state),
+    with true <- valid_browser_state?(conn, state),
+         {:ok, request} <- Accounts.consume_oauth_request(state),
+         :ok <- authorize_request_session(conn, request),
          {:ok, tokens} <- SuperX.X.exchange_code(code, request.code_verifier),
          {:ok, profile} <- SuperX.X.get_me(tokens.access_token) do
-      complete(conn, request, profile, tokens)
+      conn
+      |> delete_session(@oauth_state_session_key)
+      |> complete(request, profile, tokens)
     else
+      false ->
+        invalid_state(conn)
+
       {:error, :invalid_state} ->
-        # Either a replayed callback or one that sat idle past the TTL.
+        invalid_state(conn)
+
+      {:error, :session_mismatch} ->
         conn
-        |> put_flash(:error, "That sign-in link expired. Please try again.")
+        |> delete_session(@oauth_state_session_key)
+        |> put_flash(:error, "That account-link request belongs to another session.")
         |> redirect(to: ~p"/")
 
       {:error, reason} ->
@@ -76,9 +95,35 @@ defmodule SuperXWeb.AuthController do
   # Connecting an extra account to a session that already exists.
   defp complete(conn, %OAuthRequest{user_id: user_id} = request, profile, tokens)
        when not is_nil(user_id) do
-    user = Accounts.get_user_with_context!(user_id)
+    with %{id: ^user_id} <- conn.assigns[:current_user],
+         user <- Accounts.get_user_with_context!(user_id),
+         result <- Connect.attach(user, profile, tokens) do
+      complete_attach(conn, request, profile, result)
+    else
+      _session_mismatch ->
+        conn
+        |> put_flash(:error, "That account-link request belongs to another session.")
+        |> redirect(to: ~p"/")
+    end
+  end
 
-    case Connect.attach(user, profile, tokens) do
+  # A fresh sign-in.
+  defp complete(conn, request, profile, tokens) do
+    case Connect.sign_in(profile, tokens) do
+      {:ok, user, _account} ->
+        UserAuth.log_in_user(conn, user, request.redirect_to)
+
+      {:error, reason} ->
+        Logger.warning("X sign-in failed: #{inspect(reason)}")
+
+        conn
+        |> put_flash(:error, "We couldn't sign you in. Please try again.")
+        |> redirect(to: ~p"/")
+    end
+  end
+
+  defp complete_attach(conn, request, profile, result) do
+    case result do
       {:ok, account} ->
         conn
         |> put_flash(:info, "Connected @#{account.handle}.")
@@ -106,21 +151,6 @@ defmodule SuperXWeb.AuthController do
     end
   end
 
-  # A fresh sign-in.
-  defp complete(conn, request, profile, tokens) do
-    case Connect.sign_in(profile, tokens) do
-      {:ok, user, _account} ->
-        UserAuth.log_in_user(conn, user, request.redirect_to)
-
-      {:error, reason} ->
-        Logger.warning("X sign-in failed: #{inspect(reason)}")
-
-        conn
-        |> put_flash(:error, "We couldn't sign you in. Please try again.")
-        |> redirect(to: ~p"/")
-    end
-  end
-
   @doc "Signs the current user out."
   def delete(conn, _params) do
     conn
@@ -131,7 +161,46 @@ defmodule SuperXWeb.AuthController do
   defp oauth_error_message("access_denied"), do: "Sign-in was cancelled."
   defp oauth_error_message(_), do: "X couldn't complete the sign-in request."
 
+  defp valid_browser_state?(conn, state) when is_binary(state) do
+    case get_session(conn, @oauth_state_session_key) do
+      expected when is_binary(expected) and byte_size(expected) == byte_size(state) ->
+        Plug.Crypto.secure_compare(expected, state)
+
+      _other ->
+        false
+    end
+  end
+
+  defp valid_browser_state?(_conn, _state), do: false
+
+  defp authorize_request_session(_conn, %OAuthRequest{user_id: nil}), do: :ok
+
+  defp authorize_request_session(conn, %OAuthRequest{user_id: user_id}) do
+    case conn.assigns[:current_user] do
+      %{id: ^user_id} -> :ok
+      _other -> {:error, :session_mismatch}
+    end
+  end
+
+  defp invalid_state(conn) do
+    conn
+    |> delete_session(@oauth_state_session_key)
+    |> put_flash(
+      :error,
+      "That sign-in link expired or belongs to another browser. Please try again."
+    )
+    |> redirect(to: ~p"/")
+  end
+
   # Only ever redirect within this app — never to a caller-supplied host.
-  defp safe_redirect("/" <> _ = path), do: path
+  defp safe_redirect("/" <> _ = path) do
+    uri = URI.parse(path)
+
+    if is_nil(uri.scheme) and is_nil(uri.host) and not String.starts_with?(path, "//") and
+         not String.contains?(path, "\\") do
+      path
+    end
+  end
+
   defp safe_redirect(_), do: nil
 end

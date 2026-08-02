@@ -34,6 +34,7 @@ defmodule SuperX.Accounts.XAccount do
 
     field :reauth_needed, :boolean, default: false
     field :reauth_reason, :string
+    field :disconnected_at, :utc_datetime
 
     field :last_synced_at, :utc_datetime
 
@@ -73,6 +74,20 @@ defmodule SuperX.Accounts.XAccount do
     # A successful token write always clears a prior reauth flag.
     |> put_change(:reauth_needed, false)
     |> put_change(:reauth_reason, nil)
+    |> put_change(:disconnected_at, nil)
+  end
+
+  @doc "Clears credentials while retaining the account's content and history."
+  def disconnect_changeset(x_account, disconnected_at) do
+    x_account
+    |> change(
+      access_token: nil,
+      refresh_token: nil,
+      token_expires_at: nil,
+      reauth_needed: true,
+      reauth_reason: "Disconnected by user",
+      disconnected_at: disconnected_at
+    )
   end
 
   @doc "Flags the account as needing the user to reconnect it."

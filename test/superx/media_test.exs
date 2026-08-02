@@ -1,6 +1,7 @@
 defmodule SuperX.MediaTest do
-  use ExUnit.Case, async: false
+  use SuperX.DataCase, async: false
 
+  import SuperX.Fixtures
   alias SuperX.Media
 
   setup do
@@ -13,28 +14,43 @@ defmodule SuperX.MediaTest do
       File.rm_rf!(path)
     end)
 
-    %{path: path}
+    Map.put(user_fixture(), :path, path)
   end
 
-  test "stores recognised image bytes under an opaque key", %{path: path} do
+  test "stores recognised image bytes under an opaque key", %{
+    path: path,
+    user: user,
+    account: account
+  } do
     upload = temporary_file(<<0x89, "PNG\r\n", 0x1A, "\n", 0, 0, 0, 0>>)
 
-    assert {:ok, key} = Media.store_upload(%{path: upload})
+    assert {:ok, key} = Media.store_upload(user, account, %{path: upload})
     assert String.ends_with?(key, ".png")
-    assert {:ok, media} = Media.file(key)
+    assert {:ok, media} = Media.file(user, key)
     assert media.path == Path.join(path, key)
     assert media.content_type == "image/png"
     assert Media.url(key) == "/uploads/#{key}"
   end
 
-  test "rejects a renamed non-image instead of trusting the browser MIME type" do
+  test "rejects a renamed non-image instead of trusting the browser MIME type", %{
+    user: user,
+    account: account
+  } do
     upload = temporary_file("not really an image")
 
-    assert {:error, :unsupported_media} = Media.store_upload(%{path: upload})
+    assert {:error, :unsupported_media} = Media.store_upload(user, account, %{path: upload})
   end
 
-  test "never resolves paths outside the configured upload directory" do
-    assert {:error, :not_found} = Media.file("../secrets.png")
+  test "never resolves paths outside the configured upload directory", %{user: user} do
+    assert {:error, :not_found} = Media.file(user, "../secrets.png")
+  end
+
+  test "does not disclose another user's upload", %{user: owner, account: account} do
+    upload = temporary_file(<<0x89, "PNG\r\n", 0x1A, "\n", 0, 0, 0, 0>>)
+    assert {:ok, key} = Media.store_upload(owner, account, %{path: upload})
+
+    %{user: other_user} = user_fixture()
+    assert {:error, :not_found} = Media.file(other_user, key)
   end
 
   defp temporary_file(contents) do

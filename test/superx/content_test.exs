@@ -10,6 +10,62 @@ defmodule SuperX.ContentTest do
   end
 
   describe "post validation" do
+    test "scopes posts and generations to the selected account", %{user: user, account: account} do
+      {:ok, _subscription} =
+        SuperX.Billing.upsert_subscription(user, %{tier: "pro", status: "active"})
+
+      {:ok, second_account} =
+        SuperX.Accounts.Connect.attach(
+          user,
+          %{
+            x_user_id: "content-second-#{System.unique_integer([:positive])}",
+            handle: "content_second"
+          },
+          %{access_token: "second-token"}
+        )
+
+      {:ok, post} =
+        Content.create_post(user, account, %{
+          segments: [%{"text" => "first account"}],
+          status: "draft"
+        })
+
+      {:ok, generation} =
+        Content.create_generation(%{
+          user_id: user.id,
+          x_account_id: account.id,
+          segments: [%{"text" => "first account draft"}]
+        })
+
+      assert Content.get_post(user, second_account, post.id) == nil
+      assert Content.get_generation(user, second_account, generation.id) == nil
+    end
+
+    test "rejects attachment keys without matching ownership", %{user: user, account: account} do
+      unavailable = "00000000-0000-0000-0000-000000000001.jpg"
+
+      assert {:error, changeset} =
+               Content.create_post(user, account, %{
+                 segments: [%{"text" => "not mine", "media_ids" => [unavailable]}],
+                 status: "draft"
+               })
+
+      assert "contains an unavailable attachment" in errors_on(changeset).segments
+    end
+
+    test "rejects malformed attachment identifiers without raising", %{
+      user: user,
+      account: account
+    } do
+      assert {:error, changeset} =
+               Content.create_post(user, account, %{
+                 segments: [%{"text" => "malformed", "media_ids" => [%{"bad" => "shape"}]}],
+                 status: "draft"
+               })
+
+      assert "contains an unavailable attachment" in errors_on(changeset).segments
+    end
+
     test "rejects a segment over the character limit", %{user: user, account: account} do
       long = String.duplicate("a", 281)
 
@@ -218,7 +274,7 @@ defmodule SuperX.ContentTest do
       # Nor may a stale queue page move a post back to drafts after the
       # publisher has claimed it.
       assert {:error, :not_scheduled} = Content.unschedule_post(claimed)
-      assert Content.get_post(user, claimed.id).status == "publishing"
+      assert Content.get_post(user, account, claimed.id).status == "publishing"
     end
 
     test "list_due_posts only returns posts whose time has passed", %{
@@ -283,6 +339,7 @@ defmodule SuperX.ContentTest do
 
     test "does not retry a thread after some segments already published", %{
       user: user,
+      account: account,
       post: post
     } do
       partial =
@@ -291,7 +348,7 @@ defmodule SuperX.ContentTest do
         |> SuperX.Repo.update!()
 
       assert {:error, :partial_publish} = Content.retry_post(partial)
-      assert Content.get_post(user, partial.id).status == "failed"
+      assert Content.get_post(user, account, partial.id).status == "failed"
     end
   end
 
@@ -315,6 +372,20 @@ defmodule SuperX.ContentTest do
 
       assert post.metrics == %{"views" => 42}
       assert %DateTime{} = post.metrics_updated_at
+    end
+
+    test "only one stale worker can claim an external action", %{post: post} do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      assert {:ok, claimed} = Content.claim_automation_action(post, "retweet", now)
+      assert {:error, :already_claimed} = Content.claim_automation_action(post, "retweet", now)
+      assert claimed.automation_state["claimed_retweet_at"]
+
+      assert {:ok, completed} =
+               Content.complete_automation_action(claimed, "retweet", now)
+
+      assert completed.automation_state["retweeted_at"]
+      refute completed.automation_state["claimed_retweet_at"]
     end
   end
 
@@ -372,7 +443,7 @@ defmodule SuperX.ContentTest do
       assert {:ok, scheduled} = Content.accept_generation_into_slot(user, first, at)
       assert scheduled.scheduled_at == at
       assert {:error, :slot_taken} = Content.accept_generation_into_slot(user, second, at)
-      assert Content.get_generation(user, second.id).status == "shelf"
+      assert Content.get_generation(user, account, second.id).status == "shelf"
 
       next_at = Content.next_open_slot_at(account, user)
       assert {:error, :not_on_shelf} = Content.accept_generation_into_slot(user, first, next_at)

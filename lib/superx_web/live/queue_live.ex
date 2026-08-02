@@ -6,11 +6,16 @@ defmodule SuperXWeb.QueueLive do
 
   use SuperXWeb, :live_view
 
-  alias SuperX.Content
+  alias SuperX.{AI, Content}
   alias SuperX.Content.{Generation, Post, Slot, Week, Writer}
   alias SuperXWeb.MediaUploads
 
   @tabs ~w(scheduled draft posted failed)
+
+  @automation_fields ~w(
+    auto_retweet_hours auto_retweet_undo_hours auto_plug_likes auto_plug_text
+    auto_delete_min_views auto_delete_hours
+  )
 
   @impl true
   def mount(_params, _session, socket) do
@@ -25,7 +30,14 @@ defmodule SuperXWeb.QueueLive do
      |> assign(:composer_slot, nil)
      |> assign(:filling_slot, nil)
      |> assign(:remixing, nil)
+     |> assign(:improving, false)
+     |> assign(:ai_configured, AI.configured?())
      |> assign(:segments, [])
+     |> assign(:automations, empty_automations())
+     |> assign(:automations_open, false)
+     |> assign(:saving, false)
+     |> assign(:last_saved_at, nil)
+     |> assign(:autosaved_draft_id, nil)
      |> assign(:posts, [])
      |> assign(:counts, %{})
      |> assign(:next_slot, nil)
@@ -107,7 +119,7 @@ defmodule SuperXWeb.QueueLive do
   defp assign_week(socket), do: assign(socket, :week, nil)
 
   defp open_editor(socket, id) do
-    case Content.get_post(socket.assigns.current_user, id) do
+    case Content.get_post(socket.assigns.current_user, socket.assigns.current_x_account, id) do
       nil ->
         put_flash(socket, :error, "That post no longer exists.")
 
@@ -123,6 +135,11 @@ defmodule SuperXWeb.QueueLive do
         |> assign(:editing, post)
         |> assign(:composer_slot, if(post.status == "scheduled", do: post.scheduled_at))
         |> assign(:filling_slot, nil)
+        |> assign(:automations, automations_from_post(post))
+        |> assign(:automations_open, automations_configured?(post))
+        |> assign(:saving, false)
+        |> assign(:last_saved_at, nil)
+        |> assign(:autosaved_draft_id, nil)
         |> put_composer(post.segments)
 
       _post ->
@@ -139,6 +156,7 @@ defmodule SuperXWeb.QueueLive do
      |> assign(:editing, :new)
      |> assign(:composer_slot, nil)
      |> assign(:filling_slot, nil)
+     |> fresh_composer_state()
      |> put_composer([])}
   end
 
@@ -149,6 +167,7 @@ defmodule SuperXWeb.QueueLive do
        |> assign(:editing, :new)
        |> assign(:composer_slot, slot.at)
        |> assign(:filling_slot, nil)
+       |> fresh_composer_state()
        |> put_composer([])}
     else
       _ -> {:noreply, stale_slot(socket)}
@@ -156,11 +175,11 @@ defmodule SuperXWeb.QueueLive do
   end
 
   def handle_event("close_composer", _params, socket) do
+    discard_empty_autosave(socket.assigns.editing, socket.assigns.autosaved_draft_id)
+
     {:noreply,
      socket
-     |> assign(:editing, nil)
-     |> assign(:composer_slot, nil)
-     |> assign(:segments, [])
+     |> clear_composer()
      |> push_patch(to: ~p"/queue?tab=#{socket.assigns.tab}")}
   end
 
@@ -170,7 +189,16 @@ defmodule SuperXWeb.QueueLive do
     segments =
       List.update_at(socket.assigns.segments, index, &Map.put(&1, :text, value))
 
-    {:noreply, assign(socket, :segments, segments)}
+    {:noreply, socket |> assign(:segments, segments) |> autosave_draft()}
+  end
+
+  def handle_event("update_automation", %{"field" => field, "value" => value}, socket)
+      when field in @automation_fields do
+    {:noreply, assign(socket, :automations, Map.put(socket.assigns.automations, field, value))}
+  end
+
+  def handle_event("toggle_automations", _params, socket) do
+    {:noreply, assign(socket, :automations_open, not socket.assigns.automations_open)}
   end
 
   def handle_event("add_segment", _params, socket) do
@@ -221,9 +249,7 @@ defmodule SuperXWeb.QueueLive do
         {:noreply,
          socket
          |> put_flash(:info, "Saved to drafts.")
-         |> assign(:editing, nil)
-         |> assign(:composer_slot, nil)
-         |> assign(:segments, [])
+         |> clear_composer()
          |> assign(:tab, "draft")
          |> load()}
 
@@ -238,6 +264,33 @@ defmodule SuperXWeb.QueueLive do
     case result do
       {:ok, post} -> schedule_composed_post(socket, post)
       {:error, reason} -> {:noreply, put_flash(socket, :error, error_message(reason))}
+    end
+  end
+
+  def handle_event("improve", _params, %{assigns: %{improving: true}} = socket),
+    do: {:noreply, socket}
+
+  def handle_event("improve", _params, socket) do
+    texts = Enum.map(socket.assigns.segments, & &1.text)
+
+    if Enum.all?(texts, &(String.trim(&1) == "")) do
+      {:noreply, socket}
+    else
+      parent = self()
+      user = socket.assigns.current_user
+      account = socket.assigns.current_x_account
+
+      ref_id =
+        case socket.assigns.editing do
+          %Post{id: id} -> id
+          _ -> nil
+        end
+
+      Task.Supervisor.start_child(SuperX.TaskSupervisor, fn ->
+        send(parent, {:improved, Writer.improve(user, account, texts, ref_id: ref_id)})
+      end)
+
+      {:noreply, assign(socket, :improving, true)}
     end
   end
 
@@ -260,7 +313,11 @@ defmodule SuperXWeb.QueueLive do
       ) do
     with {:ok, slot} <- find_open_slot(socket, encoded_at),
          %Generation{x_account_id: account_id, status: "shelf"} = generation <-
-           Content.get_generation(socket.assigns.current_user, generation_id),
+           Content.get_generation(
+             socket.assigns.current_user,
+             socket.assigns.current_x_account,
+             generation_id
+           ),
          true <- account_id == socket.assigns.current_x_account.id,
          {:ok, scheduled} <-
            Content.accept_generation_into_slot(
@@ -311,7 +368,7 @@ defmodule SuperXWeb.QueueLive do
       do: {:noreply, socket}
 
   def handle_event("remix", %{"id" => id}, socket) do
-    case Content.get_post(socket.assigns.current_user, id) do
+    case Content.get_post(socket.assigns.current_user, socket.assigns.current_x_account, id) do
       %Post{status: "posted"} = post ->
         parent = self()
         user = socket.assigns.current_user
@@ -330,7 +387,8 @@ defmodule SuperXWeb.QueueLive do
   end
 
   def handle_event("unschedule", %{"id" => id}, socket) do
-    with %Post{} = post <- Content.get_post(socket.assigns.current_user, id),
+    with %Post{} = post <-
+           Content.get_post(socket.assigns.current_user, socket.assigns.current_x_account, id),
          {:ok, _} <- Content.unschedule_post(post) do
       {:noreply, socket |> put_flash(:info, "Moved back to drafts.") |> load()}
     else
@@ -339,7 +397,8 @@ defmodule SuperXWeb.QueueLive do
   end
 
   def handle_event("retry", %{"id" => id}, socket) do
-    with %Post{} = post <- Content.get_post(socket.assigns.current_user, id),
+    with %Post{} = post <-
+           Content.get_post(socket.assigns.current_user, socket.assigns.current_x_account, id),
          {:ok, _} <- Content.retry_post(post) do
       {:noreply, socket |> put_flash(:info, "Back in the queue.") |> load()}
     else
@@ -348,7 +407,7 @@ defmodule SuperXWeb.QueueLive do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    case Content.get_post(socket.assigns.current_user, id) do
+    case Content.get_post(socket.assigns.current_user, socket.assigns.current_x_account, id) do
       nil ->
         {:noreply, socket}
 
@@ -370,9 +429,7 @@ defmodule SuperXWeb.QueueLive do
            :info,
            "Queued for #{format_when(scheduled.scheduled_at, socket.assigns.current_user.timezone)}."
          )
-         |> assign(:editing, nil)
-         |> assign(:composer_slot, nil)
-         |> assign(:segments, [])
+         |> clear_composer()
          |> assign(:tab, "scheduled")
          |> load()}
 
@@ -460,6 +517,44 @@ defmodule SuperXWeb.QueueLive do
      |> put_flash(:error, "Couldn't write a fresh variant just now.")}
   end
 
+  def handle_info({:improved, {:ok, texts}}, socket) do
+    send(self(), :refresh_quota)
+
+    # Pairwise on the current composer state: segment ids and media stay,
+    # only the words change. A model that returns the wrong count keeps
+    # the tail as written rather than shifting text between boxes.
+    segments =
+      Enum.zip_with(socket.assigns.segments, texts, fn segment, text ->
+        %{segment | text: text}
+      end)
+
+    {:noreply,
+     socket
+     |> assign(:improving, false)
+     |> assign(:segments, segments)
+     |> put_flash(:info, "Improved — review before saving.")}
+  end
+
+  def handle_info({:improved, {:error, :quota_exceeded, _details}}, socket) do
+    send(self(), :refresh_quota)
+
+    {:noreply,
+     socket
+     |> assign(:improving, false)
+     |> put_flash(:error, "You're out of AI credits for this window.")}
+  end
+
+  def handle_info({:improved, {:error, reason}}, socket) do
+    require Logger
+    Logger.warning("Improve failed: #{inspect(reason)}")
+    send(self(), :refresh_quota)
+
+    {:noreply,
+     socket
+     |> assign(:improving, false)
+     |> put_flash(:error, "Couldn't improve the draft just now.")}
+  end
+
   defp persist(socket, status) do
     {segments, errors} = consume_media(socket)
     socket = assign(socket, :segments, segments)
@@ -474,12 +569,11 @@ defmodule SuperXWeb.QueueLive do
   end
 
   defp persist_segments(socket, status) do
-    segments =
-      Enum.map(socket.assigns.segments, fn segment ->
-        %{"text" => segment.text, "media_ids" => segment.media_ids}
-      end)
-
-    attrs = %{segments: segments, status: status}
+    attrs =
+      socket.assigns
+      |> segment_attrs()
+      |> Map.merge(automation_attrs(socket.assigns.automations))
+      |> Map.put(:status, status)
 
     case socket.assigns.editing do
       %Post{} = post ->
@@ -488,6 +582,163 @@ defmodule SuperXWeb.QueueLive do
       _ ->
         Content.create_post(socket.assigns.current_user, socket.assigns.current_x_account, attrs)
     end
+  end
+
+  defp segment_attrs(assigns) do
+    segments =
+      Enum.map(assigns.segments, fn segment ->
+        %{"text" => segment.text, "media_ids" => segment.media_ids}
+      end)
+
+    %{segments: segments}
+  end
+
+  # Blank boxes mean "off" — the changeset rejects zero, so an empty input
+  # must become nil rather than 0.
+  defp automation_attrs(automations) do
+    %{
+      auto_retweet_hours: integer_or_nil(automations["auto_retweet_hours"]),
+      auto_retweet_undo_hours: integer_or_nil(automations["auto_retweet_undo_hours"]),
+      auto_plug_likes: integer_or_nil(automations["auto_plug_likes"]),
+      auto_plug_text: text_or_nil(automations["auto_plug_text"]),
+      auto_delete_min_views: integer_or_nil(automations["auto_delete_min_views"]),
+      auto_delete_hours: integer_or_nil(automations["auto_delete_hours"])
+    }
+  end
+
+  defp integer_or_nil(value) when value in [nil, ""], do: nil
+  defp integer_or_nil(value) when is_integer(value), do: value
+
+  defp integer_or_nil(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, _rest} -> int
+      :error -> nil
+    end
+  end
+
+  defp text_or_nil(value) when value in [nil, ""], do: nil
+  defp text_or_nil(value), do: value
+
+  # --- Autosave ------------------------------------------------------------
+
+  # A blur is the composer's "done with this box" signal, so it doubles as
+  # the save point. Only drafts and first-time compositions persist — a
+  # scheduled post must never be rewritten out from under the publisher,
+  # and a failed one keeps its error trail.
+  defp autosave_draft(socket) do
+    case socket.assigns.editing do
+      %Post{status: "draft"} ->
+        do_autosave(socket)
+
+      :new ->
+        if Enum.any?(socket.assigns.segments, &(String.trim(&1.text) != "")) do
+          do_autosave(socket)
+        else
+          socket
+        end
+
+      _ ->
+        socket
+    end
+  end
+
+  defp do_autosave(socket) do
+    creating? = not match?(%Post{}, socket.assigns.editing)
+    socket = assign(socket, :saving, true)
+
+    attrs =
+      socket.assigns
+      |> segment_attrs()
+      |> Map.merge(automation_attrs(socket.assigns.automations))
+      |> Map.put(:status, "draft")
+
+    result =
+      if creating? do
+        Content.create_post(socket.assigns.current_user, socket.assigns.current_x_account, attrs)
+      else
+        Content.update_post(socket.assigns.editing, attrs)
+      end
+
+    case result do
+      {:ok, post} ->
+        socket = assign(socket, :editing, post)
+        # Only a draft autosave itself created may be binned on close.
+        socket = if creating?, do: assign(socket, :autosaved_draft_id, post.id), else: socket
+
+        socket
+        |> assign(:saving, false)
+        |> assign(:last_saved_at, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      {:error, reason} ->
+        require Logger
+        Logger.warning("Autosave failed: #{inspect(reason)}")
+
+        socket
+        |> assign(:saving, false)
+        |> put_flash(
+          :error,
+          "We couldn't autosave that draft — your text is still in the composer."
+        )
+    end
+  end
+
+  # Autosave turns "typed a word, thought better of it" into a draft row;
+  # closing on one that still holds nothing bins it rather than littering
+  # the shelf. Anything with real text or media is a draft like any other.
+  defp discard_empty_autosave(%Post{id: id} = post, id) do
+    if Enum.all?(post.segments, &empty_segment?/1) do
+      {:ok, _} = Content.delete_post(post)
+    end
+
+    :ok
+  end
+
+  defp discard_empty_autosave(_editing, _autosaved_draft_id), do: :ok
+
+  defp empty_segment?(segment) do
+    String.trim(segment["text"] || "") == "" and (segment["media_ids"] || []) == []
+  end
+
+  # --- Composer state --------------------------------------------------------
+
+  defp fresh_composer_state(socket) do
+    socket
+    |> assign(:automations, empty_automations())
+    |> assign(:automations_open, false)
+    |> assign(:saving, false)
+    |> assign(:last_saved_at, nil)
+    |> assign(:autosaved_draft_id, nil)
+  end
+
+  defp clear_composer(socket) do
+    socket
+    |> assign(:editing, nil)
+    |> assign(:composer_slot, nil)
+    |> assign(:segments, [])
+    |> fresh_composer_state()
+  end
+
+  defp empty_automations do
+    Map.new(@automation_fields, &{&1, ""})
+  end
+
+  defp automations_from_post(%Post{} = post) do
+    %{
+      "auto_retweet_hours" => automation_value(post.auto_retweet_hours),
+      "auto_retweet_undo_hours" => automation_value(post.auto_retweet_undo_hours),
+      "auto_plug_likes" => automation_value(post.auto_plug_likes),
+      "auto_plug_text" => post.auto_plug_text || "",
+      "auto_delete_min_views" => automation_value(post.auto_delete_min_views),
+      "auto_delete_hours" => automation_value(post.auto_delete_hours)
+    }
+  end
+
+  defp automation_value(nil), do: ""
+  defp automation_value(value), do: to_string(value)
+
+  defp automations_configured?(%Post{} = post) do
+    not is_nil(post.auto_retweet_hours) or not is_nil(post.auto_plug_likes) or
+      not is_nil(post.auto_delete_min_views)
   end
 
   defp consume_media(socket) do
@@ -556,6 +807,12 @@ defmodule SuperXWeb.QueueLive do
       timezone={@current_user.timezone}
       account={@current_x_account}
       uploads={@uploads}
+      automations={@automations}
+      automations_open={@automations_open}
+      ai_configured={@ai_configured}
+      improving={@improving}
+      saving={@saving}
+      last_saved_at={@last_saved_at}
     />
 
     <div class="mb-5 flex items-center gap-5 text-xs">
@@ -759,6 +1016,40 @@ defmodule SuperXWeb.QueueLive do
               to the shelf and composer. --%>
         <.post author={author(@account)} segments={segments(@post)} class="max-w-[42rem]" />
 
+        <%!-- Automation bookkeeping has to show here: the row's own marker
+              still says "published" after the monitor took the post down,
+              and a quiet failure is otherwise invisible. --%>
+        <% auto = automation_summary(@post) %>
+        <div
+          :if={auto[:deleted] or auto[:failures] != [] or auto[:active]}
+          id={"post-#{@post.id}-automations"}
+          class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1"
+        >
+          <span
+            :if={auto[:deleted]}
+            id={"post-#{@post.id}-automation-deleted"}
+            class="badge badge-danger"
+          >
+            deleted by automation
+          </span>
+          <span
+            :if={auto[:failures] != []}
+            id={"post-#{@post.id}-automation-failed"}
+            class="badge badge-warning"
+            title={Enum.join(auto[:failures], " · ")}
+          >
+            automation failed
+          </span>
+          <span
+            :if={auto[:active]}
+            id={"post-#{@post.id}-automations-active"}
+            class="inline-flex items-center text-primary"
+            title="Automations active"
+          >
+            <.icon name="hero-bolt" class="size-3.5" />
+          </span>
+        </div>
+
         <p
           :if={@post.status == "failed"}
           id={"post-#{@post.id}-error"}
@@ -928,6 +1219,38 @@ defmodule SuperXWeb.QueueLive do
 
   defp partial_permalink(_post), do: nil
 
+  # Purely derived from stored state — the row never asks X.
+  defp automation_summary(%Post{} = post) do
+    state = post.automation_state || %{}
+
+    failures =
+      for {key, reason} <- state,
+          String.starts_with?(key, "failed_"),
+          do: "#{key}: #{reason}"
+
+    [
+      deleted: not is_nil(state["deleted_at"]),
+      failures: failures,
+      active: automations_active?(post, state)
+    ]
+  end
+
+  # "Active" means published, configured, and at least one action has
+  # neither fired nor failed yet — anything else is history, not status.
+  defp automations_active?(%Post{status: "posted"} = post, state) do
+    [
+      {post.auto_retweet_hours, "retweeted_at", "failed_retweet"},
+      {post.auto_retweet_undo_hours, "unretweeted_at", "failed_unretweet"},
+      {post.auto_plug_likes, "plugged_at", "failed_plug"},
+      {post.auto_delete_min_views, "deleted_at", "failed_delete"}
+    ]
+    |> Enum.any?(fn {configured, done, failed} ->
+      not is_nil(configured) and is_nil(state[done]) and is_nil(state[failed])
+    end)
+  end
+
+  defp automations_active?(_post, _state), do: false
+
   defp format_time(%Post{status: "posted", published_at: at}, tz), do: short_when(at, tz)
   defp format_time(%Post{status: "failed", failed_at: at}, tz), do: short_when(at, tz)
   defp format_time(%Post{scheduled_at: at}, tz) when not is_nil(at), do: short_when(at, tz)
@@ -1031,6 +1354,12 @@ defmodule SuperXWeb.QueueLive do
   attr :timezone, :string, required: true
   attr :account, :map, required: true
   attr :uploads, :map, required: true
+  attr :automations, :map, required: true
+  attr :automations_open, :boolean, required: true
+  attr :ai_configured, :boolean, required: true
+  attr :improving, :boolean, required: true
+  attr :saving, :boolean, required: true
+  attr :last_saved_at, :any, required: true
 
   # Composing is the one screen where you're acting *as* the account, so it
   # carries the same avatar-and-thread shape a post does — what you're
@@ -1101,6 +1430,120 @@ defmodule SuperXWeb.QueueLive do
         </div>
       </div>
 
+      <div class="mt-4 border-t border-border pt-3">
+        <button
+          id="automations-toggle"
+          type="button"
+          phx-click="toggle_automations"
+          class="act flex w-full items-center justify-between text-xs"
+          aria-expanded={to_string(@automations_open)}
+        >
+          <span class="flex items-center gap-1.5">
+            <.icon name="hero-bolt" class="size-4" /> Automations
+          </span>
+          <.icon
+            name="hero-chevron-down"
+            class={["size-4 transition-transform", @automations_open && "rotate-180"]}
+          />
+        </button>
+
+        <div :if={@automations_open} id="automations-panel" class="mt-4 flex flex-col gap-5">
+          <p class="text-[12px] leading-[1.6] text-faint">
+            Automations run on the first post of the thread after publishing.
+          </p>
+
+          <div class="flex flex-wrap items-baseline gap-x-2 gap-y-3 text-[13px] text-muted-foreground">
+            <label for="auto-retweet-hours">Repost after</label>
+            <input
+              type="number"
+              id="auto-retweet-hours"
+              name="value"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              class="input w-16"
+              value={@automations["auto_retweet_hours"]}
+              phx-blur="update_automation"
+              phx-value-field="auto_retweet_hours"
+            />
+            <span>hours,</span>
+            <label for="auto-retweet-undo-hours">undo repost after</label>
+            <input
+              type="number"
+              id="auto-retweet-undo-hours"
+              name="value"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              class="input w-16 disabled:opacity-40"
+              value={@automations["auto_retweet_undo_hours"]}
+              disabled={@automations["auto_retweet_hours"] in [nil, ""]}
+              phx-blur="update_automation"
+              phx-value-field="auto_retweet_undo_hours"
+            />
+            <span>more hours</span>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <div class="flex flex-wrap items-baseline gap-x-2 gap-y-3 text-[13px] text-muted-foreground">
+              <label for="auto-plug-likes">When the post reaches</label>
+              <input
+                type="number"
+                id="auto-plug-likes"
+                name="value"
+                min="1"
+                step="1"
+                inputmode="numeric"
+                class="input w-20"
+                value={@automations["auto_plug_likes"]}
+                phx-blur="update_automation"
+                phx-value-field="auto_plug_likes"
+              />
+              <span>likes, reply with:</span>
+            </div>
+            <textarea
+              id="auto-plug-text"
+              name="value"
+              rows="2"
+              class="textarea text-[13px]"
+              placeholder="The follow-up to post once it takes off…"
+              phx-blur="update_automation"
+              phx-value-field="auto_plug_text"
+            >{@automations["auto_plug_text"]}</textarea>
+          </div>
+
+          <div class="flex flex-wrap items-baseline gap-x-2 gap-y-3 text-[13px] text-muted-foreground">
+            <label for="auto-delete-min-views">Delete if under</label>
+            <input
+              type="number"
+              id="auto-delete-min-views"
+              name="value"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              class="input w-20"
+              value={@automations["auto_delete_min_views"]}
+              phx-blur="update_automation"
+              phx-value-field="auto_delete_min_views"
+            />
+            <span>views after</span>
+            <input
+              type="number"
+              id="auto-delete-hours"
+              name="value"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              class="input w-16"
+              value={@automations["auto_delete_hours"]}
+              phx-blur="update_automation"
+              phx-value-field="auto_delete_hours"
+            />
+            <span>hours</span>
+          </div>
+        </div>
+      </div>
+
       <div class="mt-4 flex flex-wrap items-center gap-5 border-t border-border pt-3 text-xs">
         <button
           id="add-post-to-queue"
@@ -1123,7 +1566,150 @@ defmodule SuperXWeb.QueueLive do
           Save as draft
         </button>
         <button type="button" phx-click="add_segment" class="act">Continue as thread</button>
-        <span :if={@over} class="ml-auto text-[11px] text-destructive">
+        <button
+          :if={@ai_configured and Enum.any?(@segments, &(String.trim(&1.text) != ""))}
+          id="improve-with-ai"
+          type="button"
+          phx-click="improve"
+          class="act"
+          disabled={@improving}
+        >
+          <.icon name="hero-sparkles" class="size-4" />
+          {if @improving, do: "Improving…", else: "Improve with AI"}
+        </button>
+
+        <div id="emoji-picker" phx-hook=".EmojiPicker" class="relative">
+          <button
+            id="emoji-picker-button"
+            type="button"
+            class="act"
+            title="Insert emoji"
+            aria-label="Insert emoji"
+          >
+            <.icon name="hero-face-smile" class="size-4" />
+          </button>
+          <script :type={Phoenix.LiveView.ColocatedHook} name=".EmojiPicker">
+            const EMOJI_GROUPS = [
+              ["Smileys", ["😀","😁","😂","🤣","😊","😍","🤩","😜","🤪","😎","🥳","🤔","🤨","😐","🙄","😴","🤯","🥺","😢","😭","😤","😡","🥶","🤢","🫡","🫠","🤗","🤭","🫢","🤫"]],
+              ["Gestures", ["👍","👎","👏","🙌","🤝","🙏","✌️","🤞","👌","🫶","💪","👋","🤙","✍️","👀","🧠","🫂","💃","🕺"]],
+              ["Things", ["🔥","✨","🎉","🚀","💡","📈","📉","📊","💰","💸","🏆","🥇","🎯","⏰","📅","📌","🔗","🔒","🔑","🛠️","⚙️","💻","📱","🤖","📣","🔔","🎁","🧪","📚","📝","🔍","💼"]],
+              ["Symbols", ["❤️","💛","💚","💙","💜","🖤","🤍","💯","✅","❌","⚠️","❓","❗","➕","➡️","⬅️","⬆️","⬇️","🔄","♾️","💬","⚡","🌟","⭐","☀️","🌙","☕","🥂","🎵","🏁","🚩"]]
+            ]
+
+            export default {
+              mounted() {
+                this.panel = null
+                this.activeTextarea = null
+
+                // Insertion targets the segment box that last had focus,
+                // remembered here before the picker button can take it.
+                this.trackFocus = (e) => {
+                  if (e.target instanceof HTMLTextAreaElement &&
+                      e.target.id.startsWith("post-segment-")) {
+                    this.activeTextarea = e.target
+                  }
+                }
+                document.addEventListener("focusin", this.trackFocus)
+
+                this.onOutside = (e) => {
+                  if (this.panel && !this.el.contains(e.target)) this.close()
+                }
+                document.addEventListener("pointerdown", this.onOutside)
+
+                this.onKey = (e) => { if (e.key === "Escape") this.close() }
+                document.addEventListener("keydown", this.onKey)
+
+                // Buttons inside the picker never take focus, so the
+                // textarea keeps its selection for the insert.
+                this.el.addEventListener("mousedown", (e) => {
+                  if (e.target.closest("button")) e.preventDefault()
+                })
+
+                this.el.querySelector("#emoji-picker-button").addEventListener("click", (e) => {
+                  e.preventDefault()
+                  this.toggle()
+                })
+              },
+
+              destroyed() {
+                document.removeEventListener("focusin", this.trackFocus)
+                document.removeEventListener("pointerdown", this.onOutside)
+                document.removeEventListener("keydown", this.onKey)
+                if (this.panel) this.panel.remove()
+              },
+
+              toggle() {
+                // A LiveView patch can drop the panel without asking; a
+                // detached panel counts as closed.
+                if (this.panel && !this.panel.isConnected) this.panel = null
+                if (this.panel) { this.close() } else { this.open() }
+              },
+
+              open() {
+                this.panel = document.createElement("div")
+                this.panel.className = "emoji-popover"
+                this.panel.setAttribute("data-popover", "")
+
+                for (const [label, emojis] of EMOJI_GROUPS) {
+                  const heading = document.createElement("p")
+                  heading.className = "emoji-group"
+                  heading.textContent = label
+                  this.panel.appendChild(heading)
+
+                  const grid = document.createElement("div")
+                  grid.className = "emoji-grid"
+                  for (const emoji of emojis) {
+                    const item = document.createElement("button")
+                    item.type = "button"
+                    item.className = "emoji-item"
+                    item.textContent = emoji
+                    item.addEventListener("click", () => this.insert(emoji))
+                    grid.appendChild(item)
+                  }
+                  this.panel.appendChild(grid)
+                }
+
+                this.el.appendChild(this.panel)
+              },
+
+              close() {
+                if (this.panel) {
+                  this.panel.remove()
+                  this.panel = null
+                }
+              },
+
+              insert(emoji) {
+                const textarea = this.activeTextarea ||
+                  document.querySelector("#post-composer textarea")
+                if (!textarea) return this.close()
+
+                const start = textarea.selectionStart ?? textarea.value.length
+                const end = textarea.selectionEnd ?? start
+                textarea.value = textarea.value.slice(0, start) + emoji + textarea.value.slice(end)
+                const cursor = start + emoji.length
+                textarea.focus()
+                textarea.setSelectionRange(cursor, cursor)
+                // The composer saves on blur, so say the word rather than
+                // waiting for the writer to click away.
+                textarea.dispatchEvent(new FocusEvent("blur"))
+                this.close()
+              }
+            }
+          </script>
+        </div>
+
+        <span
+          :if={@saving or @last_saved_at}
+          id="composer-save-state"
+          class="nb-mono ml-auto text-[11px] text-faint"
+        >
+          {if @saving, do: "Saving…", else: "Saved #{saved_at_label(@last_saved_at, @timezone)}"}
+        </span>
+        <span
+          :if={@over}
+          class={["text-[11px] text-destructive", !(@saving or @last_saved_at) && "ml-auto"]}
+        >
           One post is over the limit.
         </span>
       </div>
@@ -1159,6 +1745,13 @@ defmodule SuperXWeb.QueueLive do
     case DateTime.shift_zone(datetime, timezone, Tz.TimeZoneDatabase) do
       {:ok, local} -> Calendar.strftime(local, "%a %-d %b, %-I:%M %p")
       _ -> Calendar.strftime(datetime, "%a %-d %b, %-I:%M %p UTC")
+    end
+  end
+
+  defp saved_at_label(%DateTime{} = at, timezone) do
+    case DateTime.shift_zone(at, timezone, Tz.TimeZoneDatabase) do
+      {:ok, local} -> Calendar.strftime(local, "%H:%M")
+      _ -> Calendar.strftime(at, "%H:%M")
     end
   end
 end

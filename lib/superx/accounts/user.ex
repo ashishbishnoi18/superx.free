@@ -67,6 +67,8 @@ defmodule SuperX.Accounts.User do
   def default_settings do
     %{
       "theme" => "light",
+      # Random publish delay in minutes (0-5); 0 means posts go out slot-exact.
+      "queue_jitter_minutes" => 0,
       # How many of each content type to keep on the Ready to Post shelf.
       "daily_mix" => %{"for_you" => 6, "trending" => 3, "viral" => 3, "products" => 0}
     }

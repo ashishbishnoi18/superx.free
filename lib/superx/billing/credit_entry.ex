@@ -12,7 +12,7 @@ defmodule SuperX.Billing.CreditEntry do
 
   alias SuperX.Accounts.User
 
-  @reasons ~w(generation ask refund)
+  @reasons ~w(generation ask improve refund)
 
   schema "credit_ledger" do
     belongs_to :user, User
