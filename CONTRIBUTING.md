@@ -13,11 +13,6 @@ mix superx.dev.seed     # demo user, corpus, shelf, analytics
 mix phx.server
 ```
 
-There is a Go worker in `scraper/`, but you do not need the Go toolchain
-to work on this. It is a fallback read source that is only consulted when
-twitterapi.io is unconfigured, and it does nothing without credentials
-most people should not be using — see the note in the README.
-
 The seed prints a sign-in URL. You can work on every screen without an X
 account, an LLM key, or spending anything.
 

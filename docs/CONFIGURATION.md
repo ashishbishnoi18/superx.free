@@ -92,7 +92,7 @@ one of the two base URLs compiled into `config/runtime.exs`.
 
 | Variable | Required | Default | Purpose and missing behaviour |
 |---|---|---|---|
-| `TWITTERAPI_IO_KEY` | No | None | Key for twitterapi.io. Without it, corpus ingestion, mentions, topic feeds, follower/list watches, and other public reads through this client are skipped or return `:not_configured`. The application still starts. The optional Go worker can fill only the corpus; it does not replace mentions, feeds, or Signals. |
+| `TWITTERAPI_IO_KEY` | No | None | Key for twitterapi.io. Without it, corpus ingestion, mentions, topic feeds, follower/list watches, and other public reads through this client are skipped or return `:not_configured`. The application still starts. |
 | `TWITTERAPI_IO_MIN_INTERVAL_MS` | No | `5000` in a direct release; `6000` in Compose | Minimum delay between twitterapi.io requests across the whole application node. Calls are serialized. Retries use multiples of the same interval. Blank uses the applicable default; a non-integer stops startup. Lower it only to match the rate paid for upstream. |
 | `SUPERX_CORPUS_TOPICS_PER_RUN` | No | `20` | Maximum topics selected by the nightly corpus refresh. Up to 12 come from users’ voice topics; the rest rotate through built-in seed topics. Blank uses 20; a non-integer crashes the refresh job when read. Zero produces no topic jobs. |
 | `SUPERX_CORPUS_POSTS_PER_TOPIC` | No | `40` | Maximum posts requested for each selected topic. Blank uses 40; a non-integer crashes the refresh job when read. With both defaults, a run asks for up to 800 posts. |
@@ -137,10 +137,7 @@ both sources are configured. This worker is off unless both credentials below
 
 | Variable | Required | Default | Purpose and missing behaviour |
 |---|---|---|---|
-| `X_USER_AGENT` | No | A Chrome 131 user-agent string | HTTP user-agent sent by the Go worker. Blank uses its built-in value. Compose does not list this variable, but a directly started worker reads it. |
-| `HTTPS_PROXY` | No | None | Proxy for HTTPS egress from the Go worker. Compose passes this variable. Missing sends requests directly. |
-| `HTTP_PROXY` | No | None | Standard Go HTTP proxy variable. The worker honors it through `http.ProxyFromEnvironment`, although Compose does not pass it by default. |
-| `NO_PROXY` | No | None | Standard Go proxy bypass list, also honored by `http.ProxyFromEnvironment` when inherited by the worker. Compose does not pass it by default. |
+| `HTTPS_PROXY` | No | None | Proxy for HTTPS egress. Compose passes this variable. Missing sends requests directly. |
 
 Lower-case Go proxy variants are also understood by Go’s standard library,
 but the supplied Compose file passes only upper-case `HTTPS_PROXY`.

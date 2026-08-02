@@ -195,14 +195,9 @@ Lowering it only helps when the upstream plan allows the corresponding rate;
 “Inspired by” attribution. A content worker using **Niche trends** says no
 drafts were written because the inspiration library is empty.
 
-The corpus needs at least one configured read source:
-
-- `TWITTERAPI_IO_KEY`, which is preferred; or
-  worker.
-
-Without either source, the nightly refresh logs `Skipping corpus refresh: no
-read source configured`. twitterapi.io is the supported path for all public
-read features. The Go worker only substitutes for corpus ingestion and has the
+The corpus needs `TWITTERAPI_IO_KEY`. Without it the nightly refresh logs
+`Skipping corpus refresh: no read source configured`, and there is no second
+source to fall back to.
 
 Check the stored row count:
 

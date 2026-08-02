@@ -171,10 +171,6 @@ because the provider rate applies to the application node, and every paging
 operation has an explicit result ceiling because billing is per returned
 record.
 
-The optional Go worker is only a corpus fallback. Corpus ingestion prefers
-twitterapi.io when both are configured. The worker cannot fill Engage or
-Signals. It uses X’s public web GraphQL surface and carries the operational and
-
 ### Writes and private reads: X API v2
 
 `SuperX.X` uses the official X API with a user’s OAuth grant for:

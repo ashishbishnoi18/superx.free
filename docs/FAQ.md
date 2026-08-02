@@ -33,7 +33,7 @@ External credentials are capability based:
 |---|---|---|
 | `X_CLIENT_ID` and `X_CLIENT_SECRET` | Production sign-in, account connection, publishing, account analytics, token refresh, and optional DMs | The server boots and shows the X setup state. A new production user cannot sign in. |
 | One of `ANTHROPIC_API_KEY` or `DEEPSEEK_API_KEY` | Voice derivation, drafts, reply writing and scoring, lead scoring, Ask, and AI article composition | Manual voice editing, manual post and article writing, queueing, publishing, public-data ingestion, contacts, imported analytics, and stored data continue. |
-| `TWITTERAPI_IO_KEY` | Supported public reads: corpus, mentions, feeds, replies, public profiles, followers, lists, and Signals | Official-X writes and private reads continue. The public-data screens stay empty. The Go worker can fill only the corpus. |
+| `TWITTERAPI_IO_KEY` | Supported public reads: corpus, mentions, feeds, replies, public profiles, followers, lists, and Signals | Official-X writes and private reads continue. The public-data screens stay empty. |
 | `VOYAGE_API_KEY` | Semantic corpus retrieval and embedding backfill | PostgreSQL full-text corpus search remains available. |
 | `STRIPE_SECRET_KEY`, webhook secret, and selected price IDs | Charging users of a multi-tenant instance | Billing stays disabled and users receive `SUPERX_DEFAULT_TIER`. This is normal for a private instance. |
 
@@ -114,17 +114,12 @@ SuperX hard-codes `voyage-3-large` with 1,024 output dimensions. Voyage’s
 at US$0.18 per million tokens with no free-token allowance. It is optional.
 Leaving it off saves this bill and selects PostgreSQL full-text search.
 
-### Stripe and the Go worker
+### Stripe
 
-Stripe is needed only if this installation sells subscriptions. Stripe charges
-the operator’s normal payment and billing fees; see
-[Stripe pricing](https://stripe.com/pricing) for the operator’s country. The
-application adds no Stripe surcharge.
-
-The Go worker has no API invoice, but it is not cost-free: it uses bandwidth,
-may need a proxy, and can cause rate limiting or IP blocks. More importantly,
-scraping X’s web endpoints is against X’s terms according to the repository’s
-unconfigured unless that trade-off has been reviewed.
+Stripe is needed only if this installation sells subscriptions, which a private
+instance does not. Stripe charges the operator’s normal payment and billing
+fees; see [Stripe pricing](https://stripe.com/pricing) for the operator’s
+country. The application adds no surcharge of its own.
 
 ## Does it work without an LLM?
 
@@ -155,9 +150,8 @@ The manual create, queue, official-X publishing, authenticated profile
 snapshots, and supported DM paths do. Voice derivation can fall back to the
 official X endpoint for the connected user’s own recent posts.
 
-The corpus, Engage inbox, and Signals need public data. The optional Go worker
-can fill the corpus, but cannot supply mentions, feeds, followers, list
-timelines, or Signals. An empty corpus makes Inspiration empty and removes
+The corpus, Engage inbox, and Signals need public data, so all three stay
+empty without a twitterapi.io key. An empty corpus makes Inspiration empty and removes
 corpus attribution from normal topic drafts; it does not prevent topic-only
 drafting. See [Architecture](ARCHITECTURE.md#corpus-and-generation).
 
@@ -174,7 +168,6 @@ is offline.
 | Anthropic or DeepSeek | Prompts can include the user’s profile and voice notes, their own post examples, public corpus posts, article text, reply or DM conversation text, Ask chat history, and tool results drawn from the user’s SuperX data. OAuth tokens are not placed in prompts. |
 | Voyage | Corpus post text with author handle, and corpus search query text. |
 | Stripe | Price IDs, instance URLs, the SuperX user UUID, team seat count, and an email address when the user has one and no Stripe customer exists yet. |
-| X public web endpoints through the Go worker | Public search queries, feature flags, a public-web bearer value, guest token, user-agent, and source IP or configured proxy IP. |
 
 The browser may also fetch X-hosted avatar URLs returned by an API. Public
 analytics summaries and contact circles leave the authenticated UI only when a
