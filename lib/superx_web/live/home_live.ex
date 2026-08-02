@@ -16,14 +16,22 @@ defmodule SuperXWeb.HomeLive do
 
   defp load(socket) do
     account = socket.assigns.current_x_account
+    counts = Content.post_counts(account)
+    shelf_total = Map.get(Content.shelf_counts(account), "all", 0)
+    voice_ready = voice_ready?(account)
+    first_draft? = shelf_total > 0 or Enum.any?(counts, fn {_status, count} -> count > 0 end)
+    first_post? = counts["scheduled"] > 0 or counts["posted"] > 0
 
     socket
     |> assign(:next_posts, Content.list_posts(account, "scheduled", limit: 3))
     |> assign(:shelf, Content.list_shelf(account, limit: 3))
-    |> assign(:counts, Content.post_counts(account))
-    |> assign(:shelf_total, Map.get(Content.shelf_counts(account), "all", 0))
+    |> assign(:counts, counts)
+    |> assign(:shelf_total, shelf_total)
     |> assign(:has_slots, Content.list_slots(account) != [])
-    |> assign(:voice_ready, voice_ready?(account))
+    |> assign(:voice_ready, voice_ready)
+    |> assign(:first_draft?, first_draft?)
+    |> assign(:first_post?, first_post?)
+    |> assign(:getting_started?, not (voice_ready and first_draft? and first_post?))
     |> assign(:today, Analytics.today_summary(account))
   end
 
@@ -38,7 +46,10 @@ defmodule SuperXWeb.HomeLive do
   def handle_event("accept", %{"id" => id}, socket) do
     user = socket.assigns.current_user
 
-    with %Generation{} = generation <- Content.get_generation(user, id),
+    account = socket.assigns.current_x_account
+
+    with %Generation{x_account_id: account_id} = generation <- Content.get_generation(user, id),
+         true <- account_id == account.id,
          {:ok, post} <- Content.accept_generation(user, generation),
          {:ok, _scheduled} <- Content.schedule_post(post) do
       {:noreply, socket |> put_flash(:info, "Added to your queue.") |> load()}
@@ -56,12 +67,13 @@ defmodule SuperXWeb.HomeLive do
 
   def handle_event("dismiss", %{"id" => id}, socket) do
     case Content.get_generation(socket.assigns.current_user, id) do
-      nil ->
-        {:noreply, socket}
-
-      generation ->
+      %Generation{x_account_id: account_id} = generation
+      when account_id == socket.assigns.current_x_account.id ->
         {:ok, _} = Content.dismiss_generation(generation)
         {:noreply, load(socket)}
+
+      _generation ->
+        {:noreply, socket}
     end
   end
 
@@ -70,8 +82,15 @@ defmodule SuperXWeb.HomeLive do
     ~H"""
     <Layouts.page_header title="Today" description={greeting(@current_x_account)} />
 
-    <section :if={!@voice_ready or !@has_slots} class="mb-10 border-y border-border py-6">
-      <p class="nb-eyebrow mb-3">Finish setting up</p>
+    <section
+      :if={@getting_started?}
+      id="getting-started"
+      class="mb-10 border-y border-border py-6"
+    >
+      <p class="nb-eyebrow mb-1">Start here</p>
+      <p class="mb-4 max-w-[62ch] text-[12px] leading-[1.6] text-faint">
+        Your dashboard fills as you complete this first publishing loop.
+      </p>
       <ul class="flex flex-col gap-2.5">
         <li class="flex items-baseline gap-3">
           <span class={["nb-mono text-[11px]", @voice_ready && "text-success"]}>
@@ -88,6 +107,32 @@ defmodule SuperXWeb.HomeLive do
           </span>
           <span class="flex-1">Choose when you want to post</span>
           <.link :if={!@has_slots} navigate={~p"/settings"} class="act-key text-xs">Pick times</.link>
+        </li>
+        <li class="flex items-baseline gap-3">
+          <span class={["nb-mono text-[11px]", @first_draft? && "text-success"]}>
+            {if @first_draft?, do: "done", else: "todo"}
+          </span>
+          <span class="flex-1">Create and review your first draft</span>
+          <.link
+            :if={@voice_ready and !@first_draft?}
+            navigate={~p"/ready-to-post"}
+            class="act-key text-xs"
+          >
+            Create a draft
+          </.link>
+        </li>
+        <li class="flex items-baseline gap-3">
+          <span class={["nb-mono text-[11px]", @first_post? && "text-success"]}>
+            {if @first_post?, do: "done", else: "todo"}
+          </span>
+          <span class="flex-1">Put your first approved post on the queue</span>
+          <.link
+            :if={@first_draft? and !@first_post?}
+            navigate={~p"/ready-to-post"}
+            class="act-key text-xs"
+          >
+            Review drafts
+          </.link>
         </li>
       </ul>
     </section>
@@ -132,7 +177,11 @@ defmodule SuperXWeb.HomeLive do
         </div>
 
         <p :if={@next_posts == []} class="py-6 text-muted-foreground">
-          Nothing scheduled. Approve a draft below to fill your next opening.
+          <%= if @first_draft? do %>
+            Nothing scheduled. Approve a draft below to fill your next opening.
+          <% else %>
+            Nothing scheduled yet. Complete the first-draft step above to fill your next opening.
+          <% end %>
         </p>
 
         <div class="flex flex-col">
@@ -156,9 +205,21 @@ defmodule SuperXWeb.HomeLive do
           <.link navigate={~p"/ready-to-post"} class="act text-xs">See all</.link>
         </div>
 
-        <p :if={@shelf == []} class="py-6 text-muted-foreground">
-          No drafts waiting. SuperX writes new ones overnight.
-        </p>
+        <div :if={@shelf == []} id="home-shelf-empty" class="py-6 text-muted-foreground">
+          <%= if @voice_ready do %>
+            <p>No drafts waiting. Create one now, or SuperX will write new ones overnight.</p>
+            <.link navigate={~p"/ready-to-post"} class="act-key mt-3 inline-block text-xs">
+              Create a draft
+            </.link>
+          <% else %>
+            <p>
+              No drafts can be written yet. Set up your voice first so they sound like you.
+            </p>
+            <.link navigate={~p"/voice"} class="act-key mt-3 inline-block text-xs">
+              Set up voice
+            </.link>
+          <% end %>
+        </div>
 
         <div class="mt-3 flex flex-col gap-3">
           <.post

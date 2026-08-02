@@ -14,7 +14,7 @@ defmodule SuperX.Ask.Tools do
 
   require Logger
 
-  alias SuperX.{Analytics, Content, Signals}
+  alias SuperX.{Analytics, Articles, Billing, Content, Signals}
   alias SuperX.Content.{Corpus, Writer}
   alias SuperX.Engage
 
@@ -104,14 +104,55 @@ defmodule SuperX.Ask.Tools do
         input_schema: %{type: "object", properties: %{}}
       },
       %{
+        name: "get_articles",
+        description:
+          "The user's long-form Articles. These are separate from post drafts, the Ready to Post shelf, and the posting queue.",
+        input_schema: %{
+          type: "object",
+          properties: %{
+            status: %{
+              type: "string",
+              description: "One of draft, ready, published. Defaults to draft.",
+              enum: ~w(draft ready published)
+            }
+          }
+        }
+      },
+      %{
         name: "get_engagements",
-        description: "Mentions and feed items waiting for a reply, highest priority first.",
+        description:
+          "Mentions or topic-feed items waiting for a reply. Mentions are highest priority first; feed items are newest first.",
+        input_schema: %{
+          type: "object",
+          properties: %{
+            kind: %{
+              type: "string",
+              description: "One of mention, feed. Omit to read the combined inbox.",
+              enum: ~w(mention feed)
+            }
+          }
+        }
+      },
+      %{
+        name: "get_feeds",
+        description:
+          "The topic feeds the user follows, including whether each is active and whether it has ever synced.",
         input_schema: %{type: "object", properties: %{}}
       },
       %{
         name: "get_leads",
-        description: "People the Signals agents found, best match first.",
-        input_schema: %{type: "object", properties: %{}}
+        description:
+          "Contacts found by Signals agents, optionally filtered by their relationship stage, best match first.",
+        input_schema: %{
+          type: "object",
+          properties: %{
+            status: %{
+              type: "string",
+              description: "One of new, contacted, replied, won, archived.",
+              enum: ~w(new contacted replied won archived)
+            }
+          }
+        }
       }
     ]
   end
@@ -136,6 +177,7 @@ defmodule SuperX.Ask.Tools do
   defp do_run("draft_post", %{"topic" => topic}, ctx) do
     case Writer.generate(ctx.user, ctx.account, topic: topic) do
       {:ok, generation} ->
+        refund_nested_generation(ctx)
         text = SuperX.Content.Generation.text(generation)
         {:ok, "Drafted:\n\n#{text}", "Wrote a draft"}
 
@@ -224,6 +266,26 @@ defmodule SuperX.Ask.Tools do
     {:ok, body, "Read the Ready to Post shelf"}
   end
 
+  defp do_run("get_articles", input, ctx) do
+    status = input["status"] || "draft"
+    articles = Articles.list_articles(ctx.account, status, limit: 10)
+
+    body =
+      if articles == [] do
+        "No #{status} Articles."
+      else
+        Enum.map_join(articles, "\n\n", fn article ->
+          title = article.title || "Untitled article"
+          excerpt = article.body |> normalise_prose() |> String.slice(0, 200)
+          destination = if article.permalink, do: " #{article.permalink}", else: ""
+
+          "#{title} (#{article.word_count} words): #{excerpt}#{destination}"
+        end)
+      end
+
+    {:ok, body, "Read #{status} Articles"}
+  end
+
   defp do_run("search_inspiration", %{"query" => query} = input, _ctx) do
     posts = Corpus.search(query: query, min_likes: input["min_likes"] || 500, limit: 8)
 
@@ -239,12 +301,13 @@ defmodule SuperX.Ask.Tools do
     {:ok, body, "Searched the library for #{inspect(query)}"}
   end
 
-  defp do_run("get_engagements", _input, ctx) do
-    items = Engage.list_engagements(ctx.account, limit: 10)
+  defp do_run("get_engagements", input, ctx) do
+    kind = input["kind"]
+    items = Engage.list_engagements(ctx.account, kind: kind, limit: 10)
 
     body =
       if items == [] do
-        "Nothing waiting."
+        if kind, do: "No #{kind} items waiting.", else: "Nothing waiting."
       else
         Enum.map_join(items, "\n\n", fn e ->
           "[#{e.priority}] @#{e.author_handle} (#{e.author_followers} followers): #{e.text}"
@@ -254,15 +317,35 @@ defmodule SuperX.Ask.Tools do
     {:ok, body, "Read the engagement inbox"}
   end
 
-  defp do_run("get_leads", _input, ctx) do
-    leads = Signals.list_leads(ctx.account, limit: 10)
+  defp do_run("get_feeds", _input, ctx) do
+    feeds = Engage.list_feeds(ctx.account)
+
+    body =
+      if feeds == [] do
+        "No topic feeds configured."
+      else
+        Enum.map_join(feeds, "\n", fn feed ->
+          state = if feed.enabled, do: "active", else: "paused"
+          synced = if feed.last_synced_at, do: "synced", else: "not fetched yet"
+          "#{feed.name}: #{feed.query} (#{state}, #{feed.ranking}, #{synced})"
+        end)
+      end
+
+    {:ok, body, "Read the topic feeds"}
+  end
+
+  defp do_run("get_leads", input, ctx) do
+    status = input["status"]
+    leads = Signals.list_leads(ctx.account, status: status, limit: 10)
 
     body =
       if leads == [] do
-        "No leads yet."
+        if status, do: "No #{status} contacts.", else: "No contacts yet."
       else
         Enum.map_join(leads, "\n", fn l ->
-          "@#{l.handle} (#{l.followers_count} followers, score #{l.score}): #{l.reason || l.bio}"
+          note = if l.notes, do: " Notes: #{normalise_prose(l.notes)}", else: ""
+
+          "@#{l.handle} [#{l.status}] (#{l.followers_count} followers, score #{l.score}): #{l.reason || l.bio}#{note}"
         end)
       end
 
@@ -349,6 +432,22 @@ defmodule SuperX.Ask.Tools do
     error ->
       Logger.warning("Ask tool #{name} crashed: #{inspect(error)}")
       {:error, "That tool failed."}
+  end
+
+  # A Writer generation normally costs one credit so direct MCP use is
+  # metered. Inside Ask, the advertised three-credit turn already includes
+  # every tool it chooses; refund the nested claim so that promise remains
+  # true regardless of the chosen tool path.
+  defp refund_nested_generation(%{billing: :ask, user: user}) do
+    Billing.refund_credits(user, Writer.credit_cost(), ref_type: "ask")
+  end
+
+  defp refund_nested_generation(_ctx), do: :ok
+
+  defp normalise_prose(nil), do: ""
+
+  defp normalise_prose(text) do
+    text |> String.replace(~r/\s+/u, " ") |> String.trim()
   end
 
   defp format_delta(n) when n > 0, do: "+#{n}"
