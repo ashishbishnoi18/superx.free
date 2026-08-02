@@ -1,43 +1,92 @@
+<script id="landing-structured-data" type="application/ld+json">
+  <%= Phoenix.HTML.raw(Jason.encode!(@structured_data)) %>
+</script>
+
 <div class="min-h-full">
-  <header class="measure flex items-center justify-between px-6 py-5">
+  <header class="measure flex items-center justify-between gap-6 px-6 py-5">
     <Layouts.logo class="text-[15px]" />
-    <div class="flex items-center gap-6 text-xs">
-      <Layouts.theme_toggle />
-      <.link :if={@x_configured} href={~p"/auth/x"} class="act-key">
-        Sign in with 𝕏
-      </.link>
+    <div class="flex flex-wrap items-center justify-end gap-x-6 gap-y-2 text-xs">
+      <nav
+        id="landing-nav"
+        aria-label="Landing page"
+        class="flex flex-wrap items-center gap-x-6 gap-y-2"
+      >
+        <a href="#what-it-does" class="act">What it does</a>
+        <a href="#run-it-yourself" class="act">Run it yourself</a>
+        <a href="#comparison" class="act">Compare</a>
+        <a href="#faq" class="act">FAQ</a>
+        <a href="https://github.com/ashishbishnoi18/superx" class="act">GitHub</a>
+      </nav>
+      <div class="flex items-center gap-6">
+        <Layouts.theme_toggle />
+        <.link :if={@x_configured} id="landing-sign-in" href={~p"/auth/x"} class="act-key">
+          Sign in with 𝕏
+        </.link>
+      </div>
     </div>
   </header>
 
   <main class="measure px-6">
-    <section class="py-20 sm:py-28">
-      <p class="nb-eyebrow mb-6">Self-hosted · your data stays yours</p>
+    <section class="py-20 sm:py-28" aria-labelledby="landing-title">
+      <p class="nb-eyebrow mb-6">Free · open source · self-hosted</p>
 
-      <h1 class="max-w-[18ch] text-[clamp(2.25rem,6vw,3.75rem)] font-semibold leading-[1.05] tracking-[-0.035em]">
+      <h1
+        id="landing-title"
+        class="max-w-[18ch] text-[clamp(2.25rem,6vw,3.75rem)] font-semibold leading-[1.05] tracking-[-0.035em]"
+      >
         Grow on 𝕏 without living on 𝕏
       </h1>
 
       <p class="mt-6 max-w-[58ch] text-[17px] leading-[1.6] text-muted-foreground">
-        SuperX learns how you write, finds the posts worth learning from, and keeps
-        your queue full — so posting consistently stops depending on your mood.
+        SuperX is a free, open-source, self-hosted X (Twitter) scheduler and growth tool.
+        Draft and review posts, keep a publishing queue, work through replies, and track
+        results from one application you run yourself.
+      </p>
+
+      <p class="mt-4 max-w-[58ch] leading-[1.6] text-muted-foreground">
+        It is an open-source alternative to superx.so. The <a
+          href="https://github.com/ashishbishnoi18/superx"
+          class="act underline underline-offset-4"
+        >
+          source is published on GitHub</a>, while the application and Postgres database run on
+        infrastructure you control.
       </p>
 
       <div class="mt-9">
-        <.link :if={@x_configured} href={~p"/auth/x"} class="act-key text-[15px]">
+        <.link
+          :if={@x_configured}
+          id="hero-sign-in"
+          href={~p"/auth/x"}
+          class="act-key text-[15px]"
+        >
           Sign in with 𝕏 →
         </.link>
 
-        <p :if={!@x_configured} class="max-w-[52ch] text-muted-foreground">
+        <p
+          :if={!@x_configured}
+          id="x-configuration-help"
+          class="max-w-[52ch] text-muted-foreground"
+        >
           <span class="nb-mono text-[11px] text-destructive">not configured</span>
           <br /> X sign-in isn't configured yet. Set
           <code class="nb-mono text-[12px] text-foreground">X_CLIENT_ID</code>
           and <code class="nb-mono text-[12px] text-foreground">X_CLIENT_SECRET</code>,
-          then restart. The README lists every variable.
+          then restart. The repository lists every variable.
         </p>
       </div>
     </section>
 
-    <section class="flex flex-col pb-24">
+    <section id="what-it-does" class="flex flex-col pb-24" aria-labelledby="what-it-does-title">
+      <header class="pb-8">
+        <p class="nb-eyebrow mb-3">What it does</p>
+        <h2
+          id="what-it-does-title"
+          class="text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.03em]"
+        >
+          A practical workflow for showing up consistently
+        </h2>
+      </header>
+
       <div
         :for={{feature, index} <- Enum.with_index(@features, 1)}
         class="grid grid-cols-1 gap-7 border-t border-border py-7 last:border-b sm:grid-cols-[7.5rem_minmax(0,1fr)]"
@@ -46,17 +95,151 @@
           {String.pad_leading(to_string(index), 2, "0")}
         </span>
         <div>
-          <h2 class="text-[15px] font-semibold">{feature.title}</h2>
+          <h3 class="text-[15px] font-semibold">{feature.title}</h3>
           <p class="mt-1.5 max-w-[62ch] leading-[1.6] text-muted-foreground">{feature.body}</p>
         </div>
+      </div>
+    </section>
+
+    <section
+      id="run-it-yourself"
+      class="border-t border-border py-20"
+      aria-labelledby="run-it-yourself-title"
+    >
+      <p class="nb-eyebrow mb-3">Run it yourself</p>
+      <h2
+        id="run-it-yourself-title"
+        class="text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.03em]"
+      >
+        Deploy the app and Postgres with Docker Compose
+      </h2>
+      <p class="mt-4 max-w-[62ch] leading-[1.6] text-muted-foreground">
+        Start from a clone of the GitHub repository. You need Docker, a domain, two generated
+        application secrets, and X OAuth credentials. Copy the environment template, fill in
+        its required values, then run:
+      </p>
+      <pre
+        id="self-host-commands"
+        class="nb-mono mt-7 overflow-x-auto border-y border-border py-5 text-[12px] leading-[1.8] text-foreground"
+      ><code phx-no-curly-interpolation>git clone https://github.com/ashishbishnoi18/superx.git
+cd superx
+cp .env.example .env
+docker compose up -d --build
+docker compose exec app /app/bin/migrate</code></pre>
+      <p class="mt-4 max-w-[62ch] text-[12px] leading-[1.6] text-faint">
+        The environment template names every required and optional key. Back up the database,
+        uploads volume, and <code class="nb-mono text-[11px] text-foreground">SUPERX_VAULT_KEY</code>.
+      </p>
+    </section>
+
+    <section
+      id="comparison"
+      class="border-t border-border py-20"
+      aria-labelledby="comparison-title"
+    >
+      <p class="nb-eyebrow mb-3">Honest comparison</p>
+      <h2
+        id="comparison-title"
+        class="text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.03em]"
+      >
+        Self-hosted control costs operator time
+      </h2>
+      <p class="mt-4 max-w-[62ch] leading-[1.6] text-muted-foreground">
+        SuperX suits people who value source access and data control more than a managed setup.
+        A hosted tool is the better trade when you do not want to operate the software or manage
+        separate provider accounts.
+      </p>
+
+      <div class="mt-8 overflow-x-auto">
+        <table id="hosted-comparison" class="w-full min-w-[42rem] border-collapse text-left">
+          <caption class="sr-only">
+            Self-hosted SuperX compared with hosted X growth tools
+          </caption>
+          <thead>
+            <tr class="border-y border-border">
+              <th scope="col" class="nb-mono py-4 pr-6 text-[11px] font-medium text-faint">
+                Trade-off
+              </th>
+              <th scope="col" class="nb-mono py-4 pr-6 text-[11px] font-medium text-faint">
+                Self-hosted SuperX
+              </th>
+              <th scope="col" class="nb-mono py-4 text-[11px] font-medium text-faint">
+                Hosted alternative
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-border align-top">
+              <th scope="row" class="py-5 pr-6 text-[13px] font-semibold">Cost</th>
+              <td class="max-w-[30ch] py-5 pr-6 leading-[1.6] text-muted-foreground">
+                No SuperX subscription; you pay for your server and provider usage.
+              </td>
+              <td class="max-w-[30ch] py-5 leading-[1.6] text-muted-foreground">
+                A recurring plan usually bundles the application and its operation.
+              </td>
+            </tr>
+            <tr class="border-b border-border align-top">
+              <th scope="row" class="py-5 pr-6 text-[13px] font-semibold">Data</th>
+              <td class="max-w-[30ch] py-5 pr-6 leading-[1.6] text-muted-foreground">
+                Records live in your Postgres database; configured integrations receive data when called.
+              </td>
+              <td class="max-w-[30ch] py-5 leading-[1.6] text-muted-foreground">
+                The vendor hosts application data and chooses its integration boundaries.
+              </td>
+            </tr>
+            <tr class="border-b border-border align-top">
+              <th scope="row" class="py-5 pr-6 text-[13px] font-semibold">Operations</th>
+              <td class="max-w-[30ch] py-5 pr-6 leading-[1.6] text-muted-foreground">
+                You deploy, upgrade, monitor, rotate secrets, and restore backups.
+              </td>
+              <td class="max-w-[30ch] py-5 leading-[1.6] text-muted-foreground">
+                The vendor handles uptime, updates, backups, and support.
+              </td>
+            </tr>
+            <tr class="border-b border-border align-top">
+              <th scope="row" class="py-5 pr-6 text-[13px] font-semibold">Public X data</th>
+              <td class="max-w-[30ch] py-5 pr-6 leading-[1.6] text-muted-foreground">
+                Discovery, feeds, mentions, and Signals need a data source you configure and fund.
+              </td>
+              <td class="max-w-[30ch] py-5 leading-[1.6] text-muted-foreground">
+                A hosted product may include an established corpus and managed data access.
+              </td>
+            </tr>
+            <tr class="border-b border-border align-top">
+              <th scope="row" class="py-5 pr-6 text-[13px] font-semibold">Control</th>
+              <td class="max-w-[30ch] py-5 pr-6 leading-[1.6] text-muted-foreground">
+                Inspect and change the source, database, limits, and deployment.
+              </td>
+              <td class="max-w-[30ch] py-5 leading-[1.6] text-muted-foreground">
+                Faster onboarding, but behavior and roadmap remain with the vendor.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="faq" class="border-t border-border py-20" aria-labelledby="faq-title">
+      <p class="nb-eyebrow mb-3">FAQ</p>
+      <h2 id="faq-title" class="text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.03em]">
+        What self-hosting actually involves
+      </h2>
+
+      <div id="faq-list" class="mt-8">
+        <article :for={faq <- @faqs} class="border-t border-border py-7 last:border-b">
+          <h3 class="text-[15px] font-semibold">{faq.question}</h3>
+          <p class="mt-2 max-w-[72ch] leading-[1.7] text-muted-foreground">{faq.answer}</p>
+        </article>
       </div>
     </section>
   </main>
 
   <footer class="border-t border-border py-7">
     <div class="measure flex flex-col gap-1 px-6 text-[12px] text-faint sm:flex-row sm:items-center sm:justify-between">
-      <p>SuperX — self-hosted 𝕏 growth workstation</p>
-      <p>Runs on your own box. No third-party analytics.</p>
+      <p>SuperX — free, open-source, self-hosted X growth software</p>
+      <nav aria-label="Footer">
+        <a href="#landing-nav" class="act">Back to top ↑</a>
+      </nav>
     </div>
   </footer>
 </div>

@@ -4,7 +4,27 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <.live_title default="SuperX" suffix=" · SuperX" phx-no-format>
+    <meta name="description" content={page_description(assigns)} />
+    <meta
+      name="theme-color"
+      content="oklch(0.984 0.0035 83)"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta name="theme-color" content="oklch(0.185 0.004 70)" media="(prefers-color-scheme: dark)" />
+
+    <link rel="canonical" href={canonical_url(assigns)} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SuperX" />
+    <meta property="og:title" content={meta_title(assigns)} />
+    <meta property="og:description" content={page_description(assigns)} />
+    <meta property="og:url" content={canonical_url(assigns)} />
+
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={meta_title(assigns)} />
+    <meta name="twitter:description" content={page_description(assigns)} />
+
+    <.live_title default={default_page_title()} suffix=" · SuperX" phx-no-format>
       {assigns[:page_title]}
     </.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />

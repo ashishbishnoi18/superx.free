@@ -28,6 +28,7 @@ defmodule SuperXWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/sitemap.xml", SitemapController, :index
     get "/share/:token", AnalyticsShareController, :show
     get "/circle/:token", ContactListShareController, :show
     get "/team/invitations/:token", TeamInvitationController, :show

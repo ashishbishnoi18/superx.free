@@ -1,5 +1,69 @@
-# See https://www.robotstxt.org/robotstxt.html for documentation on how to use the robots.txt file
-#
-# To ban all spiders from the entire site uncomment the next two lines:
-# User-agent: *
-# Disallow: /
+# Public pages are crawlable. Signed-in areas and capability-token URLs are not.
+User-agent: *
+Allow: /
+Disallow: /accounts
+Disallow: /analytics
+Disallow: /api
+Disallow: /articles
+Disallow: /ask
+Disallow: /auth
+Disallow: /circle/
+Disallow: /connect
+Disallow: /contacts
+Disallow: /dev
+Disallow: /dms
+Disallow: /engage
+Disallow: /home
+Disallow: /inspiration
+Disallow: /mcp
+Disallow: /queue
+Disallow: /ready-to-post
+Disallow: /settings
+Disallow: /share/
+Disallow: /signals
+Disallow: /sign-out
+Disallow: /team/invitations/
+Disallow: /upgrade
+Disallow: /uploads
+Disallow: /voice
+Disallow: /webhooks
+Disallow: /welcome
+Disallow: /workers
+
+# Named AI crawlers receive the same privacy boundaries as every other crawler.
+User-agent: GPTBot
+User-agent: ClaudeBot
+User-agent: PerplexityBot
+User-agent: Google-Extended
+User-agent: CCBot
+Allow: /
+Disallow: /accounts
+Disallow: /analytics
+Disallow: /api
+Disallow: /articles
+Disallow: /ask
+Disallow: /auth
+Disallow: /circle/
+Disallow: /connect
+Disallow: /contacts
+Disallow: /dev
+Disallow: /dms
+Disallow: /engage
+Disallow: /home
+Disallow: /inspiration
+Disallow: /mcp
+Disallow: /queue
+Disallow: /ready-to-post
+Disallow: /settings
+Disallow: /share/
+Disallow: /signals
+Disallow: /sign-out
+Disallow: /team/invitations/
+Disallow: /upgrade
+Disallow: /uploads
+Disallow: /voice
+Disallow: /webhooks
+Disallow: /welcome
+Disallow: /workers
+
+Sitemap: https://superx.free/sitemap.xml

@@ -14,8 +14,35 @@ defmodule SuperXWeb.Layouts do
 
   embed_templates "layouts/*"
 
+  @site_url "https://superx.free/"
+  @default_page_title "SuperX — Free, open-source X growth tool"
+  @default_page_description "SuperX is a free, open-source, self-hosted alternative to superx.so for drafting, scheduling, publishing, and measuring posts on X (Twitter)."
+
   defp root_theme(nil), do: "system"
   defp root_theme(user), do: Accounts.theme(user)
+
+  defp default_page_title, do: @default_page_title
+
+  defp meta_title(assigns) do
+    case assigns[:page_title] do
+      title when is_binary(title) and title != "" -> "#{title} · SuperX"
+      _title -> @default_page_title
+    end
+  end
+
+  defp page_description(assigns) do
+    case assigns[:page_description] do
+      description when is_binary(description) and description != "" -> description
+      _description -> @default_page_description
+    end
+  end
+
+  defp canonical_url(assigns) do
+    case assigns[:canonical_url] do
+      url when is_binary(url) and url != "" -> url
+      _url -> @site_url
+    end
+  end
 
   @doc """
   The signed-in shell: fixed sidebar, scrolling content.

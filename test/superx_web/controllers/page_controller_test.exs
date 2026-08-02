@@ -4,19 +4,97 @@ defmodule SuperXWeb.PageControllerTest do
   import SuperX.Fixtures
 
   test "renders the marketing page for signed-out visitors", %{conn: conn} do
-    html = conn |> get(~p"/") |> html_response(200)
+    document = conn |> get(~p"/") |> html_response(200) |> LazyHTML.from_document()
 
-    assert html =~ "Grow on 𝕏 without"
-    assert html =~ "Writes in your voice"
+    assert LazyHTML.text(LazyHTML.query(document, "#landing-title")) =~ "Grow on 𝕏 without"
+    assert LazyHTML.text(LazyHTML.query(document, "#what-it-does")) =~ "Draft in your voice"
+    assert Enum.count(LazyHTML.query(document, "h1")) == 1
+    assert Enum.count(LazyHTML.query(document, "#landing-nav")) == 1
+    assert Enum.count(LazyHTML.query(document, "main section")) == 5
   end
 
   test "explains what's missing when X sign-in isn't configured", %{conn: conn} do
-    html = conn |> get(~p"/") |> html_response(200)
+    document = conn |> get(~p"/") |> html_response(200) |> LazyHTML.from_document()
 
     # The test environment has no X credentials, so the sign-in button is
     # replaced by setup guidance rather than a dead link.
-    assert html =~ "X sign-in isn't configured yet"
-    refute html =~ ~s(href="/auth/x")
+    assert LazyHTML.text(LazyHTML.query(document, "#x-configuration-help")) =~
+             "X sign-in isn't configured yet"
+
+    assert Enum.empty?(LazyHTML.query(document, "a[href='/auth/x']"))
+  end
+
+  test "renders discoverability metadata with landing-page overrides", %{conn: conn} do
+    document = conn |> get(~p"/") |> html_response(200) |> LazyHTML.from_document()
+
+    assert LazyHTML.attribute(LazyHTML.query(document, "link[rel=canonical]"), "href") == [
+             "https://superx.free/"
+           ]
+
+    assert LazyHTML.attribute(LazyHTML.query(document, "meta[name=description]"), "content") == [
+             "SuperX is a free, open-source, self-hosted alternative to superx.so for drafting, scheduling, publishing, and measuring posts on X (Twitter)."
+           ]
+
+    assert LazyHTML.attribute(LazyHTML.query(document, "meta[property='og:title']"), "content") ==
+             [
+               "Free, open-source X growth tool · SuperX"
+             ]
+
+    assert LazyHTML.attribute(LazyHTML.query(document, "meta[property='og:url']"), "content") == [
+             "https://superx.free/"
+           ]
+
+    assert LazyHTML.attribute(LazyHTML.query(document, "meta[name='twitter:card']"), "content") ==
+             [
+               "summary"
+             ]
+
+    assert Enum.count(LazyHTML.query(document, "meta[name='theme-color']")) == 2
+  end
+
+  test "keeps visible FAQ content and JSON-LD in sync", %{conn: conn} do
+    document = conn |> get(~p"/") |> html_response(200) |> LazyHTML.from_document()
+
+    schema =
+      document
+      |> LazyHTML.query("#landing-structured-data")
+      |> LazyHTML.text()
+      |> Jason.decode!()
+
+    software = Enum.find(schema["@graph"], &(&1["@type"] == "SoftwareApplication"))
+    faq_page = Enum.find(schema["@graph"], &(&1["@type"] == "FAQPage"))
+
+    assert software["name"] == "SuperX"
+    assert software["codeRepository"] == "https://github.com/ashishbishnoi18/superx"
+    assert software["applicationCategory"] == "BusinessApplication"
+    assert software["operatingSystem"] == "Linux with Docker"
+    assert software["isAccessibleForFree"]
+    assert software["offers"] == %{"@type" => "Offer", "price" => "0", "priceCurrency" => "USD"}
+
+    visible_faqs =
+      document
+      |> LazyHTML.query("#faq-list article")
+      |> Enum.map(fn article ->
+        {
+          article |> LazyHTML.query("h3") |> LazyHTML.text(),
+          article |> LazyHTML.query("p") |> LazyHTML.text()
+        }
+      end)
+
+    structured_faqs =
+      Enum.map(faq_page["mainEntity"], fn question ->
+        {question["name"], question["acceptedAnswer"]["text"]}
+      end)
+
+    assert structured_faqs == visible_faqs
+  end
+
+  test "shows executable Docker Compose setup commands", %{conn: conn} do
+    document = conn |> get(~p"/") |> html_response(200) |> LazyHTML.from_document()
+    commands = document |> LazyHTML.query("#self-host-commands code") |> LazyHTML.text()
+
+    assert commands ==
+             "git clone https://github.com/ashishbishnoi18/superx.git\ncd superx\ncp .env.example .env\ndocker compose up -d --build\ndocker compose exec app /app/bin/migrate"
   end
 
   describe "where a signed-in user lands" do
