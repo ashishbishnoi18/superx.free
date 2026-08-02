@@ -64,12 +64,32 @@ defmodule SuperXWeb.PageController do
     "codeRepository" => "https://github.com/ashishbishnoi18/superx.free",
     "applicationCategory" => "BusinessApplication",
     "operatingSystem" => "Linux with Docker",
+    # Free remains true: the software is MIT and self-hosting costs nothing.
+    # The paid offers describe the hosted convenience, and listing them keeps
+    # the structured data from contradicting the prices printed on the page.
     "isAccessibleForFree" => true,
-    "offers" => %{
-      "@type" => "Offer",
-      "price" => "0",
-      "priceCurrency" => "USD"
-    }
+    "offers" => [
+      %{
+        "@type" => "Offer",
+        "name" => "Self-hosted",
+        "price" => "0",
+        "priceCurrency" => "USD"
+      },
+      %{
+        "@type" => "Offer",
+        "name" => "Hosted, bring your own keys",
+        "price" => "5",
+        "priceCurrency" => "USD",
+        "url" => "https://superx.free/billing"
+      },
+      %{
+        "@type" => "Offer",
+        "name" => "Hosted, keys included",
+        "price" => "9",
+        "priceCurrency" => "USD",
+        "url" => "https://superx.free/billing"
+      }
+    ]
   }
 
   def home(conn, _params) do

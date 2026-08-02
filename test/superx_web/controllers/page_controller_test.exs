@@ -83,7 +83,10 @@ defmodule SuperXWeb.PageControllerTest do
     assert software["applicationCategory"] == "BusinessApplication"
     assert software["operatingSystem"] == "Linux with Docker"
     assert software["isAccessibleForFree"]
-    assert software["offers"] == %{"@type" => "Offer", "price" => "0", "priceCurrency" => "USD"}
+    # Search engines read this instead of the visible copy, so the free path
+    # and both hosted prices have to be listed or the two disagree.
+    assert Enum.map(software["offers"], & &1["price"]) == ["0", "5", "9"]
+    assert Enum.all?(software["offers"], &(&1["priceCurrency"] == "USD"))
 
     visible_faqs =
       document
