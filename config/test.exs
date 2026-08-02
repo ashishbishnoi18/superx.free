@@ -48,4 +48,3 @@ config :superx, :min_outlier_baseline_sample, 1
 config :superx, twitter_api_plug: {Req.Test, SuperX.TwitterAPI}
 config :superx, ai_plug: {Req.Test, SuperX.AI}
 config :superx, x_plug: {Req.Test, SuperX.X}
-config :superx, stripe_plug: {Req.Test, SuperX.Billing.Checkout}

@@ -91,8 +91,11 @@ defmodule SuperXWeb.AuthController do
 
       {:error, :account_limit_reached} ->
         conn
-        |> put_flash(:error, "Your plan doesn't include another connected account.")
-        |> redirect(to: ~p"/upgrade")
+        |> put_flash(
+          :error,
+          "This instance's tier allows fewer accounts. Raise SUPERX_DEFAULT_TIER to connect more."
+        )
+        |> redirect(to: ~p"/accounts")
 
       {:error, reason} ->
         Logger.warning("Attaching X account failed: #{inspect(reason)}")

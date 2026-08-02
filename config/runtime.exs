@@ -108,36 +108,10 @@ config :superx, SuperX.TwitterAPI,
   api_key: env.("TWITTERAPI_IO_KEY", nil),
   min_interval_ms: String.to_integer(env.("TWITTERAPI_IO_MIN_INTERVAL_MS", "5000"))
 
-config :superx, SuperX.Billing,
-  stripe_secret_key: env.("STRIPE_SECRET_KEY", nil),
-  stripe_webhook_secret: env.("STRIPE_WEBHOOK_SECRET", nil)
-
 # Tier granted to users without a paid subscription. `free` suits a
 # multi-tenant deployment; a private instance paying its own LLM bill
 # should set this to `ultra` so it isn't throttled by its own quotas.
 config :superx, :default_tier, env.("SUPERX_DEFAULT_TIER", "free")
-
-# Stripe price ids per {tier, interval}. Only the pairs you configure are
-# offered, so a partial setup degrades to fewer plans rather than errors.
-config :superx, SuperX.Billing.Checkout,
-  price_ids:
-    for(
-      tier <- ~w(pro advanced ultra),
-      interval <- ~w(month year),
-      id = System.get_env("STRIPE_PRICE_#{String.upcase(tier)}_#{String.upcase(interval)}"),
-      is_binary(id) and id != "",
-      into: %{},
-      do: {{tier, interval}, id}
-    ),
-  seat_price_ids:
-    for(
-      tier <- ~w(pro advanced ultra),
-      interval <- ~w(month year),
-      id = System.get_env("STRIPE_SEAT_PRICE_#{String.upcase(tier)}_#{String.upcase(interval)}"),
-      is_binary(id) and id != "",
-      into: %{},
-      do: {{tier, interval}, id}
-    )
 
 # Token encryption key. Required in prod; in dev/test it falls back to a
 # key derived from secret_key_base so a fresh checkout just runs.

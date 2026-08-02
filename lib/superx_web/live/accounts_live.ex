@@ -202,13 +202,12 @@ defmodule SuperXWeb.AccountsLive do
         >
           Connect another
         </.link>
-        <.link
+        <span
           :if={length(@accounts) >= @account_limit}
-          navigate={~p"/upgrade"}
-          class="act whitespace-nowrap"
+          class="whitespace-nowrap text-[12px] text-faint"
         >
-          Upgrade for more
-        </.link>
+          Tier limit reached — raise SUPERX_DEFAULT_TIER for more
+        </span>
       </:action>
     </Layouts.page_header>
 

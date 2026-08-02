@@ -57,7 +57,6 @@ defmodule SuperXWeb.Router do
       live "/connect", ConnectLive, :index
       live "/accounts", AccountsLive, :index
       live "/api", ApiDocsLive, :index
-      live "/upgrade", UpgradeLive, :index
     end
   end
 
@@ -99,8 +98,6 @@ defmodule SuperXWeb.Router do
 
   scope "/webhooks", SuperXWeb do
     pipe_through :api
-
-    post "/stripe", StripeWebhookController, :handle
   end
 
   # --- Programmatic API ---------------------------------------------------

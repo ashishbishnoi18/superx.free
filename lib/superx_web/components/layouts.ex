@@ -257,9 +257,6 @@ defmodule SuperXWeb.Layouts do
       <.nav_link navigate={~p"/accounts"} icon="hero-user-circle" active={@active == :accounts}>
         Accounts
       </.nav_link>
-      <.nav_link navigate={~p"/upgrade"} icon="hero-credit-card" active={@active == :upgrade}>
-        Plan
-      </.nav_link>
     </.nav_section>
     """
   end
@@ -303,15 +300,15 @@ defmodule SuperXWeb.Layouts do
       )
 
     ~H"""
-    <.link navigate={~p"/upgrade"} class="group block">
+    <div class="block" title="Set SUPERX_DEFAULT_TIER to change these limits">
       <div class="flex items-baseline justify-between">
         <span class="text-[11px] text-faint">Credits</span>
-        <span class="nb-mono text-[11px] group-hover:text-primary">
+        <span class="nb-mono text-[11px]">
           {@credits.used} / {@credits.limit}
         </span>
       </div>
       <div class="meter mt-2"><i style={"width: #{@pct}%"} /></div>
-    </.link>
+    </div>
     """
   end
 

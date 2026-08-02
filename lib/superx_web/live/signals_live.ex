@@ -52,8 +52,10 @@ defmodule SuperXWeb.SignalsLive do
       length(socket.assigns.agents) >= socket.assigns.limit ->
         {:noreply,
          socket
-         |> put_flash(:error, "Your plan includes #{socket.assigns.limit} agent(s).")
-         |> push_navigate(to: ~p"/upgrade")}
+         |> put_flash(
+           :error,
+           "This instance's tier allows #{socket.assigns.limit} agent(s). Raise SUPERX_DEFAULT_TIER for more."
+         )}
 
       true ->
         case Signals.create_agent(socket.assigns.current_x_account, attrs) do
