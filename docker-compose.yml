@@ -39,6 +39,9 @@ services:
       PHX_HOST: ${PHX_HOST:-localhost}
       PORT: "4000"
       SUPERX_UPLOADS_DIR: /app/uploads
+      POOL_SIZE: ${POOL_SIZE:-10}
+      ECTO_IPV6: ${ECTO_IPV6:-false}
+      DNS_CLUSTER_QUERY: ${DNS_CLUSTER_QUERY}
 
       # X OAuth — required for sign-in and publishing.
       X_CLIENT_ID: ${X_CLIENT_ID}
@@ -58,7 +61,7 @@ services:
       # twitterapi.io — the read side. Unset means no corpus, mentions,
       # feeds or Signals.
       TWITTERAPI_IO_KEY: ${TWITTERAPI_IO_KEY}
-      TWITTERAPI_IO_MIN_INTERVAL_MS: ${TWITTERAPI_IO_MIN_INTERVAL_MS:-6000}
+      TWITTERAPI_IO_MIN_INTERVAL_MS: ${TWITTERAPI_IO_MIN_INTERVAL_MS:-400}
 
       # How much corpus the nightly refresh buys. See README for the sums.
       SUPERX_CORPUS_TOPICS_PER_RUN: ${SUPERX_CORPUS_TOPICS_PER_RUN:-20}

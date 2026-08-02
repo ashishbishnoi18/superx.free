@@ -98,15 +98,13 @@ config :superx, SuperX.AI,
 # twitterapi.io — the read side. Without a key the corpus, mentions, and
 # Signals stay empty and the rest of the app works normally.
 #
-# min_interval_ms paces calls to your plan's QPS. The free tier is
-# advertised at 0.2 QPS but measured tighter than that in practice — even
-# 6s spacing draws the occasional 429 on a first attempt. That's handled:
-# retries back off at this interval, so throughput self-corrects to roughly
-# one call per 11s rather than failing. Lower this once you're on a paid
-# plan; raising QPS beyond what you pay for only buys 429s.
+# min_interval_ms paces calls to the operator's current QPS allowance.
+# 400ms is a conservative baseline for paid accounts with a 3 QPS floor;
+# operators on a different allowance should override it rather than paying
+# for capacity this node leaves idle or provoking avoidable 429s.
 config :superx, SuperX.TwitterAPI,
   api_key: env.("TWITTERAPI_IO_KEY", nil),
-  min_interval_ms: String.to_integer(env.("TWITTERAPI_IO_MIN_INTERVAL_MS", "5000"))
+  min_interval_ms: String.to_integer(env.("TWITTERAPI_IO_MIN_INTERVAL_MS", "400"))
 
 config :superx, SuperX.Billing,
   stripe_secret_key: env.("STRIPE_SECRET_KEY", nil),
@@ -204,7 +202,7 @@ if config_env() == :prod do
 
   host = env.("PHX_HOST", "example.com")
 
-  config :superx, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
+  config :superx, :dns_cluster_query, env.("DNS_CLUSTER_QUERY", nil)
 
   config :superx, SuperXWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
