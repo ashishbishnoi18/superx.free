@@ -80,7 +80,8 @@ backfill history.
 inbox, contacts, feeds, articles and the library. It can draft and queue.
 It cannot publish.
 
-**Articles** — Long-form composition with AI assistance.
+**Articles** — Long-form composition with AI assistance, review, and explicit
+publishing through X's Articles API.
 
 **API, MCP and CLI** — A read-write HTTP API, an [MCP](https://modelcontextprotocol.io)
 server so Claude Code, Codex or ChatGPT can drive your account directly,
@@ -95,8 +96,6 @@ Honest limitations, because you will find them anyway:
 - **The DM inbox will look empty.** X's API only exposes legacy,
   unencrypted conversations. Anything in XChat is invisible to it —
   verified against the live API, not assumed. Sending works.
-- **Articles do not publish to X.** X's API has no long-form endpoint at
-  all; the create-post body has no field for one.
 - **The corpus starts empty** and fills at ~800 posts a night. A hosted
   competitor hands you millions on day one; you build yours.
 - **No bulk DM outreach.** Sending automated DMs to strangers is the one

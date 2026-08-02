@@ -13,8 +13,8 @@ defmodule SuperX.Repo.Migrations.CreateArticles do
       add :body, :text, null: false, default: ""
       add :status, :string, null: false, default: "draft"
 
-      # Publication is an outcome recorded by a future X integration, not
-      # something the composer can manufacture on its own.
+      # Publication identifiers come only from X, not from editable form
+      # params, so the composer cannot manufacture a published record.
       add :published_at, :utc_datetime
       add :x_article_id, :string
       add :permalink, :text

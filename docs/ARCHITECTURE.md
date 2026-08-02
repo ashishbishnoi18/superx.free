@@ -144,7 +144,7 @@ The main boundaries are:
   links.
 - `SuperX.Billing`: static plans, subscriptions, rolling quotas, and an
   append-only AI credit ledger.
-- `SuperX.Articles`: long-form drafts and their local lifecycle.
+- `SuperX.Articles`: long-form drafts, review state, and X publication outcomes.
 - `SuperX.Ask`: an LLM tool loop over the same contexts.
 
 Oban workers are thin orchestration layers around those contexts. LiveViews
@@ -179,7 +179,7 @@ Signals. It uses X’s public web GraphQL surface and carries the operational an
 
 - OAuth exchange, refresh, and revocation;
 - reading the authenticated profile;
-- publishing posts, replies, threads, images, and GIFs;
+- publishing posts, replies, threads, Articles, images, and GIFs;
 - reading and sending private DMs;
 - reading the user’s own recent posts as a voice-derivation fallback when
   twitterapi.io is unavailable.
