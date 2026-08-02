@@ -30,7 +30,6 @@ defmodule SuperX.Content.Generation do
     field :source_likes, :integer
 
     field :model, :string
-    field :prompt_version, :integer, default: 1
     field :credits_cost, :integer, default: 0
     field :score, :float
 
@@ -38,7 +37,6 @@ defmodule SuperX.Content.Generation do
   end
 
   def kinds, do: @kinds
-  def statuses, do: @statuses
 
   @doc false
   def changeset(generation, attrs) do
@@ -52,7 +50,6 @@ defmodule SuperX.Content.Generation do
       :status,
       :source_likes,
       :model,
-      :prompt_version,
       :credits_cost,
       :score
     ])

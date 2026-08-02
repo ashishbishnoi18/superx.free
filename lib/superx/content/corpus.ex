@@ -492,15 +492,4 @@ defmodule SuperX.Content.Corpus do
 
   @doc "Total posts in the library."
   def count, do: Repo.aggregate(CorpusPost, :count)
-
-  @doc "Distinct topic tags with counts, for the filter chips."
-  def topic_facets(limit \\ 24) do
-    from(c in CorpusPost,
-      select: {fragment("unnest(?)", c.topics), count()},
-      group_by: fragment("1"),
-      order_by: [desc: count()],
-      limit: ^limit
-    )
-    |> Repo.all()
-  end
 end

@@ -219,7 +219,7 @@ defmodule SuperX.Workers.RunContentWorkerTest do
     calls = :counters.new(1, [])
     stub_writer(calls)
 
-    assert :ok = ShelfTopUp.perform(%Oban.Job{args: %{"x_account_id" => account.id}})
+    assert :ok = ShelfTopUp.perform(%Oban.Job{args: %{}})
     assert length(Content.list_shelf(account)) == 12
     assert :counters.get(calls, 1) == 12
   end
@@ -239,7 +239,7 @@ defmodule SuperX.Workers.RunContentWorkerTest do
                enabled: false
              })
 
-    assert :ok = ShelfTopUp.perform(%Oban.Job{args: %{"x_account_id" => account.id}})
+    assert :ok = ShelfTopUp.perform(%Oban.Job{args: %{}})
     assert Content.list_shelf(account) == []
     assert :counters.get(calls, 1) == 0
   end

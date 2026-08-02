@@ -53,9 +53,6 @@ defmodule SuperX.Engage.Engagement do
     timestamps(type: :utc_datetime)
   end
 
-  def kinds, do: @kinds
-  def statuses, do: @statuses
-
   @doc false
   def changeset(engagement, attrs) do
     engagement

@@ -40,8 +40,6 @@ defmodule SuperX.Billing.Subscription do
     timestamps(type: :utc_datetime)
   end
 
-  def tiers, do: @tiers
-
   @doc false
   def changeset(subscription, attrs) do
     subscription

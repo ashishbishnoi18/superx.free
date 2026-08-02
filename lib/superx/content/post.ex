@@ -47,7 +47,6 @@ defmodule SuperX.Content.Post do
   end
 
   def statuses, do: @statuses
-  def max_segment_length, do: @max_segment_length
   def max_media_per_segment, do: @max_media_per_segment
 
   @doc false
@@ -188,7 +187,4 @@ defmodule SuperX.Content.Post do
   def preview_text(%__MODULE__{segments: segments}) do
     segments |> Enum.map_join("\n\n", & &1["text"]) |> String.trim()
   end
-
-  @doc "True when the post is a thread rather than a single tweet."
-  def thread?(%__MODULE__{segments: segments}), do: length(segments) > 1
 end

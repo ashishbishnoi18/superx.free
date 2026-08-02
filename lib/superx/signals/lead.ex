@@ -44,8 +44,6 @@ defmodule SuperX.Signals.Lead do
     timestamps(type: :utc_datetime)
   end
 
-  def statuses, do: @statuses
-
   @doc false
   def changeset(lead, attrs) do
     lead

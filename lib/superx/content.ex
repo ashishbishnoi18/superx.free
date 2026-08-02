@@ -116,8 +116,6 @@ defmodule SuperX.Content do
     post |> Post.changeset(attrs) |> Repo.update()
   end
 
-  def change_post(%Post{} = post, attrs \\ %{}), do: Post.changeset(post, attrs)
-
   def delete_post(%Post{} = post), do: Repo.delete(post)
 
   @doc """

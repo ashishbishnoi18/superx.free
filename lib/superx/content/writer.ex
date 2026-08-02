@@ -18,7 +18,7 @@ defmodule SuperX.Content.Writer do
   alias SuperX.Content.{Corpus, CorpusPost, Generation, Post, Voice, VoiceProfile}
 
   # One shelf item costs one credit. Ask, which runs a longer agentic
-  # loop, costs more — see SuperX.Content.Ask.
+  # loop, costs more — see SuperX.Ask.
   @credit_cost 1
 
   @doc "Credits spent for one post generation or remix."
@@ -44,7 +44,7 @@ defmodule SuperX.Content.Writer do
   """
   @spec generate(User.t(), XAccount.t(), keyword()) ::
           {:ok, Generation.t()} | {:error, term()} | {:error, :quota_exceeded, map()}
-  def generate(%User{} = user, %XAccount{} = account, opts \\ []) do
+  def generate(%User{} = user, %XAccount{} = account, opts) do
     with {:ok, voice} <- Content.get_or_create_voice_profile(account),
          {:ok, _balance} <- claim_credit(user) do
       case do_generate(user, account, voice, opts) do

@@ -89,8 +89,7 @@ defmodule SuperX.Accounts.Connect do
       User.changeset(%User{}, %{
         name: profile[:display_name] || profile.handle,
         avatar_url: profile[:avatar_url],
-        settings: User.default_settings(),
-        last_seen_at: now
+        settings: User.default_settings()
       })
     end)
     |> Multi.insert(:x_account, fn %{user: user} ->
@@ -160,7 +159,7 @@ defmodule SuperX.Accounts.Connect do
   defp account_changeset(%User{} = user, profile, tokens, now) do
     %XAccount{user_id: user.id}
     |> XAccount.profile_changeset(Map.put(profile, :last_synced_at, now))
-    |> XAccount.token_changeset(Map.put(tokens, :connected_at, now))
+    |> XAccount.token_changeset(tokens)
   end
 
   defp refresh_existing(%XAccount{} = account, profile, tokens) do

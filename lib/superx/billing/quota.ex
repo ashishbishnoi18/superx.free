@@ -12,7 +12,7 @@ defmodule SuperX.Billing.Quota do
 
   alias SuperX.Accounts.User
 
-  @keys ~w(credits_month posts_month replies_day leads_day auto_dms_month)
+  @keys ~w(credits_month posts_month replies_day leads_day)
 
   schema "quotas" do
     belongs_to :user, User
@@ -60,7 +60,6 @@ defmodule SuperX.Billing.Quota do
       case key do
         "credits_month" -> 30 * 24 * 3600
         "posts_month" -> 30 * 24 * 3600
-        "auto_dms_month" -> 30 * 24 * 3600
         _daily -> 24 * 3600
       end
 

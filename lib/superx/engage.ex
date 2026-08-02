@@ -146,10 +146,6 @@ defmodule SuperX.Engage do
     engagement |> Engagement.changeset(%{status: "ignored"}) |> Repo.update()
   end
 
-  def reopen(%Engagement{} = engagement) do
-    engagement |> Engagement.changeset(%{status: "open"}) |> Repo.update()
-  end
-
   @doc """
   Marks an engagement answered and links the reply we published.
   """
@@ -161,16 +157,6 @@ defmodule SuperX.Engage do
       replied_at: DateTime.utc_now() |> DateTime.truncate(:second)
     )
     |> Repo.update()
-  end
-
-  @doc "The newest post id we've seen for an account, to poll incrementally."
-  def latest_post_id(%XAccount{} = account, kind) do
-    Engagement
-    |> where(x_account_id: ^account.id, kind: ^kind)
-    |> order_by(desc: :posted_at)
-    |> limit(1)
-    |> select([e], e.x_post_id)
-    |> Repo.one()
   end
 
   # --- Reply drafts --------------------------------------------------------

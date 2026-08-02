@@ -80,22 +80,6 @@ defmodule SuperX.X do
     end
   end
 
-  @doc "Fetches recent posts by a user, used to seed their voice profile."
-  def get_user_posts(access_token, x_user_id, opts \\ []) do
-    params = %{
-      "max_results" => opts[:limit] || 100,
-      "tweet.fields" => "created_at,public_metrics,text,lang,referenced_tweets",
-      "exclude" => "retweets,replies"
-    }
-
-    case request(:get, "/users/#{x_user_id}/tweets", params: params, token: access_token) do
-      {:ok, %{"data" => posts}} -> {:ok, posts}
-      # An account with no posts yet returns no `data` key at all.
-      {:ok, _no_data} -> {:ok, []}
-      error -> error
-    end
-  end
-
   # --- Publishing ----------------------------------------------------------
 
   @doc "Uploads local post media and returns the short-lived X media id."

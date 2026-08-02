@@ -18,8 +18,6 @@ defmodule SuperX.Application do
       # Serialises every twitterapi.io call behind one clock, because the
       # plan's QPS is shared across the whole node.
       SuperX.TwitterAPI,
-      # Optional self-hosted read path. Starts even when the binary is
-      # missing; twitterapi.io is the default source.
       {Oban, Application.fetch_env!(:superx, Oban)},
       # Start to serve requests, typically the last entry
       SuperXWeb.Endpoint

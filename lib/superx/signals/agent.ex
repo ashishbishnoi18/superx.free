@@ -37,8 +37,6 @@ defmodule SuperX.Signals.Agent do
     timestamps(type: :utc_datetime)
   end
 
-  def kinds, do: @kinds
-
   @doc false
   def changeset(agent, attrs) do
     agent

@@ -396,40 +396,4 @@ defmodule SuperX.AI.Prompts do
     reuse three consecutive words from this material.
     """
   end
-
-  @doc "Schema for classifying a corpus post into topics."
-  def topic_schema do
-    %{
-      type: "object",
-      properties: %{
-        topics: %{
-          type: "array",
-          items: %{type: "string"},
-          description: "Two to four lowercase topic tags, e.g. \"startups\", \"ai\", \"fitness\"."
-        },
-        quality: %{
-          type: "integer",
-          description:
-            "1-10: how useful this is as a structural template. Engagement bait, giveaways, and pure self-promotion score low."
-        }
-      },
-      required: ["topics", "quality"]
-    }
-  end
-
-  @doc "Prompt for tagging and quality-scoring a corpus post at ingest."
-  def classify_corpus_post(text) do
-    """
-    Classify this X post for a library of structural writing templates.
-
-    <post>
-    #{text}
-    </post>
-
-    Score quality by how well the post's *form* would transfer to another
-    subject. A well-built argument or a sharp observation scores high.
-    Giveaways, follow-for-follow, engagement bait, and posts that only make
-    sense with their media score low.
-    """
-  end
 end

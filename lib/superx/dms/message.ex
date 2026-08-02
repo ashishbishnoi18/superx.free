@@ -30,8 +30,6 @@ defmodule SuperX.DMs.Message do
     timestamps(type: :utc_datetime)
   end
 
-  def directions, do: @directions
-
   @doc false
   def changeset(message, attrs) do
     message
