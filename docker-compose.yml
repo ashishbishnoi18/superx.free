@@ -70,6 +70,13 @@ services:
       # Tier for accounts without a paid subscription.
       SUPERX_DEFAULT_TIER: ${SUPERX_DEFAULT_TIER:-free}
 
+      # Stripe — only the hosted instance sets these. Self-hosters leave
+      # them unset and the billing surface stays hidden entirely.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+      STRIPE_PRICE_KEYS_INCLUDED: ${STRIPE_PRICE_KEYS_INCLUDED}
+      STRIPE_PRICE_BYO: ${STRIPE_PRICE_BYO}
+
     ports:
       - "${BIND_ADDR:-127.0.0.1}:4000:4000"
     volumes:
