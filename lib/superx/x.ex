@@ -250,7 +250,10 @@ defmodule SuperX.X do
 
   @chat_conversation_fields "id,participant_ids,type"
   @chat_conversation_expansions "participant_ids"
-  @chat_event_fields "conversation_id,created_at_msec,encoded_event,id,sender_id"
+  # `created_at_msec` is not a field X accepts and the whole request 400s on
+  # it. The millisecond timestamp this app stores comes out of the decrypted
+  # event body, not from here.
+  @chat_event_fields "conversation_id,created_at,encoded_event,id,sender_id"
   @chat_public_key_fields "identity_public_key_signature,public_key,public_key_version,signing_public_key"
 
   @doc "Fetches all recent DM events visible to the authenticated user."

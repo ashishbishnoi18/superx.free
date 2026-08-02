@@ -398,7 +398,7 @@ defmodule SuperX.DMsTest do
 
           {"GET", "/2/chat/conversations/100-200/events"} ->
             assert conn.query_params["chat_message_event.fields"] ==
-                     "conversation_id,created_at_msec,encoded_event,id,sender_id"
+                     "conversation_id,created_at,encoded_event,id,sender_id"
 
             json(conn, 200, %{
               "data" => [
