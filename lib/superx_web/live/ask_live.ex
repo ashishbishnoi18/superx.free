@@ -17,12 +17,15 @@ defmodule SuperXWeb.AskLive do
      |> assign(:thinking, false)
      |> assign(:draft, "")
      |> assign(:ai_configured, SuperX.AI.configured?())
-     |> assign(:chats, Ask.list_chats(socket.assigns.current_user))}
+     |> assign(
+       :chats,
+       Ask.list_chats(socket.assigns.current_user, socket.assigns.current_x_account)
+     )}
   end
 
   @impl true
   def handle_params(%{"id" => id}, _uri, socket) do
-    case Ask.get_chat(socket.assigns.current_user, id) do
+    case Ask.get_chat(socket.assigns.current_user, socket.assigns.current_x_account, id) do
       nil ->
         {:noreply, push_patch(socket, to: ~p"/ask")}
 
@@ -79,11 +82,14 @@ defmodule SuperXWeb.AskLive do
   end
 
   def handle_event("delete_chat", %{"id" => id}, socket) do
-    Ask.delete_chat(socket.assigns.current_user, id)
+    Ask.delete_chat(socket.assigns.current_user, socket.assigns.current_x_account, id)
 
     {:noreply,
      socket
-     |> assign(:chats, Ask.list_chats(socket.assigns.current_user))
+     |> assign(
+       :chats,
+       Ask.list_chats(socket.assigns.current_user, socket.assigns.current_x_account)
+     )
      |> assign(:chat, nil)
      |> assign(:messages, [])
      |> push_patch(to: ~p"/ask")}
@@ -100,13 +106,21 @@ defmodule SuperXWeb.AskLive do
 
     case result do
       {:ok, _message} ->
-        chat = Ask.get_chat(socket.assigns.current_user, chat_id)
+        chat =
+          Ask.get_chat(
+            socket.assigns.current_user,
+            socket.assigns.current_x_account,
+            chat_id
+          )
 
         {:noreply,
          socket
          |> assign(:chat, chat)
          |> assign(:messages, chat.messages)
-         |> assign(:chats, Ask.list_chats(socket.assigns.current_user))}
+         |> assign(
+           :chats,
+           Ask.list_chats(socket.assigns.current_user, socket.assigns.current_x_account)
+         )}
 
       {:error, :quota_exceeded, _details} ->
         {:noreply, put_flash(socket, :error, "You're out of AI credits for this window.")}
@@ -125,8 +139,8 @@ defmodule SuperXWeb.AskLive do
       <div>
         <h1 class="text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.03em]">Ask</h1>
         <p class="mt-2 max-w-[56ch] text-muted-foreground">
-          It can read your analytics, queue, inbox, contacts, and the library, and draft
-          or queue posts. It can't publish — that stays with you.
+          It can read your analytics, queue, shelf, Articles, topic feeds, inbox, contacts,
+          and the library, and draft or queue posts. It can't publish — that stays with you.
         </p>
       </div>
       <button :if={@chat} phx-click="new_chat" class="act-key shrink-0 text-xs">New chat</button>
@@ -144,6 +158,7 @@ defmodule SuperXWeb.AskLive do
             q <- [
               "How is my account doing this month?",
               "What should I post about today?",
+              "Which article drafts am I still working on?",
               "Who's worth replying to right now?",
               "Draft something about what I learned shipping this week"
             ]

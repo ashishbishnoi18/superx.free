@@ -92,15 +92,21 @@ defmodule SuperXWeb.ArticlesLive do
     article_params = params["article"] || %{}
     ai_params = params["ai"] || %{}
 
-    changeset =
-      socket.assigns.article
-      |> Articles.change_article(article_params)
-      |> Map.put(:action, :validate)
+    socket =
+      case params["_target"] do
+        ["ai", _field] ->
+          socket
+          |> assign(
+            :form,
+            to_form(Articles.change_article(socket.assigns.article, article_params))
+          )
+          |> assign(:ai_form, ai_form(ai_params))
 
-    {:noreply,
-     socket
-     |> assign(:form, to_form(changeset))
-     |> assign(:ai_form, ai_form(ai_params))}
+        _article_change ->
+          autosave(socket, article_params, ai_params)
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("article_action", %{"intent" => "ai_draft"} = params, socket) do
@@ -171,6 +177,62 @@ defmodule SuperXWeb.ArticlesLive do
 
   defp persist(socket, attrs), do: Articles.update_article(socket.assigns.article, attrs)
 
+  defp autosave(%{assigns: %{article: %Article{status: "published"}}} = socket, params, ai) do
+    socket
+    |> assign(:form, validation_form(socket.assigns.article, params))
+    |> assign(:ai_form, ai_form(ai))
+  end
+
+  defp autosave(%{assigns: %{article: %Article{id: nil}}} = socket, params, ai)
+       when params == %{} do
+    assign(socket, :ai_form, ai_form(ai))
+  end
+
+  defp autosave(socket, params, ai) do
+    if is_nil(socket.assigns.article.id) and blank?(params["title"]) and
+         blank?(params["body"]) do
+      socket
+      |> assign(:form, validation_form(socket.assigns.article, params))
+      |> assign(:ai_form, ai_form(ai))
+    else
+      # Editing work that was marked ready makes it a draft again. This is a
+      # user-facing state change, but it is safer and more honest than keeping
+      # an already-reviewed label on prose that has changed since review.
+      attrs = Map.put(params, "status", "draft")
+      new_article? = is_nil(socket.assigns.article.id)
+
+      case persist(socket, attrs) do
+        {:ok, article} ->
+          socket
+          |> assign(:article, article)
+          |> assign(:form, to_form(Articles.change_article(article)))
+          |> assign(:ai_form, ai_form(ai))
+          |> maybe_move_to_saved_editor(new_article?)
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          socket
+          |> assign(:form, to_form(Map.put(changeset, :action, :validate)))
+          |> assign(:ai_form, ai_form(ai))
+
+        {:error, reason} ->
+          socket
+          |> assign(:form, validation_form(socket.assigns.article, params))
+          |> assign(:ai_form, ai_form(ai))
+          |> put_flash(:error, save_error(reason))
+      end
+    end
+  end
+
+  defp validation_form(article, params) do
+    article |> Articles.change_article(params) |> Map.put(:action, :validate) |> to_form()
+  end
+
+  defp maybe_move_to_saved_editor(socket, true) do
+    push_patch(socket, to: ~p"/articles/#{socket.assigns.article.id}/edit")
+  end
+
+  defp maybe_move_to_saved_editor(socket, false), do: socket
+
   defp compose_with_ai(%{assigns: %{generating: mode}} = socket, _requested, _params)
        when not is_nil(mode),
        do: socket
@@ -211,17 +273,44 @@ defmodule SuperXWeb.ArticlesLive do
       )
       when ref == active_ref do
     mode = socket.assigns.generating
-    params = %{"title" => result.title, "body" => result.body}
+    params = %{"title" => result.title, "body" => result.body, "status" => "draft"}
+    new_article? = is_nil(socket.assigns.article.id)
 
     send(self(), :refresh_quota)
 
-    {:noreply,
-     socket
-     |> assign(:form, to_form(Articles.change_article(socket.assigns.article, params)))
-     |> assign(:ai_form, ai_form())
-     |> assign(:generating, nil)
-     |> assign(:composition_ref, nil)
-     |> put_flash(:info, ai_success_message(mode))}
+    case persist(socket, params) do
+      {:ok, article} ->
+        {:noreply,
+         socket
+         |> assign(:article, article)
+         |> assign(:form, to_form(Articles.change_article(article)))
+         |> assign(:ai_form, ai_form())
+         |> assign(:generating, nil)
+         |> assign(:composition_ref, nil)
+         |> put_flash(:info, ai_success_message(mode))
+         |> maybe_move_to_saved_editor(new_article?)}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply,
+         socket
+         |> assign(:form, to_form(Map.put(changeset, :action, :validate)))
+         |> assign(:ai_form, ai_form())
+         |> assign(:generating, nil)
+         |> assign(:composition_ref, nil)
+         |> put_flash(
+           :error,
+           "The draft was written, but it needs an edit before it can be saved."
+         )}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:form, validation_form(socket.assigns.article, params))
+         |> assign(:ai_form, ai_form())
+         |> assign(:generating, nil)
+         |> assign(:composition_ref, nil)
+         |> put_flash(:error, save_error(reason))}
+    end
   end
 
   def handle_info(
@@ -375,7 +464,13 @@ defmodule SuperXWeb.ArticlesLive do
     <div class="mx-auto max-w-[66ch]">
       <header class="mb-9 flex items-center justify-between gap-6 border-b border-border pb-4">
         <div class="flex min-w-0 items-center gap-3">
-          <.link patch={~p"/articles?tab=#{@article.status}"} class="act text-xs">Articles</.link>
+          <.link
+            id="articles-editor-back"
+            patch={~p"/articles?tab=#{@article.status}"}
+            class="act text-xs"
+          >
+            Articles
+          </.link>
           <span class="text-faint">/</span>
           <span class="nb-eyebrow truncate">{editor_state(@article)}</span>
         </div>
@@ -441,7 +536,7 @@ defmodule SuperXWeb.ArticlesLive do
             Published articles are read-only here.
           </span>
           <span class="nb-mono ml-auto text-[11px] text-faint">
-            {Article.count_words(@form[:body].value)} words
+            Changes save automatically · {Article.count_words(@form[:body].value)} words
           </span>
         </div>
 
@@ -553,8 +648,8 @@ defmodule SuperXWeb.ArticlesLive do
   defp generating_label(:extend), do: "continuing…"
   defp generating_label(_mode), do: "writing…"
 
-  defp ai_success_message(:extend), do: "Added new paragraphs. Nothing is saved yet."
-  defp ai_success_message(_mode), do: "Draft written. Nothing is saved yet."
+  defp ai_success_message(:extend), do: "Added new paragraphs and saved the draft."
+  defp ai_success_message(_mode), do: "Draft written and saved."
 
   defp ai_error_message(:missing_brief), do: "Give the writer a brief first."
   defp ai_error_message(:empty_article), do: "Write something before asking it to continue."

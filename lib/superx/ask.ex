@@ -24,31 +24,37 @@ defmodule SuperX.Ask do
 
   # --- Chats ---------------------------------------------------------------
 
-  def list_chats(%User{} = user, limit \\ 30) do
+  def list_chats(%User{} = user, %XAccount{} = account, limit \\ 30) do
     Chat
-    |> where(user_id: ^user.id)
+    |> where(user_id: ^user.id, x_account_id: ^account.id)
     |> order_by(desc: :updated_at)
     |> limit(^limit)
     |> Repo.all()
   end
 
-  def get_chat(%User{} = user, id) do
+  def get_chat(%User{} = user, %XAccount{} = account, id) do
     Chat
-    |> Repo.get_by(id: id, user_id: user.id)
+    |> Repo.get_by(id: id, user_id: user.id, x_account_id: account.id)
     |> case do
       nil -> nil
       chat -> Repo.preload(chat, messages: from(m in Message, order_by: m.inserted_at))
     end
   end
 
-  def create_chat(%User{} = user, %XAccount{} = account, title) do
+  def create_chat(
+        %User{id: user_id} = user,
+        %XAccount{user_id: user_id} = account,
+        title
+      ) do
     %Chat{}
     |> Chat.changeset(%{user_id: user.id, x_account_id: account.id, title: title})
     |> Repo.insert()
   end
 
-  def delete_chat(%User{} = user, id) do
-    case Repo.get_by(Chat, id: id, user_id: user.id) do
+  def create_chat(%User{}, %XAccount{}, _title), do: {:error, :account_mismatch}
+
+  def delete_chat(%User{} = user, %XAccount{} = account, id) do
+    case Repo.get_by(Chat, id: id, user_id: user.id, x_account_id: account.id) do
       nil -> {:error, :not_found}
       chat -> Repo.delete(chat)
     end
@@ -65,21 +71,50 @@ defmodule SuperX.Ask do
   """
   @spec ask(User.t(), XAccount.t(), Chat.t(), String.t()) ::
           {:ok, Message.t()} | {:error, term()} | {:error, :quota_exceeded, map()}
-  def ask(%User{} = user, %XAccount{} = account, %Chat{} = chat, question) do
-    with {:ok, _} <- claim(user),
-         {:ok, _user_message} <- add_message(chat, "user", question) do
-      history = history_for(chat)
+  def ask(
+        %User{id: user_id} = user,
+        %XAccount{id: account_id, user_id: user_id} = account,
+        %Chat{user_id: user_id, x_account_id: account_id} = chat,
+        question
+      ) do
+    with {:ok, _} <- claim(user) do
+      case add_message(chat, "user", question) do
+        {:ok, _user_message} ->
+          finish_turn(user, account, chat)
 
-      case run_loop(user, account, history) do
-        {:ok, answer, tool_summaries} ->
-          touch(chat)
-          add_message(chat, "assistant", answer, tool_summaries, @credit_cost)
-
-        {:error, reason} ->
-          Billing.refund_credits(user, @credit_cost, ref_type: "ask", ref_id: chat.id)
-          {:error, reason}
+        {:error, _reason} = error ->
+          refund(user, chat)
+          error
       end
     end
+  end
+
+  def ask(%User{}, %XAccount{}, %Chat{}, _question), do: {:error, :chat_account_mismatch}
+
+  defp finish_turn(user, account, chat) do
+    history = history_for(chat)
+
+    case run_loop(user, account, history) do
+      {:ok, answer, tool_summaries} ->
+        touch(chat)
+
+        case add_message(chat, "assistant", answer, tool_summaries, @credit_cost) do
+          {:ok, _message} = result ->
+            result
+
+          {:error, _reason} = error ->
+            refund(user, chat)
+            error
+        end
+
+      {:error, reason} ->
+        refund(user, chat)
+        {:error, reason}
+    end
+  end
+
+  defp refund(user, chat) do
+    Billing.refund_credits(user, @credit_cost, ref_type: "ask", ref_id: chat.id)
   end
 
   defp claim(user) do
@@ -90,16 +125,25 @@ defmodule SuperX.Ask do
     end
   end
 
-  defp run_loop(user, account, messages, ctx \\ nil, round \\ 1, summaries \\ [])
+  defp run_loop(
+         user,
+         account,
+         messages,
+         ctx \\ nil,
+         round \\ 1,
+         summaries \\ [],
+         had_tool_error \\ false
+       )
 
-  defp run_loop(_user, _account, _messages, _ctx, round, summaries) when round > @max_rounds do
-    {:ok,
-     "I looked into that but couldn't finish in a reasonable number of steps. Try asking for one thing at a time.",
-     summaries}
+  defp run_loop(_user, _account, _messages, _ctx, round, _summaries, _had_tool_error)
+       when round > @max_rounds do
+    # The user is buying an answer. Reaching the safety ceiling is a failed
+    # turn, not a low-quality answer that should still consume the turn fee.
+    {:error, :tool_round_limit}
   end
 
-  defp run_loop(user, account, messages, ctx, round, summaries) do
-    ctx = ctx || %{user: user, account: account}
+  defp run_loop(user, account, messages, ctx, round, summaries, had_tool_error) do
+    ctx = ctx || %{user: user, account: account, billing: :ask}
 
     body = %{
       model: AI.writer_model(),
@@ -111,7 +155,7 @@ defmodule SuperX.Ask do
 
     case AI.raw(body) do
       {:ok, %{"content" => content, "stop_reason" => "tool_use"}} ->
-        {results, new_summaries} = run_tools(content, ctx)
+        {results, new_summaries, tools_failed?} = run_tools(content, ctx)
 
         run_loop(
           user,
@@ -119,11 +163,18 @@ defmodule SuperX.Ask do
           messages ++ [%{role: "assistant", content: content}, %{role: "user", content: results}],
           ctx,
           round + 1,
-          summaries ++ new_summaries
+          summaries ++ new_summaries,
+          had_tool_error or tools_failed?
         )
 
       {:ok, %{"content" => content}} ->
-        {:ok, content |> extract_text() |> strip_markdown(), summaries}
+        answer = content |> extract_text() |> strip_markdown()
+
+        cond do
+          answer == "" -> {:error, :empty_answer}
+          had_tool_error and summaries == [] -> {:error, :all_tools_failed}
+          true -> {:ok, answer, summaries}
+        end
 
       {:error, reason} ->
         {:error, reason}
@@ -146,7 +197,10 @@ defmodule SuperX.Ask do
       end
     end)
     |> Enum.unzip()
-    |> then(fn {results, summaries} -> {results, Enum.reject(summaries, &is_nil/1)} end)
+    |> then(fn {results, summaries} ->
+      successful = Enum.reject(summaries, &is_nil/1)
+      {results, successful, length(successful) < length(results)}
+    end)
   end
 
   defp extract_text(content) do
@@ -160,10 +214,11 @@ defmodule SuperX.Ask do
     """
     You are SuperX, helping @#{account.handle} run their X account.
 
-    You can read their analytics, queue, engagement inbox, contacts, and
-    the library of high-performing posts, and you can draft and queue posts
-    for them. You cannot publish — queueing is as far as it goes, and the
-    user approves from the queue.
+    You can read their analytics, queue, Ready to Post shelf, Articles,
+    topic feeds, engagement inbox, contacts, and the library of
+    high-performing posts, and you can draft and queue posts for them. You
+    cannot publish — queueing is as far as it goes, and the user approves
+    from the queue.
 
     Look things up rather than guessing. If they ask how the account is
     doing, read the analytics before answering. If they ask what to post

@@ -9,7 +9,7 @@ defmodule SuperX.AskTest do
 
   import SuperX.Fixtures
 
-  alias SuperX.{Ask, Billing, Content}
+  alias SuperX.{Ask, Articles, Billing, Content, Engage, Signals}
   alias SuperX.Ask.Tools
 
   setup do
@@ -60,7 +60,7 @@ defmodule SuperX.AskTest do
 
       assert Billing.credit_balance(user) == before - Ask.credit_cost()
 
-      reloaded = Ask.get_chat(user, chat.id)
+      reloaded = Ask.get_chat(user, account, chat.id)
       assert Enum.map(reloaded.messages, & &1.role) == ["user", "assistant"]
     end
 
@@ -103,7 +103,7 @@ defmodule SuperX.AskTest do
       assert Agent.get(calls, & &1) == 2
     end
 
-    test "a crashing tool does not take the turn down", %{
+    test "refunds when every requested tool fails", %{
       user: user,
       account: account,
       chat: chat
@@ -118,11 +118,13 @@ defmodule SuperX.AskTest do
         end
       end)
 
-      assert {:ok, message} = Ask.ask(user, account, chat, "what's queued")
-      assert message.content =~ "couldn't read"
+      before = Billing.credit_balance(user)
+
+      assert {:error, :all_tools_failed} = Ask.ask(user, account, chat, "what's queued")
+      assert Billing.credit_balance(user) == before
     end
 
-    test "stops after the round ceiling rather than looping forever", %{
+    test "refunds after the round ceiling rather than charging for no answer", %{
       user: user,
       account: account,
       chat: chat
@@ -135,12 +137,50 @@ defmodule SuperX.AskTest do
         json(conn, tool_reply("get_analytics", %{}))
       end)
 
-      assert {:ok, message} = Ask.ask(user, account, chat, "loop forever")
-      assert message.content =~ "couldn't finish"
+      before = Billing.credit_balance(user)
+
+      assert {:error, :tool_round_limit} = Ask.ask(user, account, chat, "loop forever")
+      assert Billing.credit_balance(user) == before
 
       # Bounded, not unbounded — the exact number matters less than that
       # there is one.
       assert Agent.get(calls, & &1) <= 6
+    end
+
+    test "the advertised turn cost includes a draft tool's nested generation", %{
+      user: user,
+      account: account,
+      chat: chat
+    } do
+      {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+      stub(fn conn ->
+        case Agent.get_and_update(calls, &{&1 + 1, &1 + 1}) do
+          1 ->
+            json(conn, tool_reply("draft_post", %{"topic" => "durable software"}))
+
+          2 ->
+            json(conn, %{
+              "content" => [
+                %{
+                  "type" => "tool_use",
+                  "id" => "draft_1",
+                  "name" => "respond",
+                  "input" => %{"segments" => ["Software should survive its first plan."]}
+                }
+              ]
+            })
+
+          _ ->
+            json(conn, text_reply("I wrote that and put it on Ready to Post."))
+        end
+      end)
+
+      before = Billing.credit_balance(user)
+
+      assert {:ok, message} = Ask.ask(user, account, chat, "Draft a post about durability")
+      assert message.content =~ "Ready to Post"
+      assert Billing.credit_balance(user) == before - Ask.credit_cost()
     end
   end
 
@@ -154,6 +194,23 @@ defmodule SuperX.AskTest do
       assert Billing.credit_balance(user) == before
     end
 
+    test "refunds when the claimed turn cannot record the user's message", %{
+      user: user,
+      account: account
+    } do
+      invalid_chat = %SuperX.Ask.Chat{
+        user_id: user.id,
+        x_account_id: account.id
+      }
+
+      before = Billing.credit_balance(user)
+
+      assert {:error, %Ecto.Changeset{}} =
+               Ask.ask(user, account, invalid_chat, "This cannot be stored")
+
+      assert Billing.credit_balance(user) == before
+    end
+
     test "refuses when out of credits", %{user: user, account: account, chat: chat} do
       limit = Billing.Plan.limit("free", :credits_month)
       {:ok, _} = Billing.claim(user, "credits_month", limit)
@@ -163,9 +220,37 @@ defmodule SuperX.AskTest do
   end
 
   describe "chats" do
-    test "are scoped to their owner", %{chat: chat} do
-      %{user: other} = user_fixture()
-      assert Ask.get_chat(other, chat.id) == nil
+    test "are scoped to their owner and selected account", %{
+      user: user,
+      account: account,
+      chat: chat
+    } do
+      %{user: other, account: other_account} = user_fixture()
+      assert Ask.get_chat(other, other_account, chat.id) == nil
+
+      {:ok, _subscription} =
+        Billing.upsert_subscription(user, %{tier: "pro", status: "active"})
+
+      {:ok, second_account} =
+        SuperX.Accounts.Connect.attach(
+          user,
+          %{
+            x_user_id: "second-#{System.unique_integer([:positive])}",
+            handle: "second_account"
+          },
+          %{access_token: "second-token"}
+        )
+
+      {:ok, second_chat} = Ask.create_chat(user, second_account, "Second account chat")
+
+      assert Enum.map(Ask.list_chats(user, account), & &1.id) == [chat.id]
+      assert Enum.map(Ask.list_chats(user, second_account), & &1.id) == [second_chat.id]
+      assert Ask.get_chat(user, second_account, chat.id) == nil
+      assert {:error, :not_found} = Ask.delete_chat(user, second_account, chat.id)
+
+      before = Billing.credit_balance(user)
+      assert {:error, :chat_account_mismatch} = Ask.ask(user, second_account, chat, "continue")
+      assert Billing.credit_balance(user) == before
     end
 
     test "title is derived from the opening question" do
@@ -204,6 +289,114 @@ defmodule SuperX.AskTest do
     test "says so plainly when the shelf is empty", %{user: user, account: account} do
       assert {:ok, "The shelf is empty.", _} =
                Tools.run("get_shelf", %{}, %{user: user, account: account})
+    end
+  end
+
+  describe "account data tools" do
+    test "reads long-form Articles instead of falling back to post drafts", %{
+      user: user,
+      account: account
+    } do
+      {:ok, _article} =
+        Articles.create_article(user, account, %{
+          title: "The long argument",
+          body: "This belongs in the long-form editor, not the post queue."
+        })
+
+      assert {:ok, body, _summary} =
+               Tools.run("get_articles", %{"status" => "draft"}, %{
+                 user: user,
+                 account: account
+               })
+
+      assert body =~ "The long argument"
+      assert body =~ "long-form editor"
+    end
+
+    test "filters contacts by the relationship stage the user asked for", %{
+      user: user,
+      account: account
+    } do
+      assert {2, _} =
+               Signals.upsert_leads([
+                 %{
+                   x_account_id: account.id,
+                   handle: "new_high_score",
+                   status: "new",
+                   score: 99
+                 },
+                 %{
+                   x_account_id: account.id,
+                   handle: "already_contacted",
+                   status: "contacted",
+                   score: 10
+                 }
+               ])
+
+      contacted = account |> Signals.list_leads(status: "contacted") |> hd()
+      {:ok, _contacted} = Signals.update_lead(contacted, %{notes: "Asked to follow up next week"})
+
+      assert {:ok, body, _summary} =
+               Tools.run("get_leads", %{"status" => "contacted"}, %{
+                 user: user,
+                 account: account
+               })
+
+      assert body =~ "@already_contacted [contacted]"
+      assert body =~ "follow up next week"
+      refute body =~ "new_high_score"
+    end
+
+    test "can distinguish topic-feed items from higher-priority mentions", %{
+      user: user,
+      account: account
+    } do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      assert {2, _} =
+               Engage.upsert_many([
+                 %{
+                   x_account_id: account.id,
+                   kind: "mention",
+                   x_post_id: "mention-1",
+                   author_handle: "mention_author",
+                   text: "A high-priority mention",
+                   posted_at: now,
+                   priority: 100
+                 },
+                 %{
+                   x_account_id: account.id,
+                   kind: "feed",
+                   x_post_id: "feed-1",
+                   author_handle: "feed_author",
+                   text: "A topic-feed post",
+                   posted_at: now,
+                   priority: 1
+                 }
+               ])
+
+      assert {:ok, body, _summary} =
+               Tools.run("get_engagements", %{"kind" => "feed"}, %{
+                 user: user,
+                 account: account
+               })
+
+      assert body =~ "A topic-feed post"
+      refute body =~ "high-priority mention"
+    end
+
+    test "reports configured topic feeds even before they have fetched", %{
+      user: user,
+      account: account
+    } do
+      {:ok, _feed} = Engage.create_feed(account, %{query: "phoenix liveview", ranking: "newest"})
+
+      assert {:ok, body, _summary} =
+               Tools.run("get_feeds", %{}, %{user: user, account: account})
+
+      assert body =~ "phoenix liveview"
+      assert body =~ "newest"
+      assert body =~ "not fetched yet"
     end
   end
 end
