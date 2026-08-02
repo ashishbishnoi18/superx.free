@@ -39,7 +39,7 @@ defmodule SuperX.Analytics.HistoryImport do
   @doc "Imports one CSV export and returns an exact account of every row."
   def run(%XAccount{} = account, csv) when is_binary(csv) do
     with {:ok, [headers | body]} <- parse_csv(csv),
-         indexes <- index_headers(headers),
+         {indexes, ignored_columns} <- index_headers(headers),
          :ok <- validate_headers(indexes) do
       {rows, invalid} = parse_rows(body, indexes)
       {rows, duplicates} = unique_rows(rows)
@@ -56,6 +56,7 @@ defmodule SuperX.Analytics.HistoryImport do
          imported_from: Enum.min(dates, fn -> nil end),
          imported_to: Enum.max(dates, fn -> nil end),
          recognised: recognised_metrics(indexes),
+         ignored_columns: ignored_columns,
          skipped_existing: length(ready) - inserted,
          skipped_duplicate: duplicates,
          skipped_invalid: invalid + length(unresolved)
@@ -84,12 +85,22 @@ defmodule SuperX.Analytics.HistoryImport do
   defp index_headers(headers) do
     headers
     |> Enum.with_index()
-    |> Enum.reduce(%{}, fn {header, index}, acc ->
+    |> Enum.reduce({%{}, []}, fn {header, index}, {indexes, ignored} ->
       case canonical_header(header) do
-        nil -> acc
-        key -> Map.put_new(acc, key, index)
+        nil ->
+          label = display_header(header)
+          {indexes, if(label == "", do: ignored, else: ignored ++ [label])}
+
+        key ->
+          {Map.put_new(indexes, key, index), ignored}
       end
     end)
+  end
+
+  defp display_header(header) do
+    header
+    |> String.trim_leading(<<0xEF, 0xBB, 0xBF>>)
+    |> String.trim()
   end
 
   defp canonical_header(header) do

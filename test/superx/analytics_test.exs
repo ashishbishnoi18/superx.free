@@ -128,6 +128,49 @@ defmodule SuperX.AnalyticsTest do
       assert {:error, :missing_followers} =
                Analytics.import_history(account, "Date,Impressions\n2026-01-01,12\n")
     end
+
+    test "reports columns it did not understand instead of silently discarding them", %{
+      account: account
+    } do
+      date = Date.add(Date.utc_today(), -1)
+
+      assert {:ok, report} =
+               Analytics.import_history(
+                 account,
+                 "Date,Followers,Audience segment,Notes\n#{date},105,Builders,Launch day\n"
+               )
+
+      assert report.imported == 1
+      assert report.ignored_columns == ["Audience segment", "Notes"]
+    end
+  end
+
+  describe "summary/3 history coverage" do
+    test "distinguishes unavailable changes from a real zero and counts gaps", %{account: account} do
+      today = Date.utc_today()
+      from = Date.add(today, -2)
+
+      empty = Analytics.summary(account, from, today)
+      refute empty.follower_change_available?
+      refute empty.posts_change_available?
+      assert empty.coverage == %{expected: 3, missing: 3, recorded: 0}
+
+      record(account, from, 100)
+
+      one = Analytics.summary(account, from, today)
+      refute one.follower_change_available?
+      refute one.posts_change_available?
+      assert one.coverage == %{expected: 3, missing: 2, recorded: 1}
+
+      record(account, today, 100)
+
+      gap = Analytics.summary(account, from, today)
+      assert gap.follower_change_available?
+      assert gap.posts_change_available?
+      assert gap.followers_change == 0
+      assert gap.posts == 0
+      assert gap.coverage == %{expected: 3, missing: 1, recorded: 2}
+    end
   end
 
   describe "follower_gain_posts/4" do

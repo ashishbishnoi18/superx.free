@@ -24,9 +24,9 @@ defmodule SuperXWeb.AnalyticsLiveTest do
       Analytics.record_snapshot(account, today, %{followers: 100, following: 50, posts: 10})
 
     csv =
-      "Date,Followers,Total Posts,Impressions\n" <>
-        "#{Date.add(today, -1)},95,9,500\n" <>
-        "#{today},999,999,999\n"
+      "Date,Followers,Total Posts,Impressions,Audience segment\n" <>
+        "#{Date.add(today, -1)},95,9,500,Builders\n" <>
+        "#{today},999,999,999,Founders\n"
 
     {:ok, view, _html} = live(conn, ~p"/analytics")
 
@@ -40,6 +40,31 @@ defmodule SuperXWeb.AnalyticsLiveTest do
 
     assert has_element?(view, "#analytics-import-report", "Imported 1 date")
     assert has_element?(view, "#analytics-import-report", "Skipped 1 already recorded")
+
+    assert has_element?(
+             view,
+             "#analytics-import-report",
+             "Ignored unrecognised column: Audience segment"
+           )
+  end
+
+  test "marks missing snapshot days as unknown rather than zero", %{conn: conn, account: account} do
+    today = Date.utc_today()
+
+    {:ok, _} =
+      Analytics.record_snapshot(account, today, %{
+        followers: 100,
+        following: 50,
+        posts: 10,
+        impressions: 500,
+        engagements: 25
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/analytics")
+
+    assert has_element?(view, "#analytics-coverage", "missing days are unknown, not zero")
+    assert has_element?(view, "#analytics-metric-followers", "Change unavailable")
+    assert has_element?(view, "#analytics-metric-posts", "—")
   end
 
   test "creates and turns off a public summary", %{conn: conn} do

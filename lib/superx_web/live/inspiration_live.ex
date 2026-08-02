@@ -452,8 +452,17 @@ defmodule SuperXWeb.InspirationLive do
           <.metrics likes={post.likes} reposts={post.reposts} />
         </:footer>
 
-        <:meta :if={@show_outliers and post.outlier_score >= 2.0}>
+        <:meta :if={@show_outliers}>
           <span
+            :if={is_nil(post.outlier_score)}
+            id={"outlier-unavailable-#{post.id}"}
+            class="text-[10px] text-faint"
+            title={"At least #{Corpus.min_baseline_sample()} posts in this follower band are needed for an outlier score"}
+          >
+            Not enough comparable posts
+          </span>
+          <span
+            :if={is_number(post.outlier_score) and post.outlier_score >= 2.0}
             id={"outlier-#{post.id}"}
             class="nb-mono text-[10px] text-muted-foreground"
             title={"#{format_outlier(post.outlier_score)} times typical engagement for this account size"}

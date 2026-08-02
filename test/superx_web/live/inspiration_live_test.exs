@@ -117,6 +117,26 @@ defmodule SuperXWeb.InspirationLiveTest do
     assert has_element?(view, "#inspiration-filter-empty", "21+ bookmarks")
   end
 
+  test "shows when an outlier baseline has too few comparable posts", %{conn: conn} do
+    %{user: user} = user_fixture()
+    {:ok, token} = Accounts.create_session(user)
+
+    post =
+      corpus_post_fixture(%{
+        x_post_id: "thin-band",
+        author_followers: 500,
+        likes: 90_000
+      })
+
+    conn = init_test_session(conn, %{user_token: token})
+    {:ok, view, _html} = live(conn, ~p"/inspiration")
+
+    view |> element("#outlier-toggle") |> render_click()
+
+    assert has_element?(view, "#outlier-unavailable-#{post.id}", "Not enough comparable posts")
+    refute has_element?(view, "#outlier-#{post.id}", "1.0× typical")
+  end
+
   defp corpus_attrs(id, likes, followers) do
     %{
       x_post_id: id,
