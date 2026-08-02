@@ -101,6 +101,28 @@ defmodule SuperX.AccountsTest do
       assert Repo.get!(SuperX.Content.Post, scheduled.id).status == "cancelled"
     end
 
+    test "takes the stored chat identity with it" do
+      # It is a private key for an account we no longer act as, and it would
+      # otherwise outlive the OAuth tokens revoked in the same call.
+      %{user: user, account: account} = user_fixture()
+
+      {:ok, _identity} =
+        %SuperX.XChat.Identity{x_account_id: account.id}
+        |> Ecto.Changeset.change(
+          private_key: "private-key-material",
+          key_version: "7",
+          registration: %{"version" => "7"}
+        )
+        |> Repo.insert()
+
+      Req.Test.stub(SuperX.X, fn conn ->
+        Plug.Conn.send_resp(conn, 200, ~s({"revoked":true}))
+      end)
+
+      assert {:ok, _changes} = Accounts.disconnect_x_account(user, account.id)
+      assert Repo.aggregate(SuperX.XChat.Identity, :count) == 0
+    end
+
     test "keeps credentials locally when X revocation fails" do
       %{user: user, account: account} = user_fixture()
 

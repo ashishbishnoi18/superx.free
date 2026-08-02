@@ -156,6 +156,13 @@ defmodule SuperX.Accounts do
             ),
             set: [status: "cancelled"]
           )
+          # The chat identity is a private key for an account we no longer act
+          # as. Keeping it serves nothing and it outlives the OAuth tokens
+          # that were revoked a few lines up.
+          |> Multi.delete_all(
+            :chat_identity,
+            from(i in SuperX.XChat.Identity, where: i.x_account_id == ^account.id)
+          )
           |> Multi.update(:account, XAccount.disconnect_changeset(account, disconnected_at))
           |> Multi.update_all(
             :clear_default,
