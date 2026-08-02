@@ -111,6 +111,15 @@ config :superx, SuperX.TwitterAPI,
 # should set this to `ultra` so it isn't throttled by its own quotas.
 config :superx, :default_tier, env.("SUPERX_DEFAULT_TIER", "free")
 
+# Stripe. Only the hosted instance sets these; everywhere else the billing
+# surface stays hidden rather than offering a checkout that cannot complete.
+config :superx, SuperX.Billing.Stripe,
+  secret_key: env.("STRIPE_SECRET_KEY", nil),
+  publishable_key: env.("STRIPE_PUBLISHABLE_KEY", nil),
+  webhook_secret: env.("STRIPE_WEBHOOK_SECRET", nil),
+  price_keys_included: env.("STRIPE_PRICE_KEYS_INCLUDED", nil),
+  price_byo: env.("STRIPE_PRICE_BYO", nil)
+
 # Token encryption key. Required in prod; in dev/test it falls back to a
 # key derived from secret_key_base so a fresh checkout just runs.
 vault_key =

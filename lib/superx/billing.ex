@@ -336,4 +336,95 @@ defmodule SuperX.Billing do
   def can_connect_account?(%User{} = user, current_count) do
     current_count < Plan.limit(tier(user), :x_accounts)
   end
+
+  # --- Stripe ---------------------------------------------------------------
+
+  # There is one paid plan, so paying lifts every limit rather than buying a
+  # place in a ladder. The two prices differ in whose API keys get used, not
+  # in what the software will do.
+  @paid_tier "ultra"
+
+  @doc """
+  Applies an already-verified Stripe event.
+
+  Unknown event types succeed rather than error: Stripe retries anything that
+  does not return 2xx, and an endpoint subscribed to more types than it
+  handles would otherwise retry those forever.
+  """
+  def apply_stripe_event(%{"type" => "checkout.session.completed", "data" => %{"object" => obj}}) do
+    with %User{} = user <- user_from_stripe(obj) do
+      upsert_subscription(user, %{
+        provider: "stripe",
+        provider_customer_id: obj["customer"],
+        provider_subscription_id: obj["subscription"],
+        status: "active",
+        tier: @paid_tier
+      })
+    else
+      _unknown -> {:ok, :ignored}
+    end
+  end
+
+  def apply_stripe_event(%{"type" => "customer.subscription." <> _, "data" => %{"object" => obj}}) do
+    with %User{} = user <- user_from_stripe(obj) do
+      status = stripe_status(obj["status"])
+
+      upsert_subscription(user, %{
+        provider: "stripe",
+        provider_customer_id: obj["customer"],
+        provider_subscription_id: obj["id"],
+        provider_price_id: get_in(obj, ["items", "data", Access.at(0), "price", "id"]),
+        amount_cents: get_in(obj, ["items", "data", Access.at(0), "price", "unit_amount"]),
+        currency: get_in(obj, ["items", "data", Access.at(0), "price", "currency"]),
+        interval: get_in(obj, ["items", "data", Access.at(0), "price", "recurring", "interval"]),
+        status: status,
+        tier: if(status in ~w(active trialing past_due), do: @paid_tier, else: default_tier()),
+        current_period_end: unix_to_datetime(obj["current_period_end"]),
+        cancel_at_period_end: obj["cancel_at_period_end"] == true,
+        canceled_at: unix_to_datetime(obj["canceled_at"])
+      })
+    else
+      _unknown -> {:ok, :ignored}
+    end
+  end
+
+  def apply_stripe_event(_event), do: {:ok, :ignored}
+
+  # The id travels in metadata we set at checkout, so a forged customer id
+  # cannot move somebody else's subscription. Falling back to the stored
+  # customer id covers events Stripe raises without our metadata, such as a
+  # cancellation made from the portal.
+  defp user_from_stripe(object) do
+    id = object["client_reference_id"] || get_in(object, ["metadata", "user_id"])
+
+    with nil <- user_by_id(id),
+         customer when is_binary(customer) <- object["customer"],
+         %Subscription{user_id: user_id} <-
+           Repo.get_by(Subscription, provider_customer_id: customer) do
+      Repo.get(User, user_id)
+    end
+  end
+
+  defp user_by_id(id) when is_binary(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> Repo.get(User, uuid)
+      :error -> nil
+    end
+  end
+
+  defp user_by_id(_id), do: nil
+
+  # Stripe's `unpaid` and `incomplete_expired` have no row-level equivalent
+  # here; both mean the same thing to this app as a cancellation.
+  defp stripe_status("trialing"), do: "trialing"
+  defp stripe_status("active"), do: "active"
+  defp stripe_status("past_due"), do: "past_due"
+  defp stripe_status("paused"), do: "paused"
+  defp stripe_status(_ended), do: "canceled"
+
+  defp unix_to_datetime(seconds) when is_integer(seconds) do
+    seconds |> DateTime.from_unix!() |> DateTime.truncate(:second)
+  end
+
+  defp unix_to_datetime(_value), do: nil
 end

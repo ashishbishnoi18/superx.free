@@ -51,12 +51,16 @@ defmodule SuperXWeb.Router do
     get "/uploads/:id", UploadController, :show
     get "/contacts/export", ContactExportController, :show
 
+    post "/billing/checkout", BillingController, :checkout
+    get "/billing/portal", BillingController, :portal
+
     live_session :authenticated,
       on_mount: [{SuperXWeb.UserAuth, :ensure_authenticated}, SuperXWeb.ShellHook],
       layout: {SuperXWeb.Layouts, :app} do
       live "/connect", ConnectLive, :index
       live "/accounts", AccountsLive, :index
       live "/api", ApiDocsLive, :index
+      live "/billing", BillingLive, :index
     end
   end
 
@@ -98,6 +102,8 @@ defmodule SuperXWeb.Router do
 
   scope "/webhooks", SuperXWeb do
     pipe_through :api
+
+    post "/stripe", StripeWebhookController, :create
   end
 
   # --- Programmatic API ---------------------------------------------------
