@@ -87,9 +87,11 @@ defmodule SuperX.Scraper do
       Process.flag(:trap_exit, true)
       {:ok, open(%State{binary: binary})}
     else
-      # Not fatal: everything except corpus ingestion works without it,
-      # and a self-hoster may not have built the worker yet.
-      Logger.warning("Scraper binary not found at #{binary}; corpus ingestion is disabled")
+      # Expected on almost every install. This worker is a fallback read
+      # source for people running without twitterapi.io; when that key is
+      # present it is never consulted, so its absence is not a problem to
+      # report as one.
+      Logger.debug("Optional scraper binary not present at #{binary}")
       {:ok, %State{binary: binary}}
     end
   end

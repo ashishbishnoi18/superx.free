@@ -140,11 +140,10 @@ those providers. See [docs/FAQ.md](docs/FAQ.md) for the arithmetic.
 
 ## Local development
 
-Needs Elixir 1.19, Postgres 17+ with pgvector, and Go 1.25.
+Needs Elixir 1.19 and Postgres 17+ with pgvector.
 
 ```bash
 mix setup
-cd scraper && go build -o ../priv/scraper . && cd ..
 mix superx.dev.seed     # demo user, corpus, shelf, analytics
 mix phx.server
 ```
