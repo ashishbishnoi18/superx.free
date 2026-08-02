@@ -93,19 +93,18 @@ Then open http://localhost:4000 and sign in with X.
 
 ## Documentation
 
-- [Setup, step by step](https://superx.free/docs/setup): full walkthrough including
+- [Setup, step by step](https://github.com/ashishbishnoi18/superx/blob/main/docs/SETUP.md): full walkthrough including
   creating the X app and obtaining every key.
-- [Configuration](https://superx.free/docs/configuration): every environment
+- [Configuration](https://github.com/ashishbishnoi18/superx/blob/main/docs/CONFIGURATION.md): every environment
   variable, its default, and what happens when it is missing.
-- [Deployment](https://superx.free/docs/deployment): Docker Compose, nginx with the
+- [Deployment](https://github.com/ashishbishnoi18/superx/blob/main/docs/DEPLOYMENT.md): Docker Compose, nginx with the
   LiveView websocket upgrade, TLS, systemd, backups.
-- [Architecture](https://superx.free/docs/architecture): why reads and writes use
+- [Architecture](https://github.com/ashishbishnoi18/superx/blob/main/docs/ARCHITECTURE.md): why reads and writes use
   different providers, and how the persistent read cache works.
-- [Troubleshooting](https://superx.free/docs/troubleshooting): symptom-first fixes.
-- [FAQ](https://superx.free/docs/faq): running costs, keys, privacy, comparisons.
+- [Troubleshooting](https://github.com/ashishbishnoi18/superx/blob/main/docs/TROUBLESHOOTING.md): symptom-first fixes.
+- [FAQ](https://github.com/ashishbishnoi18/superx/blob/main/docs/FAQ.md): running costs, keys, privacy, comparisons.
 
 ## Optional
 
-- [MCP server](https://superx.free/docs/mcp): connect Claude Code, Codex or ChatGPT
-  directly to your own X data.
-- [CLI](https://superx.free/docs/cli): a zero-dependency command line client.
+- MCP server and CLI: see the Programmatic access section of the
+  [README](https://github.com/ashishbishnoi18/superx#readme).
