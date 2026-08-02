@@ -51,6 +51,28 @@ defmodule SuperX.Workers.MentionSyncTest do
     assert second_query =~ "since_time:"
   end
 
+  test "view counts come along with the rest of the mention metrics", %{account: account} do
+    tweet = %{
+      "id" => "viewed-mention",
+      "text" => "loved the post",
+      "createdAt" => "Wed Oct 10 20:19:24 +0000 2018",
+      "viewCount" => 12_345,
+      "author" => %{
+        "userName" => "fan",
+        "name" => "Fan",
+        "followers" => 10,
+        "isBlueVerified" => true
+      }
+    }
+
+    Req.Test.stub(SuperX.TwitterAPI, fn conn ->
+      json(conn, %{"tweets" => [tweet], "has_next_page" => false})
+    end)
+
+    assert {:ok, 1} = MentionSync.sync_mentions(account)
+    assert [%{views: 12_345, author_verified: true}] = Engage.list_engagements(account)
+  end
+
   defp tweet(number) do
     %{
       "id" => "burst-#{number}",

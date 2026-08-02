@@ -7,6 +7,7 @@ defmodule SuperXWeb.EngageLive do
   use SuperXWeb, :live_view
 
   alias SuperX.Content
+  alias SuperX.Content.Exclusions
   alias SuperX.Content.Post
   alias SuperX.Engage
   alias SuperX.Engage.{Engagement, Feed, Replier, ReplyDraft}
@@ -20,6 +21,13 @@ defmodule SuperXWeb.EngageLive do
      socket
      |> assign(page_title: "Engage")
      |> assign(:kind, nil)
+     |> assign(:min_likes, nil)
+     |> assign(:min_followers, nil)
+     |> assign(:verified_only, false)
+     |> assign(:mention_type, nil)
+     |> assign(:exclude, [])
+     |> assign(:exclusions, Exclusions.categories())
+     |> assign(:reply_sort, "recent")
      |> assign(:drafting, MapSet.new())
      |> assign(:refreshing_mentions, false)
      |> assign(:ai_configured, SuperX.AI.configured?())
@@ -32,7 +40,20 @@ defmodule SuperXWeb.EngageLive do
   @impl true
   def handle_params(params, _uri, socket) do
     kind = if params["kind"] in @kinds, do: params["kind"]
-    {:noreply, socket |> assign(:kind, kind) |> load()}
+
+    {:noreply,
+     socket
+     |> assign(:kind, kind)
+     |> assign(:min_likes, int_param(params["min_likes"]))
+     |> assign(:min_followers, int_param(params["min_followers"]))
+     |> assign(:verified_only, params["verified"] == "1")
+     |> assign(:mention_type, if(params["mtype"] in ~w(replies mentions), do: params["mtype"]))
+     |> assign(:exclude, exclude_param(params["exclude"]))
+     |> assign(
+       :reply_sort,
+       if(params["sort"] in ~w(likes views), do: params["sort"], else: "recent")
+     )
+     |> load()}
   end
 
   defp load(socket) do
@@ -43,18 +64,92 @@ defmodule SuperXWeb.EngageLive do
     starter_feeds =
       Enum.map(Feed.suggestions(), &Map.put(&1, :added, MapSet.member?(queries, &1.query)))
 
+    engagements =
+      account
+      |> Engage.list_engagements(engagement_options(socket.assigns))
+      |> sort_replied(socket.assigns)
+
     socket
-    |> assign(
-      :engagements,
-      Engage.list_engagements(account, engagement_options(socket.assigns.kind))
-    )
+    |> assign(:engagements, engagements)
     |> assign(:counts, Engage.counts(account))
     |> assign(:feeds, feeds)
     |> assign(:starter_feeds, starter_feeds)
   end
 
-  defp engagement_options("replied"), do: [status: "replied"]
-  defp engagement_options(kind), do: [kind: kind]
+  # The mention filters only make sense on the tabs that list mentions;
+  # the Feeds and My replies tabs have controls of their own.
+  defp engagement_options(%{kind: "replied"} = assigns),
+    do: [status: "replied", exclude: assigns.exclude]
+
+  defp engagement_options(%{kind: kind} = assigns) when kind in [nil, "mention"] do
+    [
+      kind: kind,
+      exclude: assigns.exclude,
+      min_likes: assigns.min_likes,
+      min_author_followers: assigns.min_followers,
+      verified_only: assigns.verified_only,
+      mention_type: assigns.mention_type
+    ]
+  end
+
+  defp engagement_options(%{kind: kind} = assigns),
+    do: [kind: kind, exclude: assigns.exclude]
+
+  # Metric sorting happens here rather than in SQL: the numbers live in a
+  # jsonb map on the preloaded replied post, and the list is capped at
+  # fifty rows, so an `ORDER BY (metrics->>'likes')::int` over a join would
+  # buy nothing measurable.
+  defp sort_replied(engagements, %{kind: "replied", reply_sort: "likes"}),
+    do: Enum.sort_by(engagements, &reply_metric(&1, "likes"), :desc)
+
+  defp sort_replied(engagements, %{kind: "replied", reply_sort: "views"}),
+    do: Enum.sort_by(engagements, &reply_metric(&1, "views"), :desc)
+
+  defp sort_replied(engagements, _assigns), do: engagements
+
+  defp reply_metric(%{replied_post: %{metrics: metrics}}, key) when is_map(metrics),
+    do: metrics[key] || 0
+
+  defp reply_metric(_engagement, _key), do: 0
+
+  # Every control on this page rides in the query string, so a narrowed or
+  # resorted inbox survives a refresh and can be shared or carried across
+  # tabs. Defaults stay out of the URL so plain links remain clean.
+  defp engage_path(assigns, overrides) do
+    params =
+      %{
+        "kind" => assigns.kind,
+        "min_likes" => assigns.min_likes,
+        "min_followers" => assigns.min_followers,
+        "verified" => if(assigns.verified_only, do: "1"),
+        "mtype" => assigns.mention_type,
+        "exclude" => Enum.join(assigns.exclude, ","),
+        "sort" => if(assigns.reply_sort == "recent", do: nil, else: assigns.reply_sort)
+      }
+      |> Map.merge(overrides)
+      |> Enum.reject(fn
+        {"sort", value} -> value in [nil, "", "recent"]
+        {_key, value} -> value in [nil, ""]
+      end)
+      |> Map.new()
+
+    if params == %{}, do: ~p"/engage", else: ~p"/engage?#{params}"
+  end
+
+  defp int_param(value) do
+    case Integer.parse(to_string(value || "")) do
+      {minimum, ""} when minimum > 0 -> minimum
+      _ -> nil
+    end
+  end
+
+  defp exclude_param(value) do
+    valid = Enum.map(Exclusions.categories(), & &1.key)
+
+    (value || "")
+    |> String.split(",", trim: true)
+    |> Enum.filter(&(&1 in valid))
+  end
 
   # --- Replying ------------------------------------------------------------
 
@@ -136,6 +231,31 @@ defmodule SuperXWeb.EngageLive do
         {:ok, _} = Engage.ignore(engagement)
         {:noreply, load(socket)}
     end
+  end
+
+  # --- Filters ---------------------------------------------------------------
+
+  def handle_event("set_mention_filters", params, socket) do
+    overrides = %{
+      "min_likes" => int_param(params["min_likes"]),
+      "min_followers" => int_param(params["min_followers"]),
+      "verified" => if(params["verified"] == "1", do: "1"),
+      "mtype" => if(params["mtype"] in ~w(replies mentions), do: params["mtype"])
+    }
+
+    {:noreply, push_patch(socket, to: engage_path(socket.assigns, overrides))}
+  end
+
+  def handle_event("toggle_exclude", %{"key" => key}, socket) do
+    exclude =
+      if key in socket.assigns.exclude do
+        List.delete(socket.assigns.exclude, key)
+      else
+        [key | socket.assigns.exclude]
+      end
+
+    {:noreply,
+     push_patch(socket, to: engage_path(socket.assigns, %{"exclude" => Enum.join(exclude, ",")}))}
   end
 
   # --- Mention refresh ----------------------------------------------------
@@ -325,27 +445,133 @@ defmodule SuperXWeb.EngageLive do
     </p>
 
     <div class="mb-9 flex gap-6 border-b border-border">
-      <.link patch={~p"/engage"} class="tab" aria-selected={to_string(is_nil(@kind))}>
+      <.link
+        patch={engage_path(assigns, %{"kind" => nil})}
+        class="tab"
+        aria-selected={to_string(is_nil(@kind))}
+      >
         All <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "all", 0)}</span>
       </.link>
       <.link
-        patch={~p"/engage?kind=mention"}
+        patch={engage_path(assigns, %{"kind" => "mention"})}
         class="tab"
         aria-selected={to_string(@kind == "mention")}
       >
         Mentions
         <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "mention", 0)}</span>
       </.link>
-      <.link patch={~p"/engage?kind=feed"} class="tab" aria-selected={to_string(@kind == "feed")}>
+      <.link
+        patch={engage_path(assigns, %{"kind" => "feed"})}
+        class="tab"
+        aria-selected={to_string(@kind == "feed")}
+      >
         Feeds <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "feed", 0)}</span>
       </.link>
       <.link
-        patch={~p"/engage?kind=replied"}
+        patch={engage_path(assigns, %{"kind" => "replied"})}
         class="tab"
         aria-selected={to_string(@kind == "replied")}
       >
         My replies
         <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "replied", 0)}</span>
+      </.link>
+    </div>
+
+    <form
+      :if={is_nil(@kind) or @kind == "mention"}
+      id="engage-mention-filters"
+      phx-change="set_mention_filters"
+      class="-mt-5 mb-9 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs"
+    >
+      <span class="text-faint">Filter</span>
+
+      <label for="engage-filter-min-likes" class="flex items-center gap-1.5 text-muted-foreground">
+        Min likes
+        <input
+          type="number"
+          name="min_likes"
+          id="engage-filter-min-likes"
+          value={@min_likes}
+          min="0"
+          placeholder="Any"
+          class="input w-20 px-2 py-1 text-xs"
+          phx-debounce="300"
+        />
+      </label>
+
+      <label
+        for="engage-filter-min-followers"
+        class="flex items-center gap-1.5 text-muted-foreground"
+      >
+        Min followers
+        <input
+          type="number"
+          name="min_followers"
+          id="engage-filter-min-followers"
+          value={@min_followers}
+          min="0"
+          placeholder="Any"
+          class="input w-24 px-2 py-1 text-xs"
+          phx-debounce="300"
+        />
+      </label>
+
+      <label class="flex cursor-pointer items-center gap-2 text-muted-foreground">
+        <input
+          type="checkbox"
+          name="verified"
+          id="engage-filter-verified"
+          value="1"
+          checked={@verified_only}
+        /> Verified only
+      </label>
+
+      <select
+        id="engage-filter-type"
+        name="mtype"
+        class="select w-auto py-1 text-xs"
+        aria-label="Mention type"
+      >
+        <option value="" selected={is_nil(@mention_type)}>All types</option>
+        <option value="replies" selected={@mention_type == "replies"}>Replies to me</option>
+        <option value="mentions" selected={@mention_type == "mentions"}>Mentions</option>
+      </select>
+    </form>
+
+    <div
+      :if={@kind == "feed"}
+      id="engage-exclusions"
+      class="-mt-5 mb-9 flex flex-wrap items-center gap-5 text-xs"
+    >
+      <span class="text-faint">Hide</span>
+      <button
+        :for={category <- @exclusions}
+        id={"engage-exclude-#{category.key}"}
+        phx-click="toggle_exclude"
+        phx-value-key={category.key}
+        class={if category.key in @exclude, do: "act-key", else: "act"}
+        aria-pressed={to_string(category.key in @exclude)}
+      >
+        {category.label}
+      </button>
+    </div>
+
+    <div
+      :if={@kind == "replied"}
+      id="engage-reply-sort"
+      class="-mt-5 mb-9 flex items-center gap-5 text-xs"
+    >
+      <span class="text-faint">Sort</span>
+      <.link
+        :for={
+          {value, label} <- [{"recent", "Recent"}, {"likes", "Most likes"}, {"views", "Most views"}]
+        }
+        id={"engage-sort-#{value}"}
+        patch={engage_path(assigns, %{"sort" => value})}
+        class={if @reply_sort == value, do: "act-key", else: "act"}
+        aria-pressed={to_string(@reply_sort == value)}
+      >
+        {label}
       </.link>
     </div>
 
@@ -483,6 +709,28 @@ defmodule SuperXWeb.EngageLive do
           >
             {engagement.replied_post.error}
           </p>
+
+          <%!-- How the reply itself is landing. Only shown once the metrics
+                cron has pulled numbers — a reply without them renders the
+                same as before rather than a row of zeros. --%>
+          <div
+            :if={engagement.replied_post.metrics_updated_at}
+            id={"reply-post-#{engagement.replied_post.id}-metrics"}
+            class="mt-2.5 flex items-center gap-3"
+          >
+            <.metrics
+              likes={engagement.replied_post.metrics["likes"]}
+              reposts={engagement.replied_post.metrics["reposts"]}
+              replies={engagement.replied_post.metrics["replies"]}
+              impressions={engagement.replied_post.metrics["views"]}
+            />
+            <span
+              id={"reply-post-#{engagement.replied_post.id}-metrics-checked"}
+              class="nb-mono text-[11px] text-faint"
+            >
+              checked {ago(engagement.replied_post.metrics_updated_at)}
+            </span>
+          </div>
 
           <div class="mt-2.5 flex items-center gap-5 text-xs">
             <button

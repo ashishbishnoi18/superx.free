@@ -36,6 +36,17 @@ defmodule SuperX.EngageTest do
       assert engagement.likes == 90
     end
 
+    test "re-polling refreshes views and verification too", %{account: account} do
+      base = attrs(account, %{x_post_id: "p1-views", views: 12, author_verified: false})
+
+      assert {1, _} = Engage.upsert_many([base])
+      assert {1, _} = Engage.upsert_many([%{base | views: 4_500, author_verified: true}])
+
+      assert [engagement] = Engage.list_engagements(account)
+      assert engagement.views == 4_500
+      assert engagement.author_verified
+    end
+
     test "re-polling does not reopen something already dealt with", %{account: account} do
       base = attrs(account, %{x_post_id: "p2"})
       Engage.upsert_many([base])
@@ -86,6 +97,74 @@ defmodule SuperX.EngageTest do
 
       assert [%{x_post_id: "important"}, %{x_post_id: "trivial"}] =
                Engage.list_engagements(account)
+    end
+  end
+
+  describe "mention filters" do
+    test "min_likes keeps only posts at or above the floor", %{account: account} do
+      Engage.upsert_many([
+        attrs(account, %{x_post_id: "quiet", likes: 2}),
+        attrs(account, %{x_post_id: "loud", likes: 40})
+      ])
+
+      assert [%{x_post_id: "loud"}] = Engage.list_engagements(account, min_likes: 10)
+    end
+
+    test "min_author_followers keeps only established authors", %{account: account} do
+      Engage.upsert_many([
+        attrs(account, %{x_post_id: "small", author_followers: 30}),
+        attrs(account, %{x_post_id: "big", author_followers: 8_000})
+      ])
+
+      assert [%{x_post_id: "big"}] =
+               Engage.list_engagements(account, min_author_followers: 1_000)
+    end
+
+    test "verified_only keeps only blue-check authors", %{account: account} do
+      Engage.upsert_many([
+        attrs(account, %{x_post_id: "plain", author_verified: false}),
+        attrs(account, %{x_post_id: "check", author_verified: true})
+      ])
+
+      assert [%{x_post_id: "check"}] = Engage.list_engagements(account, verified_only: true)
+    end
+
+    test "mention_type splits replies to you from plain mentions", %{account: account} do
+      Engage.upsert_many([
+        attrs(account, %{x_post_id: "a-reply", in_reply_to_x_post_id: "your-post"}),
+        attrs(account, %{x_post_id: "a-mention"})
+      ])
+
+      assert [%{x_post_id: "a-reply"}] = Engage.list_engagements(account, mention_type: "replies")
+
+      assert [%{x_post_id: "a-mention"}] =
+               Engage.list_engagements(account, mention_type: "mentions")
+    end
+
+    test "exclude removes matching feed topics but never your mentions", %{account: account} do
+      Engage.upsert_many([
+        attrs(account, %{
+          x_post_id: "feed-crypto",
+          kind: "feed",
+          text: "bitcoin is going to the moon"
+        }),
+        attrs(account, %{
+          x_post_id: "feed-plain",
+          kind: "feed",
+          text: "shipping changelogs weekly"
+        }),
+        attrs(account, %{x_post_id: "mention-crypto", text: "what do you think of bitcoin?"})
+      ])
+
+      visible =
+        account |> Engage.list_engagements(exclude: ["crypto"]) |> Enum.map(& &1.x_post_id)
+
+      assert "feed-plain" in visible
+      assert "mention-crypto" in visible
+      refute "feed-crypto" in visible
+
+      assert [%{x_post_id: "feed-plain"}] =
+               Engage.list_engagements(account, kind: "feed", exclude: ["crypto"])
     end
   end
 

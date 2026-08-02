@@ -89,6 +89,8 @@ Oban Cron inserts recurring jobs. With the shipped configuration, it:
 - checks user-configured content workers every minute;
 - syncs mentions and topic feeds every 20 minutes;
 - syncs DMs every five minutes;
+- refreshes per-post metrics (likes, views) every 30 minutes;
+- runs due per-post automations (repost, plug, delete) every 15 minutes;
 - runs due Signals watches every two hours at minute 15;
 - rolls quota windows daily at midnight.
 
