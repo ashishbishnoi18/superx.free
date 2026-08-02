@@ -96,7 +96,12 @@ defmodule SuperX.Content do
       |> Repo.all()
       |> Map.new()
 
-    Map.new(Post.statuses(), &{&1, Map.get(counts, &1, 0)})
+    counts = Map.new(Post.statuses(), &{&1, Map.get(counts, &1, 0)})
+
+    # Publishing is the active phase of scheduled work, not a fifth place
+    # the user can navigate to. Keep it in the Scheduled counter while X is
+    # accepting the request so the row and tab count do not briefly vanish.
+    Map.update!(counts, "scheduled", &(&1 + counts["publishing"]))
   end
 
   def create_post(%User{} = user, %XAccount{} = account, attrs) do
@@ -230,7 +235,20 @@ defmodule SuperX.Content do
 
   @doc "Moves a scheduled post back to drafts."
   def unschedule_post(%Post{} = post) do
-    post |> Post.changeset(%{status: "draft", scheduled_at: nil}) |> Repo.update()
+    query =
+      from(p in Post,
+        where: p.id == ^post.id and p.status == "scheduled",
+        select: p
+      )
+
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    case Repo.update_all(query,
+           set: [status: "draft", scheduled_at: nil, updated_at: now]
+         ) do
+      {1, [updated]} -> {:ok, updated}
+      {0, _} -> {:error, :not_scheduled}
+    end
   end
 
   @doc """
@@ -292,6 +310,12 @@ defmodule SuperX.Content do
   being scheduled get a time too, so the retry isn't rejected for having
   none.
   """
+  # Retrying a partial thread would publish its first segments twice. The
+  # surviving ids are the durable evidence that this is a manual recovery,
+  # not an ordinary retry.
+  def retry_post(%Post{status: "failed", x_post_ids: [_ | _]}),
+    do: {:error, :partial_publish}
+
   def retry_post(%Post{status: "failed"} = post) do
     post
     |> Post.changeset(%{

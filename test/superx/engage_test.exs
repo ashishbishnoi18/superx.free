@@ -224,6 +224,21 @@ defmodule SuperX.EngageTest do
       assert "stale" in queries
       refute "fresh" in queries
     end
+
+    test "feeds become due on the same twenty-minute cadence promised by the UI", %{
+      account: account
+    } do
+      {:ok, feed} = Engage.create_feed(account, %{query: "twenty minutes old"})
+
+      feed
+      |> Ecto.Changeset.change(
+        last_synced_at:
+          DateTime.utc_now() |> DateTime.add(-1170, :second) |> DateTime.truncate(:second)
+      )
+      |> SuperX.Repo.update!()
+
+      assert feed.id in Enum.map(Engage.feeds_due(), & &1.id)
+    end
   end
 
   describe "ordering" do
@@ -285,6 +300,33 @@ defmodule SuperX.EngageTest do
 
       assert ["urgent", "noise"] =
                account |> Engage.list_engagements(kind: "mention") |> Enum.map(& &1.x_post_id)
+    end
+
+    test "reply history leads with the most recently sent reply", %{account: account} do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      Engage.upsert_many([
+        attrs(account, %{x_post_id: "older-reply", priority: 99}),
+        attrs(account, %{x_post_id: "newer-reply", priority: 1})
+      ])
+
+      account
+      |> Engage.list_engagements()
+      |> Enum.each(fn engagement ->
+        replied_at =
+          if engagement.x_post_id == "older-reply",
+            do: DateTime.add(now, -1, :day),
+            else: now
+
+        engagement
+        |> Ecto.Changeset.change(status: "replied", replied_at: replied_at)
+        |> SuperX.Repo.update!()
+      end)
+
+      assert ["newer-reply", "older-reply"] =
+               account
+               |> Engage.list_engagements(status: "replied")
+               |> Enum.map(& &1.x_post_id)
     end
   end
 end

@@ -3,7 +3,7 @@ defmodule SuperX.Engage.ReplierTest do
 
   import SuperX.Fixtures
 
-  alias SuperX.{AI, Content, Engage}
+  alias SuperX.{AI, Billing, Content, Engage}
   alias SuperX.Engage.Replier
 
   setup do
@@ -58,6 +58,17 @@ defmodule SuperX.Engage.ReplierTest do
 
     assert {:ok, draft} = Replier.draft(user, account, engagement_fixture(account))
     assert draft.text == "That trade-off is the part people miss."
+  end
+
+  test "returns the daily reply allowance when generated text cannot be saved", %{
+    user: user,
+    account: account
+  } do
+    Req.Test.stub(AI, fn conn -> reply(conn, "") end)
+
+    assert {:error, changeset} = Replier.draft(user, account, engagement_fixture(account))
+    assert "can't be blank" in errors_on(changeset).text
+    assert Billing.get_quota(user, "replies_day").used == 0
   end
 
   defp engagement_fixture(account) do

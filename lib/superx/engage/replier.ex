@@ -23,12 +23,23 @@ defmodule SuperX.Engage.Replier do
   def draft(%User{} = user, %XAccount{} = account, %Engagement{} = engagement) do
     with {:ok, text} <-
            write(user, account, &engagement_prompt(account, engagement, &1)) do
-      Engage.create_draft(%{
-        engagement_id: engagement.id,
-        user_id: user.id,
-        text: text,
-        model: AI.writer_model()
-      })
+      case Engage.create_draft(%{
+             engagement_id: engagement.id,
+             user_id: user.id,
+             text: text,
+             model: AI.writer_model()
+           }) do
+        {:ok, draft} ->
+          {:ok, draft}
+
+        {:error, reason} ->
+          # A model response is not a usable reply until it survives our
+          # own validation and is on the shelf. Empty or otherwise invalid
+          # output must not consume the same allowance as a reply the user
+          # can actually send.
+          Billing.release(user, "replies_day", 1)
+          {:error, reason}
+      end
     end
   end
 

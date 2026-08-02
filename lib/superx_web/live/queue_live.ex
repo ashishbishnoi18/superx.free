@@ -111,12 +111,22 @@ defmodule SuperXWeb.QueueLive do
       nil ->
         put_flash(socket, :error, "That post no longer exists.")
 
-      post ->
+      %Post{status: "failed", x_post_ids: [_ | _]} ->
+        put_flash(
+          socket,
+          :error,
+          "Part of that thread is already live. Continue it from the published post on X."
+        )
+
+      %Post{status: status} = post when status in ["draft", "scheduled", "failed"] ->
         socket
         |> assign(:editing, post)
-        |> assign(:composer_slot, post.scheduled_at)
+        |> assign(:composer_slot, if(post.status == "scheduled", do: post.scheduled_at))
         |> assign(:filling_slot, nil)
         |> put_composer(post.segments)
+
+      _post ->
+        put_flash(socket, :error, "That published post can't be edited.")
     end
   end
 
@@ -342,9 +352,12 @@ defmodule SuperXWeb.QueueLive do
       nil ->
         {:noreply, socket}
 
-      post ->
+      %Post{status: status} = post when status in ["draft", "scheduled", "failed"] ->
         {:ok, _} = Content.delete_post(post)
         {:noreply, socket |> put_flash(:info, "Deleted.") |> load()}
+
+      _post ->
+        {:noreply, put_flash(socket, :error, "That post is already being sent.")}
     end
   end
 
@@ -381,12 +394,22 @@ defmodule SuperXWeb.QueueLive do
   end
 
   defp schedule_options(%{assigns: %{composer_slot: %DateTime{} = at}}), do: [at: at]
+
+  defp schedule_options(%{assigns: %{editing: %Post{source: "reply"}}}) do
+    [at: DateTime.utc_now() |> DateTime.truncate(:second)]
+  end
+
   defp schedule_options(_socket), do: []
 
   defp find_open_slot(socket, encoded_at) do
     with {:ok, at, _offset} <- DateTime.from_iso8601(encoded_at),
+         timeline <-
+           Slot.timeline(
+             socket.assigns.current_x_account,
+             socket.assigns.current_user
+           ),
          %{} = slot <-
-           Enum.find(socket.assigns.upcoming_slots, fn slot ->
+           Enum.find(timeline.occurrences, fn slot ->
              is_nil(slot.post) and same_instant?(slot.at, at)
            end) do
       {:ok, slot}
@@ -713,13 +736,30 @@ defmodule SuperXWeb.QueueLive do
               to the shelf and composer. --%>
         <.post author={author(@account)} segments={segments(@post)} class="max-w-[42rem]" />
 
-        <p :if={@post.status == "failed"} class="mt-1.5 text-[12px] text-destructive">
+        <p
+          :if={@post.status == "failed"}
+          id={"post-#{@post.id}-error"}
+          class="mt-1.5 text-[12px] text-destructive"
+        >
           {@post.error}
+        </p>
+
+        <p
+          :if={@post.status == "failed" and @post.x_post_ids != []}
+          id={"post-#{@post.id}-partial-help"}
+          class="mt-1.5 text-[12px] text-muted-foreground"
+        >
+          Part of this thread is already live, so SuperX will not publish those posts twice.
+          Continue it from the published part on X.
         </p>
 
         <div class="mt-3 flex flex-wrap items-center gap-5 text-xs">
           <.link
-            :if={@post.status in ["draft", "scheduled"]}
+            :if={
+              @post.status in ["draft", "scheduled"] or
+                (@post.status == "failed" and @post.x_post_ids == [])
+            }
+            id={"edit-post-#{@post.id}"}
             patch={~p"/queue/#{@post.id}"}
             class="act-key"
           >
@@ -734,13 +774,24 @@ defmodule SuperXWeb.QueueLive do
             Move to drafts
           </button>
           <button
-            :if={@post.status == "failed"}
+            :if={@post.status == "failed" and @post.x_post_ids == []}
+            id={"retry-post-#{@post.id}"}
             phx-click="retry"
             phx-value-id={@post.id}
             class="act-key"
           >
             Try again
           </button>
+          <a
+            :if={partial_permalink(@post)}
+            id={"view-published-part-#{@post.id}"}
+            href={partial_permalink(@post)}
+            target="_blank"
+            rel="noopener"
+            class="act"
+          >
+            View published part on 𝕏
+          </a>
           <a
             :if={@post.permalink}
             href={@post.permalink}
@@ -760,7 +811,8 @@ defmodule SuperXWeb.QueueLive do
             {if @remixing == @post.id, do: "Writing…", else: "Remix"}
           </button>
           <button
-            :if={@post.status != "posted"}
+            :if={@post.status in ["draft", "scheduled", "failed"]}
+            id={"delete-post-#{@post.id}"}
             phx-click="delete"
             phx-value-id={@post.id}
             data-confirm="Delete this post?"
@@ -842,6 +894,11 @@ defmodule SuperXWeb.QueueLive do
   defp state_label("failed"), do: "failed"
   defp state_label("publishing"), do: "sending"
   defp state_label(other), do: other
+
+  defp partial_permalink(%Post{status: "failed", x_post_ids: [first | _]}),
+    do: "https://x.com/i/status/#{first}"
+
+  defp partial_permalink(_post), do: nil
 
   defp format_time(%Post{status: "posted", published_at: at}, tz), do: short_when(at, tz)
   defp format_time(%Post{status: "failed", failed_at: at}, tz), do: short_when(at, tz)

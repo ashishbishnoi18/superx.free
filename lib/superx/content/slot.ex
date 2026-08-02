@@ -58,7 +58,7 @@ defmodule SuperX.Content.Slot do
     days = weeks * 7
 
     slots = enabled_slots(account)
-    posts = scheduled_posts(account)
+    posts = queued_posts(account)
 
     with [_ | _] <- slots,
          {:ok, local_now} <- DateTime.shift_zone(now, user.timezone, Tz.TimeZoneDatabase) do
@@ -96,9 +96,12 @@ defmodule SuperX.Content.Slot do
     |> Repo.all()
   end
 
-  defp scheduled_posts(account) do
+  defp queued_posts(account) do
     Post
-    |> where([post], post.x_account_id == ^account.id and post.status == "scheduled")
+    |> where(
+      [post],
+      post.x_account_id == ^account.id and post.status in ["scheduled", "publishing"]
+    )
     |> order_by([post], asc: post.scheduled_at)
     |> Repo.all()
   end

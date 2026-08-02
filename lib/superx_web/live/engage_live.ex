@@ -7,11 +7,12 @@ defmodule SuperXWeb.EngageLive do
   use SuperXWeb, :live_view
 
   alias SuperX.Content
+  alias SuperX.Content.Post
   alias SuperX.Engage
-  alias SuperX.Engage.{Engagement, Feed, Replier}
+  alias SuperX.Engage.{Engagement, Feed, Replier, ReplyDraft}
   alias SuperX.Workers.MentionSync
 
-  @kinds ~w(mention feed)
+  @kinds ~w(mention feed replied)
 
   @impl true
   def mount(_params, _session, socket) do
@@ -20,6 +21,7 @@ defmodule SuperXWeb.EngageLive do
      |> assign(page_title: "Engage")
      |> assign(:kind, nil)
      |> assign(:drafting, MapSet.new())
+     |> assign(:refreshing_mentions, false)
      |> assign(:ai_configured, SuperX.AI.configured?())
      |> assign(:api_configured, SuperX.TwitterAPI.configured?())
      |> assign(:feed_form, feed_form())
@@ -42,11 +44,17 @@ defmodule SuperXWeb.EngageLive do
       Enum.map(Feed.suggestions(), &Map.put(&1, :added, MapSet.member?(queries, &1.query)))
 
     socket
-    |> assign(:engagements, Engage.list_engagements(account, kind: socket.assigns.kind))
+    |> assign(
+      :engagements,
+      Engage.list_engagements(account, engagement_options(socket.assigns.kind))
+    )
     |> assign(:counts, Engage.counts(account))
     |> assign(:feeds, feeds)
     |> assign(:starter_feeds, starter_feeds)
   end
+
+  defp engagement_options("replied"), do: [status: "replied"]
+  defp engagement_options(kind), do: [kind: kind]
 
   # --- Replying ------------------------------------------------------------
 
@@ -74,7 +82,7 @@ defmodule SuperXWeb.EngageLive do
     user = socket.assigns.current_user
     account = socket.assigns.current_x_account
 
-    with %{} = draft <- Engage.get_draft(user, draft_id),
+    with %ReplyDraft{status: "shelf"} = draft <- Engage.get_draft(user, draft_id),
          {:ok, post} <-
            Content.create_post(user, account, %{
              segments: [%{"text" => draft.text, "media_ids" => []}],
@@ -91,6 +99,15 @@ defmodule SuperXWeb.EngageLive do
       {:noreply, socket |> put_flash(:info, "Reply queued to send.") |> load()}
     else
       _ -> {:noreply, put_flash(socket, :error, "We couldn't send that reply.")}
+    end
+  end
+
+  def handle_event("retry_reply", %{"post_id" => post_id}, socket) do
+    with %{} = post <- Content.get_post(socket.assigns.current_user, post_id),
+         {:ok, _retried} <- Content.retry_post(post) do
+      {:noreply, socket |> put_flash(:info, "Reply queued to try again.") |> load()}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "We couldn't retry that reply.")}
     end
   end
 
@@ -114,6 +131,26 @@ defmodule SuperXWeb.EngageLive do
         {:ok, _} = Engage.ignore(engagement)
         {:noreply, load(socket)}
     end
+  end
+
+  # --- Mention refresh ----------------------------------------------------
+
+  def handle_event("refresh_mentions", _params, %{assigns: %{refreshing_mentions: true}} = socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("refresh_mentions", _params, socket) do
+    account = socket.assigns.current_x_account
+    parent = self()
+
+    Task.Supervisor.start_child(SuperX.TaskSupervisor, fn ->
+      send(parent, {:mentions_refreshed, MentionSync.sync_mentions(account)})
+    end)
+
+    {:noreply,
+     socket
+     |> assign(:refreshing_mentions, true)
+     |> put_flash(:info, "Checking for mentions…")}
   end
 
   # --- Feeds ---------------------------------------------------------------
@@ -210,6 +247,25 @@ defmodule SuperXWeb.EngageLive do
      end}
   end
 
+  def handle_info({:mentions_refreshed, result}, socket) do
+    socket = assign(socket, :refreshing_mentions, false)
+
+    {:noreply,
+     case result do
+       {:ok, 0} ->
+         socket |> put_flash(:info, "No mentions found just now.") |> load()
+
+       {:ok, n} ->
+         socket |> put_flash(:info, "Found #{n} mention(s).") |> load()
+
+       {:error, :out_of_credits} ->
+         put_flash(socket, :error, "The read API is out of credits.")
+
+       {:error, _reason} ->
+         put_flash(socket, :error, "Couldn't refresh mentions. Try again in a moment.")
+     end}
+  end
+
   def handle_info({:drafted, id, result}, socket) do
     socket = update(socket, :drafting, &MapSet.delete(&1, id))
 
@@ -245,7 +301,18 @@ defmodule SuperXWeb.EngageLive do
           else:
             "Who's talking to you, and which conversations are worth joining. Mentions lead with what's worth answering; feeds read newest first."
       }
-    />
+    >
+      <:action :if={@api_configured and @kind != "feed" and @kind != "replied"}>
+        <button
+          id="refresh-mentions"
+          phx-click="refresh_mentions"
+          disabled={@refreshing_mentions}
+          class="act-key whitespace-nowrap"
+        >
+          {if @refreshing_mentions, do: "Refreshing…", else: "Refresh mentions"}
+        </button>
+      </:action>
+    </Layouts.page_header>
 
     <p :if={!@api_configured} class="mb-8 max-w-[60ch] text-muted-foreground">
       Set <code class="nb-mono text-[12px] text-foreground">TWITTERAPI_IO_KEY</code>
@@ -263,6 +330,14 @@ defmodule SuperXWeb.EngageLive do
       <.link patch={~p"/engage?kind=feed"} class="tab" aria-selected={@kind == "feed"}>
         Feeds <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "feed", 0)}</span>
       </.link>
+      <.link
+        patch={~p"/engage?kind=replied"}
+        class="tab"
+        aria-selected={@kind == "replied"}
+      >
+        My replies
+        <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "replied", 0)}</span>
+      </.link>
     </div>
 
     <.feed_manager
@@ -278,14 +353,35 @@ defmodule SuperXWeb.EngageLive do
         <span :if={@kind == "feed" and @feeds == []}>
           No feeds yet. Add one above and SuperX will start surfacing conversations.
         </span>
-        <span :if={@kind != "feed" or @feeds != []}>
+        <span :if={@kind == "replied"}>
+          No replies yet. Replies you queue and send will stay visible here.
+        </span>
+        <span
+          :if={
+            not @api_configured and @kind != "replied" and
+              (@kind != "feed" or @feeds != [])
+          }
+          id="engage-empty-unconfigured"
+        >
+          Mention and feed syncing is not configured, so this inbox cannot fill yet.
+        </span>
+        <span :if={@refreshing_mentions and @kind != "feed" and @kind != "replied"}>
+          Refreshing mentions…
+        </span>
+        <span
+          :if={
+            @api_configured and @kind != "replied" and not @refreshing_mentions and
+              (@kind != "feed" or @feeds != [])
+          }
+          id="engage-empty-current"
+        >
           Nothing waiting. SuperX checks every twenty minutes.
         </span>
       </p>
     </div>
 
     <div class="flex flex-col gap-3">
-      <div :for={engagement <- @engagements}>
+      <div :for={engagement <- @engagements} id={"engagement-#{engagement.x_post_id}"}>
         <.post
           author={
             %{
@@ -313,7 +409,7 @@ defmodule SuperXWeb.EngageLive do
 
           <:actions>
             <button
-              :if={@ai_configured and engagement.reply_drafts == []}
+              :if={@kind != "replied" and @ai_configured and engagement.reply_drafts == []}
               phx-click="draft"
               phx-value-id={engagement.id}
               disabled={MapSet.member?(@drafting, engagement.id)}
@@ -324,7 +420,12 @@ defmodule SuperXWeb.EngageLive do
             <a href={Engagement.url(engagement)} target="_blank" rel="noopener" class="act">
               Open on 𝕏
             </a>
-            <button phx-click="ignore" phx-value-id={engagement.id} class="act-danger">
+            <button
+              :if={@kind != "replied"}
+              phx-click="ignore"
+              phx-value-id={engagement.id}
+              class="act-danger"
+            >
               Ignore
             </button>
           </:actions>
@@ -337,7 +438,12 @@ defmodule SuperXWeb.EngageLive do
           <p class="post-body max-w-[60ch]">{draft.text}</p>
 
           <div class="mt-2.5 flex items-center gap-5 text-xs">
-            <button phx-click="send" phx-value-draft_id={draft.id} class="act-key">
+            <button
+              id={"send-reply-#{draft.id}"}
+              phx-click="send"
+              phx-value-draft_id={draft.id}
+              class="act-key"
+            >
               Send reply
             </button>
             <button phx-click="dismiss_draft" phx-value-draft_id={draft.id} class="act-danger">
@@ -346,6 +452,58 @@ defmodule SuperXWeb.EngageLive do
             <span class="nb-mono ml-auto text-[11px] text-faint">
               {String.length(draft.text)} / 280
             </span>
+          </div>
+        </div>
+
+        <div
+          :if={@kind == "replied" and engagement.replied_post}
+          id={"reply-post-#{engagement.replied_post.id}"}
+          class="ml-6 mt-2 border-l border-border pl-4"
+        >
+          <p class="nb-eyebrow mb-1.5">{reply_state_label(engagement.replied_post)}</p>
+          <p class="post-body max-w-[60ch]">{Post.preview_text(engagement.replied_post)}</p>
+
+          <p
+            :if={engagement.replied_post.status == "failed"}
+            id={"reply-post-#{engagement.replied_post.id}-error"}
+            class="mt-1.5 text-[12px] text-destructive"
+          >
+            {engagement.replied_post.error}
+          </p>
+
+          <div class="mt-2.5 flex items-center gap-5 text-xs">
+            <button
+              :if={
+                engagement.replied_post.status == "failed" and
+                  engagement.replied_post.x_post_ids == []
+              }
+              id={"retry-reply-#{engagement.replied_post.id}"}
+              phx-click="retry_reply"
+              phx-value-post_id={engagement.replied_post.id}
+              class="act-key"
+            >
+              Try again
+            </button>
+            <.link
+              :if={
+                engagement.replied_post.status == "failed" and
+                  engagement.replied_post.x_post_ids == []
+              }
+              id={"edit-reply-#{engagement.replied_post.id}"}
+              navigate={~p"/queue/#{engagement.replied_post.id}"}
+              class="act"
+            >
+              Edit before retrying
+            </.link>
+            <a
+              :if={engagement.replied_post.permalink}
+              href={engagement.replied_post.permalink}
+              target="_blank"
+              rel="noopener"
+              class="act"
+            >
+              View your reply on 𝕏
+            </a>
           </div>
         </div>
       </div>
@@ -487,4 +645,8 @@ defmodule SuperXWeb.EngageLive do
   defp priority_class(p) when is_integer(p) and p >= 70, do: "text-primary"
   defp priority_class(p) when is_integer(p) and p >= 40, do: "text-muted-foreground"
   defp priority_class(_), do: "text-faint"
+
+  defp reply_state_label(%Post{status: "posted"}), do: "Your reply"
+  defp reply_state_label(%Post{status: "failed"}), do: "Reply failed"
+  defp reply_state_label(%Post{}), do: "Reply queued"
 end
