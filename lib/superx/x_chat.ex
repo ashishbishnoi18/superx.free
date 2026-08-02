@@ -70,7 +70,15 @@ defmodule SuperX.XChat do
         {:ok, open(state)}
 
       reason ->
-        Logger.debug("Optional XChat worker disabled: #{reason}")
+        # Optional for anyone who has not switched DMs on, but an operator who
+        # has is expecting an inbox. Staying at debug hid a broken path here
+        # behind a sync that reported success and returned nothing.
+        if dms_enabled?() do
+          Logger.warning("XChat worker unavailable, so encrypted DMs will not sync: #{reason}")
+        else
+          Logger.debug("Optional XChat worker disabled: #{reason}")
+        end
+
         {:ok, state}
     end
   end
@@ -220,6 +228,10 @@ defmodule SuperX.XChat do
     end
   end
 
+  defp dms_enabled? do
+    Application.get_env(:superx, SuperX.X, [])[:dm_enabled] == true
+  end
+
   defp dependency_path(script) do
     script
     |> Path.dirname()
@@ -230,8 +242,19 @@ defmodule SuperX.XChat do
     Application.get_env(:superx, __MODULE__, [])[:binary] || System.find_executable("node")
   end
 
+  # A release boots with its working directory at `bin/`, so a CWD-relative
+  # path silently resolves to `bin/xchat/sidecar.mjs` and the worker never
+  # starts. Each candidate is tried in turn: the release root covers
+  # production, the CWD covers `mix phx.server` from the project root.
   defp configured_script do
     Application.get_env(:superx, __MODULE__, [])[:script] ||
+      Enum.find(script_candidates(), List.first(script_candidates()), &File.exists?/1)
+  end
+
+  defp script_candidates do
+    [
+      Path.join(to_string(:code.root_dir()), "xchat/sidecar.mjs"),
       Path.expand("xchat/sidecar.mjs")
+    ]
   end
 end
