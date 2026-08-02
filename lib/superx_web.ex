@@ -17,7 +17,9 @@ defmodule SuperXWeb do
   those modules here.
   """
 
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
+  # llms.txt is how an AI assistant reads what this project is; it is as
+  # load-bearing for discovery as robots.txt and has to be served.
+  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt llms.txt)
 
   def router do
     quote do

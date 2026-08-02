@@ -122,4 +122,13 @@ defmodule SuperXWeb.PageControllerTest do
       assert redirected_to(conn) == ~p"/home"
     end
   end
+
+  test "serves llms.txt, which is how assistants read what this is" do
+    conn = get(build_conn(), "/llms.txt")
+
+    assert conn.status == 200
+    body = response(conn, 200)
+    assert body =~ "# SuperX"
+    assert body =~ "github.com/ashishbishnoi18/superx.free"
+  end
 end
