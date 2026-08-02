@@ -19,6 +19,8 @@ defmodule SuperX.DMs do
 
   import Ecto.Query
 
+  require Logger
+
   alias Ecto.Multi
   alias SuperX.Accounts
   alias SuperX.Accounts.XAccount
@@ -585,6 +587,18 @@ defmodule SuperX.DMs do
 
     rejected = length(events) - length(messages)
     errors = if is_map(result["errors"]), do: map_size(result["errors"]), else: 0
+
+    # A message that will not decrypt and one that is simply not text both
+    # landed in the same silent counter, which made an inbox that stayed
+    # empty impossible to diagnose. These carry XDK failure reasons, not
+    # plaintext.
+    if errors > 0 do
+      Logger.warning(
+        "XChat could not decrypt #{errors} event(s) in #{conversation_id}: " <>
+          inspect(result["errors"])
+      )
+    end
+
     {:ok, messages, rejected + errors}
   end
 

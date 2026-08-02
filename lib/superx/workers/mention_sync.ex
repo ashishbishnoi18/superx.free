@@ -160,6 +160,7 @@ defmodule SuperX.Workers.MentionSync do
         likes: tweet["likeCount"] || 0,
         reposts: tweet["retweetCount"] || 0,
         replies: tweet["replyCount"] || 0,
+        views: tweet["viewCount"] || 0,
         posted_at: parse_time(tweet["createdAt"])
       }
     end

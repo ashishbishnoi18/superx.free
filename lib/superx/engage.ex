@@ -6,6 +6,7 @@ defmodule SuperX.Engage do
   import Ecto.Query
 
   alias SuperX.Accounts.{User, XAccount}
+  alias SuperX.Content.Exclusions
   alias SuperX.Engage.{Engagement, Feed, ReplyDraft}
   alias SuperX.Repo
 
@@ -23,11 +24,45 @@ defmodule SuperX.Engage do
     |> where(x_account_id: ^account.id)
     |> filter_kind(opts[:kind])
     |> where(status: ^(opts[:status] || "open"))
+    |> filter_min_likes(opts[:min_likes])
+    |> filter_min_followers(opts[:min_author_followers])
+    |> filter_verified(opts[:verified_only])
+    |> filter_mention_type(opts[:mention_type])
+    |> filter_exclusions(opts[:exclude])
     |> order_engagements(opts[:kind], opts[:status] || "open")
     |> limit(^(opts[:limit] || 50))
     |> preload(:replied_post)
     |> preload(reply_drafts: ^drafts_query())
     |> Repo.all()
+  end
+
+  defp filter_min_likes(query, nil), do: query
+  defp filter_min_likes(query, min), do: where(query, [e], e.likes >= ^min)
+
+  defp filter_min_followers(query, nil), do: query
+  defp filter_min_followers(query, min), do: where(query, [e], e.author_followers >= ^min)
+
+  defp filter_verified(query, true), do: where(query, [e], e.author_verified)
+  defp filter_verified(query, _), do: query
+
+  defp filter_mention_type(query, "replies"),
+    do: where(query, [e], not is_nil(e.in_reply_to_x_post_id))
+
+  defp filter_mention_type(query, "mentions"),
+    do: where(query, [e], is_nil(e.in_reply_to_x_post_id))
+
+  defp filter_mention_type(query, _), do: query
+
+  # Topic exclusions are a discovery preference, not an inbox rule: someone
+  # mentioning you about crypto is still a person talking to you, so the
+  # pattern only ever removes feed rows, never mentions — whichever tab the
+  # query is feeding. Binding the pattern as a parameter keeps the category
+  # definitions plain regex with nothing to escape.
+  defp filter_exclusions(query, keys) do
+    case Exclusions.pattern_for(keys || []) do
+      nil -> query
+      pattern -> where(query, [e], e.kind != "feed" or fragment("? !~* ?", e.text, ^pattern))
+    end
   end
 
   defp drafts_query,
@@ -87,8 +122,9 @@ defmodule SuperX.Engage do
   Inserts or refreshes a batch of engagements.
 
   Metrics are replaced on conflict because a mention keeps accruing likes
-  after we first see it, but `status` is left alone — re-polling must not
-  reopen something the user already dealt with.
+  after we first see it — and verification comes along for the ride because
+  a checkmark can appear after the first poll too. `status` is left alone:
+  re-polling must not reopen something the user already dealt with.
   """
   def upsert_many(attrs_list) when is_list(attrs_list) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -102,7 +138,17 @@ defmodule SuperX.Engage do
     Repo.insert_all(Engagement, rows,
       on_conflict:
         {:replace,
-         [:likes, :reposts, :replies, :author_followers, :priority, :priority_reason, :updated_at]},
+         [
+           :likes,
+           :reposts,
+           :replies,
+           :views,
+           :author_followers,
+           :author_verified,
+           :priority,
+           :priority_reason,
+           :updated_at
+         ]},
       conflict_target: [:x_account_id, :x_post_id]
     )
   end
@@ -131,6 +177,7 @@ defmodule SuperX.Engage do
           :likes,
           :reposts,
           :replies,
+          :views,
           :posted_at,
           :priority_reason
         ])
