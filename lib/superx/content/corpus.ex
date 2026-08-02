@@ -282,11 +282,11 @@ defmodule SuperX.Content.Corpus do
   # handful of neighbours and reported as "12x" — an artefact of the
   # sample, not a fact about the post.
   #
-  # Below this the score is suppressed to 1.0 rather than estimated from
-  # a global median: engagement rate varies so much with account size
-  # that a corpus-wide baseline would systematically mislabel exactly the
-  # accounts it was standing in for. "We cannot tell yet" is the honest
-  # answer, and the badge only renders above 2x anyway.
+  # Below this the score is nil rather than estimated from a global median:
+  # engagement rate varies so much with account size that a corpus-wide
+  # baseline would systematically mislabel exactly the accounts it was
+  # standing in for. Nil keeps "we cannot tell yet" distinct from a genuine
+  # 1.0 multiple, both in the UI and when sorting.
   @default_min_baseline_sample 30
 
   @doc false
@@ -299,7 +299,7 @@ defmodule SuperX.Content.Corpus do
   defmacrop outlier_multiple(post, baseline) do
     quote do
       fragment(
-        "CASE WHEN COALESCE(?, 0) >= ? THEN COALESCE(? / NULLIF(?, 0.0), 1.0) ELSE 1.0 END",
+        "CASE WHEN COALESCE(?, 0) >= ? THEN ? / NULLIF(?, 0.0) ELSE NULL END",
         unquote(baseline).sample_size,
         ^min_baseline_sample(),
         unquote(post).engagement_score,
@@ -322,7 +322,9 @@ defmodule SuperX.Content.Corpus do
 
   defp order_results(query, :outlier) do
     order_by(query, [c, outlier_baseline: baseline],
-      desc: outlier_multiple(c, baseline),
+      # PostgreSQL puts nulls first for descending order by default. Unknown
+      # bands belong after posts with a defensible multiple, not ahead of them.
+      desc_nulls_last: outlier_multiple(c, baseline),
       desc: c.engagement_score
     )
   end

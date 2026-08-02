@@ -4,7 +4,7 @@ defmodule SuperX.CorpusTest do
   use SuperX.DataCase, async: false
 
   alias SuperX.Content.{Corpus, Exclusions}
-  alias SuperX.Workers.CorpusRefresh
+  alias SuperX.Workers.{CorpusIngest, CorpusRefresh, EmbedCorpus}
 
   defp attrs(overrides) do
     Map.merge(
@@ -256,7 +256,7 @@ defmodule SuperX.CorpusTest do
       Corpus.upsert_many([attrs(%{x_post_id: "solo", author_followers: 500, likes: 90_000})])
 
       assert [post] = Corpus.search(min_likes: 0)
-      assert post.outlier_score == 1.0
+      assert is_nil(post.outlier_score)
     end
 
     test "min_outlier never filters against a band it cannot judge" do
@@ -334,6 +334,75 @@ defmodule SuperX.CorpusTest do
     end
   end
 
+  describe "corpus refresh execution" do
+    test "uses the scraper when it is the configured read source" do
+      previous_twitter = Application.get_env(:superx, SuperX.TwitterAPI, [])
+      previous_refresh = Application.get_env(:superx, CorpusRefresh, [])
+      scraper_state = :sys.get_state(SuperX.Scraper)
+      test_pid = self()
+
+      Application.put_env(
+        :superx,
+        SuperX.TwitterAPI,
+        Keyword.put(previous_twitter, :api_key, nil)
+      )
+
+      Application.put_env(
+        :superx,
+        CorpusRefresh,
+        enqueue_topics: fn topics, opts -> send(test_pid, {:enqueued, topics, opts}) end
+      )
+
+      :sys.replace_state(SuperX.Scraper, &%{&1 | configured: true})
+
+      on_exit(fn ->
+        Application.put_env(:superx, SuperX.TwitterAPI, previous_twitter)
+        Application.put_env(:superx, CorpusRefresh, previous_refresh)
+        :sys.replace_state(SuperX.Scraper, fn _state -> scraper_state end)
+      end)
+
+      assert :ok =
+               CorpusRefresh.perform(%Oban.Job{
+                 args: %{"limit_topics" => 2, "spacing_seconds" => 0}
+               })
+
+      assert_receive {:enqueued, topics, opts}
+      assert length(topics) == 2
+      assert opts[:spacing_seconds] == 0
+    end
+
+    test "queues corpus topics immediately by default" do
+      assert [first, second] = CorpusIngest.topic_jobs(["audit topic one", "audit topic two"])
+
+      first_at = Ecto.Changeset.get_field(first, :scheduled_at)
+      second_at = Ecto.Changeset.get_field(second, :scheduled_at)
+      assert DateTime.diff(second_at, first_at, :second) <= 1
+    end
+  end
+
+  describe "embedding backlog" do
+    test "returns provider failures so Oban retries the batch" do
+      configure_embedder(fn _inputs, _opts -> {:error, :provider_down} end)
+      Corpus.upsert_many([attrs(%{x_post_id: "embed-failure"})])
+
+      assert {:error, :provider_down} = EmbedCorpus.perform(%Oban.Job{})
+    end
+
+    test "snoozes the same job after a full batch so uniqueness cannot discard the continuation" do
+      vector = List.duplicate(0.0, 1024)
+
+      configure_embedder(fn inputs, _opts ->
+        {:ok, List.duplicate(vector, length(inputs))}
+      end)
+
+      posts = Enum.map(1..64, &attrs(%{x_post_id: "embed-#{&1}"}))
+      Corpus.upsert_many(posts)
+
+      assert {:snooze, 5} = EmbedCorpus.perform(%Oban.Job{})
+      assert Corpus.list_unembedded() == []
+    end
+  end
+
   defp outlier_attrs(id, likes, followers \\ 10_000) do
     attrs(%{
       x_post_id: id,
@@ -344,5 +413,11 @@ defmodule SuperX.CorpusTest do
       quotes: 0,
       bookmarks: 0
     })
+  end
+
+  defp configure_embedder(fun) do
+    previous = Application.get_env(:superx, EmbedCorpus, [])
+    Application.put_env(:superx, EmbedCorpus, embed: fun)
+    on_exit(fn -> Application.put_env(:superx, EmbedCorpus, previous) end)
   end
 end

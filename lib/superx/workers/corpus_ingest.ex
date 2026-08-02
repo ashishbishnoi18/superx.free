@@ -3,7 +3,8 @@ defmodule SuperX.Workers.CorpusIngest do
   Pulls high-performing posts into the shared corpus.
 
   Enqueued per topic so one bad query can't stall the rest, and so a retry
-  is scoped to the topic that actually failed.
+  is scoped to the topic that actually failed. The source clients own their
+  rate limiting, so ready jobs can use all of the plan's available capacity.
 
   Reads come from twitterapi.io when it's configured, and fall back to the
   self-hosted Go worker otherwise. Both return the same shape, so nothing
@@ -89,12 +90,20 @@ defmodule SuperX.Workers.CorpusIngest do
   @doc """
   Enqueues ingestion for a list of topics.
 
-  Jobs are spaced out because the API bills per record and rate-limits per
-  plan: firing twenty topics at once would either 429 or spend the month's
-  budget in a minute.
+  Jobs are ready immediately by default. `TwitterAPI` serialises calls at the
+  configured plan rate and the scraper serialises its own token, so delaying
+  the jobs here as well only applies an obsolete second throttle. Operators
+  can still pass `:spacing_seconds` when a particular source requires it.
   """
   def enqueue_topics(topics, opts \\ []) when is_list(topics) do
-    spacing = opts[:spacing_seconds] || 120
+    topics
+    |> topic_jobs(opts)
+    |> Oban.insert_all()
+  end
+
+  @doc false
+  def topic_jobs(topics, opts \\ []) when is_list(topics) do
+    spacing = opts[:spacing_seconds] || 0
 
     topics
     |> Enum.with_index()
@@ -102,6 +111,5 @@ defmodule SuperX.Workers.CorpusIngest do
       %{topic: topic, limit: opts[:limit] || 40, min_likes: opts[:min_likes] || 500}
       |> new(schedule_in: index * spacing)
     end)
-    |> Oban.insert_all()
   end
 end

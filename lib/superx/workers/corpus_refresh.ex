@@ -6,9 +6,10 @@ defmodule SuperX.Workers.CorpusRefresh do
   voice profile's topic list — so the library grows toward the accounts
   using it rather than toward a fixed editorial guess.
 
-  Reads bill per record, so this caps how many topics run per day and
-  spaces them out. The cap is deliberately low: an empty corpus is a
-  visible problem the operator can fix, an unexpected invoice is not.
+  Reads bill per record, so this caps how many topics run per day. Each
+  source client owns its own pacing. The cap is deliberately low: an empty
+  corpus is a visible problem the operator can fix, an unexpected invoice
+  is not.
   """
 
   use Oban.Worker, queue: :ingestion, max_attempts: 2
@@ -18,7 +19,7 @@ defmodule SuperX.Workers.CorpusRefresh do
   require Logger
 
   alias SuperX.Content.VoiceProfile
-  alias SuperX.{Repo, TwitterAPI}
+  alias SuperX.{Repo, Scraper, TwitterAPI}
   alias SuperX.Workers.CorpusIngest
 
   # Topics per run, and posts fetched per topic.
@@ -99,21 +100,35 @@ defmodule SuperX.Workers.CorpusRefresh do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
-    if TwitterAPI.configured?() do
+    if read_source_configured?() do
       chosen = topics_for_run(args["limit_topics"] || topics_per_run())
 
-      CorpusIngest.enqueue_topics(chosen,
+      enqueue_topics(chosen,
         limit: args["limit"] || posts_per_topic(),
         min_likes: args["min_likes"] || 500,
-        spacing_seconds: args["spacing_seconds"] || 120
+        # Both read clients already enforce their own plan/token pacing. A
+        # second two-minute delay here was inherited from the old free tier
+        # and only leaves paid-plan capacity idle.
+        spacing_seconds: args["spacing_seconds"] || 0
       )
 
       Logger.info("Queued corpus refresh for #{length(chosen)} topic(s)")
     else
-      Logger.info("Skipping corpus refresh: twitterapi.io not configured")
+      Logger.info("Skipping corpus refresh: no read source configured")
     end
 
     :ok
+  end
+
+  defp read_source_configured?, do: TwitterAPI.configured?() or Scraper.configured?()
+
+  # Test seam for asserting refresh dispatch without letting the supervised
+  # Oban stager race a sandbox owner. Production has no override.
+  defp enqueue_topics(topics, opts) do
+    case Application.get_env(:superx, __MODULE__, [])[:enqueue_topics] do
+      fun when is_function(fun, 2) -> fun.(topics, opts)
+      _ -> CorpusIngest.enqueue_topics(topics, opts)
+    end
   end
 
   @doc """

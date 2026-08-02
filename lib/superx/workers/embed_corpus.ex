@@ -18,19 +18,26 @@ defmodule SuperX.Workers.EmbedCorpus do
 
   @impl Oban.Worker
   def perform(_job) do
-    if AI.embeddings_configured?() do
+    if embeddings_configured?() do
       case Corpus.list_unembedded(@batch_size) do
         [] ->
           :ok
 
         posts ->
-          embed_batch(posts)
-          # More may remain; come back for the next batch.
-          if length(posts) == @batch_size do
-            %{} |> __MODULE__.new(schedule_in: 5) |> Oban.insert()
-          end
+          case embed_batch(posts) do
+            :ok when length(posts) == @batch_size ->
+              # Re-inserting this unique worker while its current job is
+              # executing conflicts with itself and silently loses the next
+              # batch. Snoozing reschedules this job after it releases the
+              # execution lock.
+              {:snooze, 5}
 
-          :ok
+            :ok ->
+              :ok
+
+            {:error, reason} ->
+              {:error, reason}
+          end
       end
     else
       :ok
@@ -40,13 +47,20 @@ defmodule SuperX.Workers.EmbedCorpus do
   defp embed_batch(posts) do
     inputs = Enum.map(posts, &CorpusPost.embedding_input/1)
 
-    case AI.embed(inputs, input_type: "document") do
+    case embed(inputs) do
       {:ok, vectors} when length(vectors) == length(posts) ->
-        posts
-        |> Enum.zip(vectors)
-        |> Enum.each(fn {post, vector} -> Corpus.put_embedding(post, vector) end)
+        result =
+          posts
+          |> Enum.zip(vectors)
+          |> Enum.reduce_while(:ok, fn {post, vector}, :ok ->
+            case Corpus.put_embedding(post, vector) do
+              {:ok, _post} -> {:cont, :ok}
+              {:error, changeset} -> {:halt, {:error, {:write_failed, changeset.errors}}}
+            end
+          end)
 
-        Logger.info("Embedded #{length(posts)} corpus post(s)")
+        if result == :ok, do: Logger.info("Embedded #{length(posts)} corpus post(s)")
+        result
 
       {:ok, vectors} ->
         # A short response means the provider dropped inputs; pairing them
@@ -55,8 +69,25 @@ defmodule SuperX.Workers.EmbedCorpus do
           "Embedding returned #{length(vectors)} vectors for #{length(posts)} posts; skipping batch"
         )
 
+        {:error, {:vector_count_mismatch, length(posts), length(vectors)}}
+
       {:error, reason} ->
         Logger.warning("Embedding failed: #{inspect(reason)}")
+        {:error, reason}
     end
+  end
+
+  # A narrow injection seam keeps provider failures deterministic in worker
+  # tests. Production has no override and always calls SuperX.AI.
+  defp embed(inputs) do
+    case Application.get_env(:superx, __MODULE__, [])[:embed] do
+      fun when is_function(fun, 2) -> fun.(inputs, input_type: "document")
+      _ -> AI.embed(inputs, input_type: "document")
+    end
+  end
+
+  defp embeddings_configured? do
+    is_function(Application.get_env(:superx, __MODULE__, [])[:embed], 2) or
+      AI.embeddings_configured?()
   end
 end

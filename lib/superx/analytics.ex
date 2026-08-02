@@ -58,16 +58,22 @@ defmodule SuperX.Analytics do
 
     first = List.first(snapshots)
     last = List.last(snapshots)
+    post_values = snapshots |> Enum.map(& &1.posts) |> Enum.reject(&is_nil/1)
+    expected = Date.diff(to, from) + 1
+    recorded = length(snapshots)
 
     %{
       followers: (last && last.followers) || account.followers_count,
       followers_change: delta(first, last, :followers),
+      follower_change_available?: recorded >= 2,
       posts: total_delta(snapshots, :posts),
+      posts_change_available?: length(post_values) >= 2,
       impressions: sum(snapshots, :impressions),
       engagements: sum(snapshots, :engagements),
       likes: sum(snapshots, :likes),
       replies: sum(snapshots, :replies),
       reposts: sum(snapshots, :reposts),
+      coverage: %{expected: expected, recorded: recorded, missing: max(expected - recorded, 0)},
       series: Enum.map(snapshots, &Map.take(&1, [:date, :followers, :impressions, :engagements]))
     }
   end

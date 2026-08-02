@@ -191,10 +191,45 @@ defmodule SuperXWeb.AnalyticsLive do
     </section>
 
     <div class="mb-9 grid grid-cols-2 gap-px border-t border-border bg-border lg:grid-cols-4">
-      <.metric label="Followers" value={@summary.followers} change={@summary.followers_change} />
-      <.metric label="Posts" value={@summary.posts} />
-      <.metric label="Impressions" value={@summary.impressions} />
-      <.metric label="Engagements" value={@summary.engagements} />
+      <.metric
+        id="analytics-metric-followers"
+        label="Followers"
+        value={@summary.followers}
+        change={@summary.followers_change}
+        change_known={@summary.follower_change_available?}
+      />
+      <.metric
+        id="analytics-metric-posts"
+        label="Posts"
+        value={if(@summary.posts_change_available?, do: @summary.posts, else: nil)}
+        note={if(!@summary.posts_change_available?, do: "Needs two snapshots")}
+      />
+      <.metric
+        id="analytics-metric-impressions"
+        label="Impressions"
+        value={recorded_value(@summary.impressions, @summary.coverage)}
+        note={if(@summary.coverage.recorded == 0, do: "No snapshots")}
+      />
+      <.metric
+        id="analytics-metric-engagements"
+        label="Engagements"
+        value={recorded_value(@summary.engagements, @summary.coverage)}
+        note={if(@summary.coverage.recorded == 0, do: "No snapshots")}
+      />
+    </div>
+
+    <div
+      :if={@summary.coverage.recorded > 0 and @summary.coverage.missing > 0}
+      id="analytics-coverage"
+      class="mb-9 border-y border-border py-4 text-[12px] leading-relaxed text-muted-foreground"
+    >
+      Only {@summary.coverage.recorded} of {@summary.coverage.expected} daily snapshots were recorded in this window. Impression and engagement totals cover recorded dates only; missing days are unknown, not zero.
+      <span :if={!@summary.follower_change_available?}>
+        Follower and post changes need at least two recorded totals.
+      </span>
+      <span :if={@summary.follower_change_available?}>
+        Follower change uses the first and last recorded follower totals. Post change appears only when two post totals are available.
+      </span>
     </div>
 
     <section class="border-t border-border pt-6">
@@ -342,28 +377,46 @@ defmodule SuperXWeb.AnalyticsLive do
       <div :if={@import_report} id="analytics-import-report" class="mt-5 border-t border-border pt-4">
         <p>{imported_summary(@import_report)}</p>
         <p class="mt-1 text-[12px] text-muted-foreground">{skipped_summary(@import_report)}</p>
+        <p
+          :if={@import_report.ignored_columns != []}
+          class="mt-1 text-[12px] text-muted-foreground"
+        >
+          {ignored_columns_summary(@import_report.ignored_columns)}
+        </p>
       </div>
     </section>
     """
   end
 
+  attr :id, :string, required: true
   attr :label, :string, required: true
-  attr :value, :integer, required: true
+  attr :value, :any, required: true
   attr :change, :integer, default: nil
+  attr :change_known, :any, default: nil
+  attr :note, :string, default: nil
 
   defp metric(assigns) do
     ~H"""
-    <div class="bg-background px-5 py-4">
+    <div id={@id} class="bg-background px-5 py-4">
       <p class="text-[11px] text-faint">{@label}</p>
       <p class="nb-display mt-1 text-[1.875rem] font-semibold leading-[1.1] tracking-[-0.035em] tabular-nums">
         {format_count(@value)}
       </p>
       <p
-        :if={@change && @change != 0}
+        :if={@change_known == true}
         class={["nb-mono mt-0.5 text-[11px]", if(@change > 0, do: "text-success", else: "text-faint")]}
       >
-        {if @change > 0, do: "+", else: ""}{@change}
+        <%= cond do %>
+          <% @change > 0 -> %>
+            +{@change}
+          <% @change < 0 -> %>
+            {@change}
+          <% true -> %>
+            No change
+        <% end %>
       </p>
+      <p :if={@change_known == false} class="mt-0.5 text-[11px] text-faint">Change unavailable</p>
+      <p :if={@note} class="mt-0.5 text-[11px] text-faint">{@note}</p>
     </div>
     """
   end
@@ -373,6 +426,9 @@ defmodule SuperXWeb.AnalyticsLive do
 
   defp estimated_gain(estimate) when estimate == trunc(estimate), do: "≈ +#{trunc(estimate)}"
   defp estimated_gain(estimate), do: "≈ +#{Float.round(estimate, 1)}"
+
+  defp recorded_value(_value, %{recorded: 0}), do: nil
+  defp recorded_value(value, _coverage), do: value
 
   defp history_file_label(%{entries: [entry | _]}), do: entry.client_name
   defp history_file_label(_upload), do: "Choose CSV"
@@ -411,6 +467,12 @@ defmodule SuperXWeb.AnalyticsLive do
 
   defp skipped_summary(report) do
     "Skipped #{report.skipped_existing} already recorded, #{report.skipped_duplicate} duplicate, and #{report.skipped_invalid} invalid or unanchored #{if report.skipped_invalid == 1, do: "row", else: "rows"}."
+  end
+
+  defp ignored_columns_summary([column]), do: "Ignored unrecognised column: #{column}."
+
+  defp ignored_columns_summary(columns) do
+    "Ignored unrecognised columns: #{Enum.join(columns, ", ")}."
   end
 
   defp metric_names(metrics) do
@@ -521,6 +583,7 @@ defmodule SuperXWeb.AnalyticsLive do
     """
   end
 
+  defp format_count(nil), do: "—"
   defp format_count(n) when n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"
   defp format_count(n) when n >= 10_000, do: "#{round(n / 1_000)}K"
   defp format_count(n) when n >= 1_000, do: "#{Float.round(n / 1_000, 1)}K"
