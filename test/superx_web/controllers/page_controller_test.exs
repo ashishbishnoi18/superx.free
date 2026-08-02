@@ -10,7 +10,21 @@ defmodule SuperXWeb.PageControllerTest do
     assert LazyHTML.text(LazyHTML.query(document, "#what-it-does")) =~ "Draft in your voice"
     assert Enum.count(LazyHTML.query(document, "h1")) == 1
     assert Enum.count(LazyHTML.query(document, "#landing-nav")) == 1
-    assert Enum.count(LazyHTML.query(document, "main section")) == 5
+    assert Enum.count(LazyHTML.query(document, "main section")) == 6
+  end
+
+  test "states both hosted prices and that paying gates nothing" do
+    # The page is the only place a visitor sees the price before checkout, so
+    # a silent copy change here is a pricing change nobody reviewed.
+    document = build_conn() |> get(~p"/") |> html_response(200) |> LazyHTML.from_document()
+    pricing = LazyHTML.text(LazyHTML.query(document, "#pricing"))
+
+    assert pricing =~ "$5"
+    assert pricing =~ "$9"
+    assert pricing =~ "Bring your own keys"
+    assert pricing =~ "Keys included"
+    assert pricing =~ "unlocks"
+    assert Enum.count(LazyHTML.query(document, "a[href='#pricing']")) == 1
   end
 
   test "explains what's missing when X sign-in isn't configured", %{conn: conn} do
