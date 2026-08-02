@@ -62,12 +62,19 @@ defmodule SuperXWeb.VoiceLive do
 
   @impl true
   def handle_info({:derived, {:ok, profile}}, socket) do
+    message =
+      if profile.source_post_ids == [] do
+        "Built a starting voice from your profile; no posts were available."
+      else
+        "Learned your voice from your recent posts."
+      end
+
     {:noreply,
      socket
      |> assign(:deriving, false)
      |> assign(:profile, profile)
      |> assign(:form, to_form(Content.change_voice_profile(profile)))
-     |> put_flash(:info, "Learned your voice from your recent posts.")}
+     |> put_flash(:info, message)}
   end
 
   def handle_info({:derived, {:error, :reauth_required}}, socket) do

@@ -102,10 +102,54 @@ defmodule SuperX.Workers.RunContentWorkerTest do
 
     {:ok, worker} = product_worker(user, account, 5)
 
-    assert {:ok, 2} = RunContentWorker.run_batch(worker)
+    assert {:error, :quota_exceeded, 2} = RunContentWorker.run_batch(worker)
     assert length(Content.list_shelf(account)) == 2
     assert Billing.credit_balance(user) == 0
     assert :counters.get(calls, 1) == 2
+  end
+
+  test "continues after individual generation failures and refunds those credits", %{
+    user: user,
+    account: account
+  } do
+    calls = :counters.new(1, [])
+
+    Req.Test.stub(AI, fn conn ->
+      :counters.add(calls, 1, 1)
+      number = :counters.get(calls, 1)
+
+      if number <= 3 do
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(400, Jason.encode!(%{"error" => "generation failed"}))
+      else
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(
+          200,
+          Jason.encode!(%{
+            "content" => [
+              %{
+                "type" => "tool_use",
+                "name" => "respond",
+                "input" => %{"segments" => ["Delivered draft #{number}."]}
+              }
+            ]
+          })
+        )
+      end
+    end)
+
+    {:ok, worker} = product_worker(user, account, 5)
+    before = Billing.credit_balance(user)
+
+    assert {:error, {:generation_failed, 3}, 2} = RunContentWorker.run_batch(worker)
+    assert length(Content.list_shelf(account)) == 2
+    assert Billing.credit_balance(user) == before - 2
+    assert :counters.get(calls, 1) == 5
+
+    assert Billing.list_credit_entries(user)
+           |> Enum.count(&(&1.reason == "refund" and &1.ref_type == "generation")) == 3
   end
 
   test "uses an account's own published post for the voice source", %{

@@ -5,7 +5,8 @@ defmodule SuperX.Workers.RunContentWorker do
   A batch is not retried as a whole: the writer already retries a failed
   model response and refunds its credit, while replaying a partly finished
   batch would create more drafts than the user requested and charge for
-  them. The next manual or scheduled run is the safe retry boundary.
+  them. Individual failed generations don't block the independent items
+  after them, so a five-item batch still gets five chances to produce.
   """
 
   use Oban.Worker,
@@ -30,21 +31,29 @@ defmodule SuperX.Workers.RunContentWorker do
         :ok
 
       worker ->
-        case run_batch(worker) do
-          {:ok, count} ->
-            announce(worker, count)
-            :ok
-
-          {:error, reason, count} ->
-            announce(worker, count)
-
-            Logger.warning(
-              "Worker #{worker.name} stopped after #{count} draft(s): #{inspect(reason)}"
-            )
-
-            {:error, reason}
+        case run(worker) do
+          {:ok, _count} -> :ok
+          {:error, reason, _count} -> {:error, reason}
         end
     end
+  end
+
+  @doc false
+  def run(%ContentWorker{} = worker) do
+    result = run_batch(worker)
+    announce(worker, result)
+
+    case result do
+      {:ok, count} ->
+        Logger.info("Worker #{worker.name} generated #{count} shelf item(s)")
+
+      {:error, reason, count} ->
+        Logger.warning(
+          "Worker #{worker.name} delivered #{count} draft(s), then reported #{inspect(reason)}"
+        )
+    end
+
+    result
   end
 
   @doc false
@@ -52,16 +61,43 @@ defmodule SuperX.Workers.RunContentWorker do
     worker = Repo.preload(worker, [:user, :x_account])
     {:ok, worker} = Workers.record_run_started(worker)
 
-    Enum.reduce_while(1..worker.batch_size, {:ok, 0}, fn _index, {:ok, count} ->
-      with {:ok, opts} <- generation_options(worker),
-           {:ok, _generation} <- Writer.generate(worker.user, worker.x_account, opts) do
-        {:cont, {:ok, count + 1}}
-      else
-        {:error, :quota_exceeded, _details} -> {:halt, {:ok, count}}
-        {:error, reason} -> {:halt, {:error, reason, count}}
+    1..worker.batch_size
+    |> Enum.reduce_while({0, 0}, fn _index, {generated, failed} ->
+      case generation_options(worker) do
+        {:ok, opts} ->
+          case Writer.generate(worker.user, worker.x_account, opts) do
+            {:ok, _generation} ->
+              {:cont, {generated + 1, failed}}
+
+            {:error, :quota_exceeded, _details} ->
+              {:halt, {:stopped, :quota_exceeded, generated}}
+
+            {:error, reason} ->
+              # Each item is independent, and Writer has already returned
+              # this item's credit. Stopping here would turn one bad model
+              # response into an unnecessarily short batch.
+              Logger.warning(
+                "Worker #{worker.name} skipped one generation and continued: #{inspect(reason)}"
+              )
+
+              {:cont, {generated, failed + 1}}
+          end
+
+        {:error, reason} ->
+          # Missing source material is a batch-wide configuration problem;
+          # retrying the identical lookup for every requested item can't help.
+          {:halt, {:stopped, reason, generated}}
       end
     end)
+    |> finish_batch()
   end
+
+  defp finish_batch({generated, 0}), do: {:ok, generated}
+
+  defp finish_batch({generated, failed}),
+    do: {:error, {:generation_failed, failed}, generated}
+
+  defp finish_batch({:stopped, reason, generated}), do: {:error, reason, generated}
 
   defp generation_options(%ContentWorker{topic_source: "products"} = worker) do
     {:ok, [topic: worker.product_context, kind: "products"]}
@@ -141,16 +177,33 @@ defmodule SuperX.Workers.RunContentWorker do
   defp random_or_nil([]), do: nil
   defp random_or_nil(values), do: Enum.random(values)
 
-  defp announce(worker, count) do
+  defp announce(worker, result) do
+    summary = result_summary(result, worker.batch_size)
+
+    count = summary.generated
+
     if count > 0 do
-      Logger.info("Worker #{worker.name} generated #{count} shelf item(s)")
       Phoenix.PubSub.broadcast(SuperX.PubSub, "shelf:#{worker.x_account_id}", :shelf_updated)
     end
 
     Phoenix.PubSub.broadcast(
       SuperX.PubSub,
       "workers:#{worker.x_account_id}",
-      {:worker_finished, worker.id, count}
+      {:worker_finished, worker.id, summary}
     )
+  end
+
+  defp result_summary({:ok, generated}, requested) do
+    %{status: :ok, generated: generated, failed: 0, requested: requested, reason: nil}
+  end
+
+  defp result_summary({:error, reason, generated}, requested) do
+    %{
+      status: :error,
+      generated: generated,
+      failed: requested - generated,
+      requested: requested,
+      reason: reason
+    }
   end
 end

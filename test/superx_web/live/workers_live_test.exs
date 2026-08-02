@@ -1,12 +1,24 @@
 defmodule SuperXWeb.WorkersLiveTest do
-  use SuperXWeb.ConnCase, async: true
+  use SuperXWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import Oban.Testing
   import SuperX.Fixtures
 
-  alias SuperX.{Accounts, Workers}
+  alias SuperX.{AI, Accounts, Workers}
+  alias SuperX.Workers.RunContentWorker
 
   setup %{conn: conn} do
+    previous = Application.get_env(:superx, AI, [])
+
+    Application.put_env(
+      :superx,
+      AI,
+      Keyword.merge(previous, api_key: "test-key", base_url: "https://api.anthropic.test")
+    )
+
+    on_exit(fn -> Application.put_env(:superx, AI, previous) end)
+
     %{user: user, account: account} = user_fixture()
     {:ok, token} = Accounts.create_session(user)
 
@@ -81,5 +93,128 @@ defmodule SuperXWeb.WorkersLiveTest do
     |> render_click()
 
     assert Workers.list_content_workers(account) |> hd() |> Map.fetch!(:enabled)
+  end
+
+  test "runs a manual batch immediately and shows it in progress", %{
+    conn: conn,
+    user: user,
+    account: account
+  } do
+    test_pid = self()
+
+    Req.Test.stub(AI, fn conn ->
+      send(test_pid, {:generation_started, self()})
+
+      receive do
+        :finish_generation -> writer_reply(conn, "The finished draft.")
+      end
+    end)
+
+    {:ok, worker} =
+      Workers.create_content_worker(user, account, %{
+        name: "Product notes",
+        topic_source: "products",
+        product_context: "A private analytics workspace for small teams.",
+        batch_size: 1
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/workers")
+
+    view |> element("#run-worker-#{worker.id}") |> render_click()
+
+    assert_receive {:generation_started, task_pid}
+    assert has_element?(view, "#run-worker-#{worker.id}[disabled]", "Writing…")
+
+    refute_enqueued(
+      repo: SuperX.Repo,
+      worker: RunContentWorker,
+      args: %{"content_worker_id" => worker.id}
+    )
+
+    ref = Process.monitor(task_pid)
+    send(task_pid, :finish_generation)
+    assert_receive {:DOWN, ^ref, :process, ^task_pid, :normal}
+    _ = :sys.get_state(view.pid)
+
+    assert has_element?(view, "#flash-info", "Wrote 1 draft. It's ready to review.")
+    refute has_element?(view, "#run-worker-#{worker.id}[disabled]")
+  end
+
+  test "reports a partial batch and its returned credits", %{
+    conn: conn,
+    user: user,
+    account: account
+  } do
+    {:ok, worker} =
+      Workers.create_content_worker(user, account, %{
+        name: "Product notes",
+        topic_source: "products",
+        product_context: "A private analytics workspace for small teams.",
+        batch_size: 5
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/workers")
+
+    send(
+      view.pid,
+      {:worker_finished, worker.id,
+       %{
+         status: :error,
+         generated: 2,
+         failed: 3,
+         requested: 5,
+         reason: {:generation_failed, 3}
+       }}
+    )
+
+    assert has_element?(
+             view,
+             "#flash-error",
+             "Wrote 2 of 5 drafts. 3 failed, and their credits were returned."
+           )
+  end
+
+  test "explains a worker run that cannot produce any drafts", %{
+    conn: conn,
+    user: user,
+    account: account
+  } do
+    {:ok, worker} =
+      Workers.create_content_worker(user, account, %{
+        name: "Voice ideas",
+        topic_source: "voice",
+        batch_size: 3
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/workers")
+
+    send(
+      view.pid,
+      {:worker_finished, worker.id,
+       %{status: :error, generated: 0, failed: 3, requested: 3, reason: :no_topics}}
+    )
+
+    assert has_element?(
+             view,
+             "#flash-error",
+             "No drafts were written. Add topics or published posts in Voice, then run again."
+           )
+  end
+
+  defp writer_reply(conn, text) do
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(
+      200,
+      Jason.encode!(%{
+        "content" => [
+          %{
+            "type" => "tool_use",
+            "name" => "respond",
+            "input" => %{"segments" => [text]}
+          }
+        ]
+      })
+    )
   end
 end
