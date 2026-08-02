@@ -121,6 +121,10 @@ defmodule SuperX.TwitterAPI do
 
   @doc "Replies to a specific post."
   def replies(tweet_id, opts \\ []) do
+    # The published docs say this endpoint returns a "replies" array. It
+    # does not — verified against the live API, it returns "tweets" like
+    # everything else. Changing to match the docs would silently return
+    # nothing, because extract/2 falls back to an empty list.
     paginate("/twitter/tweet/replies", %{"tweetId" => tweet_id}, opts[:max] || 40, "tweets")
   end
 
@@ -148,7 +152,8 @@ defmodule SuperX.TwitterAPI do
 
   @doc "Timeline of an X list — the Signals list watch."
   def list_timeline(list_id, opts \\ []) do
-    paginate("/twitter/list/tweets_timeline", %{"listId" => list_id}, opts[:max] || 40, "tweets")
+    # /twitter/list/tweets, not /tweets_timeline — the latter does not exist.
+    paginate("/twitter/list/tweets", %{"listId" => list_id}, opts[:max] || 40, "tweets")
   end
 
   # --- Normalisation -------------------------------------------------------

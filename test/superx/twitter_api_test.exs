@@ -227,4 +227,31 @@ defmodule SuperX.TwitterAPITest do
       assert DateTime.diff(DateTime.utc_now(), attrs.posted_at) < 5
     end
   end
+
+  describe "endpoints verified against the live API" do
+    test "the list watch reads /twitter/list/tweets" do
+      # /twitter/list/tweets_timeline answers 200 with an empty tweets array
+      # and status "success", so the list watch found nothing and reported
+      # no error. Confirmed against the live API: only /twitter/list/tweets
+      # returns posts.
+      stub(fn conn ->
+        assert conn.request_path == "/twitter/list/tweets"
+        json(conn, %{"tweets" => [tweet("1")], "has_next_page" => false})
+      end)
+
+      assert {:ok, [%{"id" => "1"}]} = TwitterAPI.list_timeline("123")
+    end
+
+    test "replies come back under tweets, whatever the docs say" do
+      # The published reference describes a "replies" array. The live API
+      # returns "tweets"; reading the documented key would yield an empty
+      # list rather than an error.
+      stub(fn conn ->
+        assert conn.request_path == "/twitter/tweet/replies"
+        json(conn, %{"tweets" => [tweet("9")], "has_next_page" => false})
+      end)
+
+      assert {:ok, [%{"id" => "9"}]} = TwitterAPI.replies("555")
+    end
+  end
 end
