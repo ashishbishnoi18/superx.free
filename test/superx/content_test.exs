@@ -449,4 +449,53 @@ defmodule SuperX.ContentTest do
       assert {:error, :not_on_shelf} = Content.accept_generation_into_slot(user, first, next_at)
     end
   end
+
+  describe "tags" do
+    test "list_posts filters to posts carrying the tag", %{user: user, account: account} do
+      {:ok, tagged} =
+        Content.create_post(user, account, %{
+          segments: [%{"text" => "tagged"}],
+          status: "draft",
+          tags: ["ai", "devlog"]
+        })
+
+      {:ok, _other} =
+        Content.create_post(user, account, %{
+          segments: [%{"text" => "other"}],
+          status: "draft",
+          tags: ["random"]
+        })
+
+      {:ok, _untagged} =
+        Content.create_post(user, account, %{segments: [%{"text" => "untagged"}], status: "draft"})
+
+      assert [found] = Content.list_posts(account, "draft", tag: "ai")
+      assert found.id == tagged.id
+      assert length(Content.list_posts(account, "draft")) == 3
+      assert Content.list_posts(account, "draft", tag: "nobody-uses-this") == []
+    end
+
+    test "list_tags returns the account's distinct tags, sorted", %{user: user, account: account} do
+      for {text, tags} <- [{"one", ["devlog", "ai"]}, {"two", ["ai", "launch"]}, {"three", []}] do
+        {:ok, _} =
+          Content.create_post(user, account, %{
+            segments: [%{"text" => text}],
+            status: "draft",
+            tags: tags
+          })
+      end
+
+      # Another account's tags must not leak into the menu.
+      %{user: other_user, account: other_account} = user_fixture()
+
+      {:ok, _} =
+        Content.create_post(other_user, other_account, %{
+          segments: [%{"text" => "elsewhere"}],
+          status: "draft",
+          tags: ["zzz-other"]
+        })
+
+      assert Content.list_tags(account) == ["ai", "devlog", "launch"]
+    end
+  end
 end

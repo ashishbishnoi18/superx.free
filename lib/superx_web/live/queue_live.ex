@@ -35,9 +35,12 @@ defmodule SuperXWeb.QueueLive do
      |> assign(:segments, [])
      |> assign(:automations, empty_automations())
      |> assign(:automations_open, false)
+     |> assign(:tags, "")
      |> assign(:saving, false)
      |> assign(:last_saved_at, nil)
      |> assign(:autosaved_draft_id, nil)
+     |> assign(:tag_filter, nil)
+     |> assign(:available_tags, [])
      |> assign(:posts, [])
      |> assign(:counts, %{})
      |> assign(:next_slot, nil)
@@ -58,27 +61,57 @@ defmodule SuperXWeb.QueueLive do
 
     tab = if params["tab"] in @tabs, do: params["tab"], else: socket.assigns.tab
 
-    {:noreply, socket |> assign(:tab, tab) |> load()}
+    {:noreply,
+     socket
+     |> assign(:tab, tab)
+     |> assign(:tag_filter, tag_param(params))
+     |> load()}
+  end
+
+  # The tag filter rides in the URL so a narrowed queue can be shared.
+  defp tag_param(params) do
+    case params["tag"] |> to_string() |> String.trim() |> String.downcase() do
+      "" -> nil
+      tag -> tag
+    end
   end
 
   defp load(socket) do
     account = socket.assigns.current_x_account
+    tag = socket.assigns.tag_filter
     timeline = Slot.timeline(account, socket.assigns.current_user)
-    upcoming_slots = timeline.occurrences
+    upcoming_slots = filter_slots(timeline.occurrences, tag)
 
     socket
-    |> assign(:posts, list_posts(account, socket.assigns.tab))
+    |> assign(:posts, list_posts(account, socket.assigns.tab, tag))
+    |> assign(:available_tags, Content.list_tags(account))
     |> assign(:counts, Content.post_counts(account))
     |> assign(:next_slot, next_opening(upcoming_slots))
     |> assign(:upcoming_slots, upcoming_slots)
     |> assign(:upcoming_slot_groups, group_slots(upcoming_slots))
-    |> assign(:unslotted_posts, timeline.unslotted_posts)
+    |> assign(:unslotted_posts, filter_posts(timeline.unslotted_posts, tag))
     |> assign(:shelf, list_shelf(account, socket.assigns))
     |> assign_week()
   end
 
-  defp list_posts(_account, "scheduled"), do: []
-  defp list_posts(account, tab), do: Content.list_posts(account, tab)
+  defp list_posts(_account, "scheduled", _tag), do: []
+  defp list_posts(account, tab, tag), do: Content.list_posts(account, tab, tag: tag)
+
+  # Filtering hides non-matching posts, never the slot they sit in: an
+  # occupied slot must not come back looking like an opening.
+  defp filter_slots(slots, nil), do: slots
+
+  defp filter_slots(slots, tag) do
+    Enum.filter(slots, fn
+      %{post: nil} -> true
+      %{post: post} -> tagged?(post, tag)
+    end)
+  end
+
+  defp filter_posts(posts, nil), do: posts
+  defp filter_posts(posts, tag), do: Enum.filter(posts, &tagged?(&1, tag))
+
+  defp tagged?(post, tag), do: tag in (post.tags || [])
 
   defp list_shelf(account, %{tab: "scheduled", view: "list"}) do
     Content.list_shelf(account, limit: 8, preload_source: false)
@@ -137,6 +170,7 @@ defmodule SuperXWeb.QueueLive do
         |> assign(:filling_slot, nil)
         |> assign(:automations, automations_from_post(post))
         |> assign(:automations_open, automations_configured?(post))
+        |> assign(:tags, tags_from_post(post))
         |> assign(:saving, false)
         |> assign(:last_saved_at, nil)
         |> assign(:autosaved_draft_id, nil)
@@ -180,7 +214,7 @@ defmodule SuperXWeb.QueueLive do
     {:noreply,
      socket
      |> clear_composer()
-     |> push_patch(to: ~p"/queue?tab=#{socket.assigns.tab}")}
+     |> push_patch(to: queue_path(socket.assigns.tab, socket.assigns.tag_filter))}
   end
 
   def handle_event("update_segment", %{"index" => index, "value" => value}, socket) do
@@ -195,6 +229,10 @@ defmodule SuperXWeb.QueueLive do
   def handle_event("update_automation", %{"field" => field, "value" => value}, socket)
       when field in @automation_fields do
     {:noreply, assign(socket, :automations, Map.put(socket.assigns.automations, field, value))}
+  end
+
+  def handle_event("update_tags", %{"value" => value}, socket) do
+    {:noreply, assign(socket, :tags, value)}
   end
 
   def handle_event("toggle_automations", _params, socket) do
@@ -350,6 +388,10 @@ defmodule SuperXWeb.QueueLive do
     {:noreply, socket |> assign(:view, view) |> assign(:week_anchor, nil) |> load()}
   end
 
+  def handle_event("set_tag_filter", %{"tag" => tag}, socket) do
+    {:noreply, push_patch(socket, to: queue_path(socket.assigns.tab, tag))}
+  end
+
   def handle_event("shift_week", %{"by" => by}, socket) do
     days = String.to_integer(by) * 7
     base = socket.assigns.week_anchor || Week.today_in(socket.assigns.current_user.timezone)
@@ -489,6 +531,10 @@ defmodule SuperXWeb.QueueLive do
 
   defp same_instant?(_left, _right), do: false
 
+  # "All tags" drops the param entirely so plain queue URLs stay clean.
+  defp queue_path(tab, tag) when tag in [nil, ""], do: ~p"/queue?tab=#{tab}"
+  defp queue_path(tab, tag), do: ~p"/queue?tab=#{tab}&tag=#{tag}"
+
   @impl true
   def handle_info({:remixed, _id, {:ok, _generation}}, socket) do
     send(self(), :refresh_quota)
@@ -569,11 +615,7 @@ defmodule SuperXWeb.QueueLive do
   end
 
   defp persist_segments(socket, status) do
-    attrs =
-      socket.assigns
-      |> segment_attrs()
-      |> Map.merge(automation_attrs(socket.assigns.automations))
-      |> Map.put(:status, status)
+    attrs = composer_attrs(socket.assigns, status)
 
     case socket.assigns.editing do
       %Post{} = post ->
@@ -591,6 +633,26 @@ defmodule SuperXWeb.QueueLive do
       end)
 
     %{segments: segments}
+  end
+
+  # Everything the composer persists: the thread, its automations, and its
+  # tags. Autosave and the explicit buttons write the same shape.
+  defp composer_attrs(assigns, status) do
+    assigns
+    |> segment_attrs()
+    |> Map.merge(automation_attrs(assigns.automations))
+    |> Map.put(:tags, tag_list(assigns.tags))
+    |> Map.put(:status, status)
+  end
+
+  # The comma-separated box becomes a clean stored list — trimmed,
+  # lowercased, no blanks or repeats — so filtering can match exactly.
+  defp tag_list(tags) do
+    tags
+    |> String.split(",")
+    |> Enum.map(&String.downcase(String.trim(&1)))
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
   end
 
   # Blank boxes mean "off" — the changeset rejects zero, so an empty input
@@ -646,11 +708,7 @@ defmodule SuperXWeb.QueueLive do
     creating? = not match?(%Post{}, socket.assigns.editing)
     socket = assign(socket, :saving, true)
 
-    attrs =
-      socket.assigns
-      |> segment_attrs()
-      |> Map.merge(automation_attrs(socket.assigns.automations))
-      |> Map.put(:status, "draft")
+    attrs = composer_attrs(socket.assigns, "draft")
 
     result =
       if creating? do
@@ -705,6 +763,7 @@ defmodule SuperXWeb.QueueLive do
     socket
     |> assign(:automations, empty_automations())
     |> assign(:automations_open, false)
+    |> assign(:tags, "")
     |> assign(:saving, false)
     |> assign(:last_saved_at, nil)
     |> assign(:autosaved_draft_id, nil)
@@ -735,6 +794,8 @@ defmodule SuperXWeb.QueueLive do
 
   defp automation_value(nil), do: ""
   defp automation_value(value), do: to_string(value)
+
+  defp tags_from_post(%Post{tags: tags}), do: Enum.join(tags || [], ", ")
 
   defp automations_configured?(%Post{} = post) do
     not is_nil(post.auto_retweet_hours) or not is_nil(post.auto_plug_likes) or
@@ -809,6 +870,7 @@ defmodule SuperXWeb.QueueLive do
       uploads={@uploads}
       automations={@automations}
       automations_open={@automations_open}
+      tags={@tags}
       ai_configured={@ai_configured}
       improving={@improving}
       saving={@saving}
@@ -836,16 +898,45 @@ defmodule SuperXWeb.QueueLive do
 
     <.calendar :if={@view == "calendar"} week={@week} />
 
-    <div :if={@view == "list"} class="mb-9 flex gap-6 border-b border-border">
+    <div
+      :if={@view == "list"}
+      class="mb-9 flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-border"
+    >
       <.link
         :for={tab <- @tabs}
-        patch={~p"/queue?tab=#{tab}"}
+        patch={queue_path(tab, @tag_filter)}
         class="tab"
         aria-selected={to_string(@tab == tab)}
       >
         {tab_label(tab)}
         <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, tab, 0)}</span>
       </.link>
+
+      <div :if={@available_tags != [] or @tag_filter} class="ml-auto flex items-center gap-3">
+        <.link
+          :if={@tag_filter}
+          id="queue-tag-filter-chip"
+          patch={queue_path(@tab, nil)}
+          class="badge badge-ember badge-plain"
+          title="Clear the tag filter"
+        >
+          {@tag_filter} ×
+        </.link>
+
+        <form id="queue-tag-filter-form" phx-change="set_tag_filter">
+          <select
+            id="queue-tag-filter"
+            name="tag"
+            class="select w-auto py-1 text-xs"
+            aria-label="Filter by tag"
+          >
+            <option value="" selected={is_nil(@tag_filter)}>All tags</option>
+            <option :for={tag <- @available_tags} value={tag} selected={@tag_filter == tag}>
+              {tag}
+            </option>
+          </select>
+        </form>
+      </div>
     </div>
 
     <section
@@ -1356,6 +1447,7 @@ defmodule SuperXWeb.QueueLive do
   attr :uploads, :map, required: true
   attr :automations, :map, required: true
   attr :automations_open, :boolean, required: true
+  attr :tags, :string, required: true
   attr :ai_configured, :boolean, required: true
   attr :improving, :boolean, required: true
   attr :saving, :boolean, required: true
@@ -1428,6 +1520,22 @@ defmodule SuperXWeb.QueueLive do
             </div>
           </div>
         </div>
+      </div>
+
+      <div class="mt-4 border-t border-border pt-3">
+        <label for="composer-tags" class="label">Tags</label>
+        <input
+          type="text"
+          id="composer-tags"
+          name="value"
+          class="input"
+          placeholder="ai, devlog"
+          value={@tags}
+          phx-blur="update_tags"
+        />
+        <p class="mt-1 text-[12px] leading-[1.6] text-faint">
+          Comma-separated, so you can filter the queue by them later.
+        </p>
       </div>
 
       <div class="mt-4 border-t border-border pt-3">

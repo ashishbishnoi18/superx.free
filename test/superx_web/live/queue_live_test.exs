@@ -521,6 +521,105 @@ defmodule SuperXWeb.QueueLiveTest do
     assert Billing.credit_balance(user) == before
   end
 
+  test "composer tags persist with the draft and round-trip on edit", %{conn: conn} do
+    %{user: user, account: account} = user_fixture()
+    {:ok, view, _html} = live(conn_for(conn, user), ~p"/queue")
+
+    view |> element("button[phx-click=compose]") |> render_click()
+
+    view
+    |> element("#post-composer textarea[id^='post-segment-']")
+    |> render_blur(%{"index" => "0", "value" => "A post with tags"})
+
+    view
+    |> element("#composer-tags")
+    |> render_blur(%{"value" => "AI, Devlog, ai, , "})
+
+    view |> element("#save-post-draft") |> render_click()
+
+    [post] = Content.list_posts(account, "draft")
+    assert post.tags == ["ai", "devlog"]
+
+    {:ok, edit_view, _html} = live(conn_for(conn, user), ~p"/queue/#{post.id}")
+    assert has_element?(edit_view, "#composer-tags[value='ai, devlog']")
+  end
+
+  test "the tag filter narrows the list and clears from the chip", %{conn: conn} do
+    %{user: user, account: account} = user_fixture()
+
+    {:ok, tagged} =
+      Content.create_post(user, account, %{
+        segments: [%{"text" => "tagged draft"}],
+        status: "draft",
+        tags: ["ai"]
+      })
+
+    {:ok, untagged} =
+      Content.create_post(user, account, %{
+        segments: [%{"text" => "untagged draft"}],
+        status: "draft"
+      })
+
+    {:ok, view, _html} = live(conn_for(conn, user), ~p"/queue?tab=draft")
+
+    assert has_element?(view, "#queue-post-#{tagged.id}")
+    assert has_element?(view, "#queue-post-#{untagged.id}")
+    assert has_element?(view, "#queue-tag-filter")
+    refute has_element?(view, "#queue-tag-filter-chip")
+
+    # Choosing a tag patches the URL, so a narrowed queue can be shared.
+    view
+    |> form("#queue-tag-filter-form", %{tag: "ai"})
+    |> render_change()
+
+    assert_patch(view, ~p"/queue?tab=draft&tag=ai")
+    assert has_element?(view, "#queue-post-#{tagged.id}")
+    refute has_element?(view, "#queue-post-#{untagged.id}")
+    assert has_element?(view, "#queue-tag-filter-chip", "ai")
+
+    view |> element("#queue-tag-filter-chip") |> render_click()
+
+    assert_patch(view, ~p"/queue?tab=draft")
+    assert has_element?(view, "#queue-post-#{untagged.id}")
+  end
+
+  test "the tag filter applies to the schedule without hiding open slots", %{conn: conn} do
+    %{user: user, account: account} = user_fixture()
+    opening = Content.next_open_slot_at(account, user)
+
+    {:ok, tagged} =
+      Content.create_post(user, account, %{
+        segments: [%{"text" => "tagged scheduled"}],
+        status: "draft",
+        tags: ["ai"]
+      })
+
+    {:ok, _} = Content.schedule_post(tagged, at: opening)
+    later = Content.next_open_slot_at(account, user)
+
+    {:ok, untagged} =
+      Content.create_post(user, account, %{
+        segments: [%{"text" => "untagged scheduled"}],
+        status: "draft"
+      })
+
+    {:ok, _} = Content.schedule_post(untagged, at: later)
+    free = Content.next_open_slot_at(account, user)
+
+    {:ok, view, _html} = live(conn_for(conn, user), ~p"/queue?tag=ai")
+
+    # The matching post shows in its slot; the slot holding a non-matching
+    # post disappears rather than disguising itself as open, and genuinely
+    # open slots stay put.
+    assert has_element?(
+             view,
+             "#queue-slot-#{DateTime.to_unix(opening)}[data-slot-state=scheduled]"
+           )
+
+    refute has_element?(view, "#queue-slot-#{DateTime.to_unix(later)}")
+    assert has_element?(view, "#queue-slot-#{DateTime.to_unix(free)}[data-slot-state=open]")
+  end
+
   # The improve call runs in a task, outside the test process. The stub
   # blocks on a release from the test so the task is still alive to monitor
   # — without it the task can finish before the test finds it.
