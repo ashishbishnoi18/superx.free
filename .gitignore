@@ -44,3 +44,7 @@ npm-debug.log
 
 # Local secrets
 .env
+
+# Competitive teardown kept out of the public repo — it documents an
+# unreported vulnerability in a third party product.
+RECON.md

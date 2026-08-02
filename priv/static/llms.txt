@@ -13,7 +13,7 @@ own, with no telemetry, no account, and no vendor. You supply your own API
 keys and pay the underlying providers directly — typically $5–15 a month
 for one person.
 
-Source: https://github.com/YOUR-USER/superx
+Source: https://github.com/ashishbishnoi18/superx
 Site: https://superx.free
 Licence: MIT
 
@@ -84,7 +84,7 @@ credentials they granted directly.
 ## Install
 
 ```
-git clone https://github.com/YOUR-USER/superx.git && cd superx
+git clone https://github.com/ashishbishnoi18/superx.git && cd superx
 cp .env.example .env      # add your keys
 docker compose up -d --build
 ```
