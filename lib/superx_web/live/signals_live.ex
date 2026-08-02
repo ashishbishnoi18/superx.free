@@ -6,7 +6,8 @@ defmodule SuperXWeb.SignalsLive do
   use SuperXWeb, :live_view
 
   alias SuperX.Signals
-  alias SuperX.Signals.{Agent, Scout}
+  alias SuperX.Signals.Agent
+  alias SuperX.Workers.SignalSweep
 
   @impl true
   def mount(_params, _session, socket) do
@@ -56,12 +57,25 @@ defmodule SuperXWeb.SignalsLive do
 
       true ->
         case Signals.create_agent(socket.assigns.current_x_account, attrs) do
-          {:ok, _agent} ->
-            {:noreply,
-             socket
-             |> assign(:agent_form, new_agent_form())
-             |> put_flash(:info, "Agent created. First run is within the hour.")
-             |> load()}
+          {:ok, agent} ->
+            socket =
+              socket
+              |> assign(:agent_form, new_agent_form())
+              |> load()
+
+            if socket.assigns.api_configured do
+              {:noreply,
+               socket
+               |> start_run(agent)
+               |> put_flash(:info, "Agent created. Running it now.")}
+            else
+              {:noreply,
+               put_flash(
+                 socket,
+                 :error,
+                 "Agent created, but it can't run until the X read API is configured."
+               )}
+            end
 
           {:error, changeset} ->
             {:noreply,
@@ -96,19 +110,15 @@ defmodule SuperXWeb.SignalsLive do
   end
 
   def handle_event("run", %{"id" => id}, socket) do
-    case Signals.get_agent(socket.assigns.current_x_account, id) do
-      nil ->
+    cond do
+      MapSet.member?(socket.assigns.running, id) ->
         {:noreply, socket}
 
-      agent ->
-        agent = SuperX.Repo.preload(agent, :x_account)
-        parent = self()
+      agent = Signals.get_agent(socket.assigns.current_x_account, id) ->
+        {:noreply, start_run(socket, agent)}
 
-        Task.Supervisor.start_child(SuperX.TaskSupervisor, fn ->
-          send(parent, {:ran, id, Scout.run(agent)})
-        end)
-
-        {:noreply, update(socket, :running, &MapSet.put(&1, id))}
+      true ->
+        {:noreply, socket}
     end
   end
 
@@ -124,6 +134,15 @@ defmodule SuperXWeb.SignalsLive do
         {:noreply,
          socket
          |> put_flash(:info, "Found #{count} lead(s).")
+         |> load()}
+
+      {:error, :quota_exceeded, _details} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "Daily lead limit reached. This agent will try again after the quota resets."
+         )
          |> load()}
 
       {:error, reason} ->
@@ -167,6 +186,7 @@ defmodule SuperXWeb.SignalsLive do
     <div class="flex flex-col">
       <article
         :for={agent <- @agents}
+        id={"signal-agent-#{agent.id}"}
         class="grid grid-cols-1 gap-7 border-b border-border py-5 first:border-t sm:grid-cols-[minmax(0,1fr)_auto]"
       >
         <div class="min-w-0">
@@ -243,7 +263,7 @@ defmodule SuperXWeb.SignalsLive do
               {"Posts matching a search", "keyword"},
               {"Followers of an account", "follower"},
               {"People replying to an account", "profile"},
-              {"Members of a list", "list"}
+              {"People posting in a list", "list"}
             ]}
             class="select"
           />
@@ -301,6 +321,17 @@ defmodule SuperXWeb.SignalsLive do
     changeset
     |> Ecto.Changeset.traverse_errors(fn {msg, _} -> msg end)
     |> Enum.map_join("; ", fn {field, msgs} -> "#{field} #{Enum.join(msgs, ", ")}" end)
+  end
+
+  defp start_run(socket, agent) do
+    agent = SuperX.Repo.preload(agent, :x_account)
+    parent = self()
+
+    Task.Supervisor.start_child(SuperX.TaskSupervisor, fn ->
+      send(parent, {:ran, agent.id, SignalSweep.run_agent(agent)})
+    end)
+
+    update(socket, :running, &MapSet.put(&1, agent.id))
   end
 
   defp new_agent_form do

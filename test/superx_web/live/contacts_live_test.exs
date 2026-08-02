@@ -72,4 +72,14 @@ defmodule SuperXWeb.ContactsLiveTest do
     assert has_element?(view, "#selected-list-note", "Updates automatically")
     assert has_element?(view, "#leads-#{lead.id}")
   end
+
+  test "does not present fallback scores as AI judgement", %{conn: conn} do
+    previous = Application.get_env(:superx, SuperX.AI, [])
+    Application.put_env(:superx, SuperX.AI, Keyword.put(previous, :api_key, nil))
+    on_exit(fn -> Application.put_env(:superx, SuperX.AI, previous) end)
+
+    {:ok, view, _html} = live(conn, ~p"/contacts")
+
+    assert has_element?(view, "#contacts-unscored-notice", "not AI-scored")
+  end
 end

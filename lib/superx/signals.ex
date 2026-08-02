@@ -268,6 +268,43 @@ defmodule SuperX.Signals do
     |> MapSet.new(&String.downcase/1)
   end
 
+  @doc "Files previously known matches without re-scoring or changing their CRM state."
+  def file_known_leads(%Agent{contact_list_id: nil}, _candidates), do: 0
+
+  def file_known_leads(%Agent{} = agent, candidates) when is_list(candidates) do
+    handles =
+      candidates
+      |> Enum.map(& &1[:handle])
+      |> Enum.reject(&is_nil/1)
+      |> Enum.map(&String.downcase/1)
+      |> Enum.uniq()
+
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    memberships =
+      Lead
+      |> where([l], l.x_account_id == ^agent.x_account_id)
+      |> where([l], fragment("lower(?)", l.handle) in ^handles)
+      |> select([l], l.id)
+      |> Repo.all()
+      |> Enum.map(fn lead_id ->
+        %{
+          contact_list_id: agent.contact_list_id,
+          lead_id: lead_id,
+          inserted_at: now,
+          updated_at: now
+        }
+      end)
+
+    {count, _rows} =
+      Repo.insert_all(ContactListMembership, memberships,
+        on_conflict: :nothing,
+        conflict_target: [:contact_list_id, :lead_id]
+      )
+
+    count
+  end
+
   # --- Contact lists -------------------------------------------------------
 
   @doc "The account's saved audiences, with the two built-in contracts first."

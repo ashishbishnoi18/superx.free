@@ -47,6 +47,15 @@ defmodule SuperX.SignalsTest do
       assert Agent.describes(agent) == "new followers of @levelsio"
     end
 
+    test "describes a list watch as active authors rather than every list member", %{
+      account: account
+    } do
+      {:ok, agent} = Signals.create_agent(account, %{kind: "list", target: "12345"})
+
+      assert agent.name == "Activity in list 12345"
+      assert Agent.describes(agent) == "people posting in list 12345"
+    end
+
     test "rejects an out-of-range minimum score", %{account: account} do
       assert {:error, changeset} =
                Signals.create_agent(account, %{kind: "keyword", target: "x", min_score: 140})

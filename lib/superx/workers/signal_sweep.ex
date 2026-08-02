@@ -2,10 +2,9 @@ defmodule SuperX.Workers.SignalSweep do
   @moduledoc """
   Runs the watch agents that are due.
 
-  Each agent's leads count against the owner's `leads_day` quota, claimed
-  after the fact because the API tells us how many we found, not how many
-  we will. An agent that blows through the quota is paused for the day
-  rather than silently continuing to spend.
+  Each agent's leads count against the owner's `leads_day` quota. Exhausted
+  quotas are checked before a billable read and shown on the agent; the agent
+  remains enabled so it resumes automatically after the rolling window resets.
   """
 
   use Oban.Worker, queue: :ingestion, max_attempts: 2, unique: [period: 600]
@@ -27,39 +26,67 @@ defmodule SuperX.Workers.SignalSweep do
     :ok
   end
 
-  defp run_agent(agent) do
+  @doc "Runs one agent with the same quota and bookkeeping used by scheduled sweeps."
+  def run_agent(agent) do
     user = Repo.get!(User, agent.x_account.user_id)
+    quota = Billing.get_quota(user, "leads_day")
 
-    case Scout.run(agent) do
+    if quota.used >= quota.limit do
+      details = %{
+        key: quota.key,
+        used: quota.used,
+        limit: quota.limit,
+        resets_at: quota.window_end
+      }
+
+      Signals.record_run(agent, 0, quota_message(details))
+      {:error, :quota_exceeded, details}
+    else
+      run_agent(agent, user, quota.limit - quota.used)
+    end
+  end
+
+  defp run_agent(agent, user, remaining) do
+    case Scout.run(agent, max_new_leads: remaining) do
       {:ok, 0} ->
         Signals.record_run(agent, 0)
+        {:ok, 0}
 
       {:ok, count} ->
         # Charged after the fact: the watch returns what it returns, and
         # refusing to record leads we already paid the API for would be
         # the worst of both.
         case Billing.claim(user, "leads_day", count) do
-          {:ok, _} ->
-            :ok
+          {:ok, quota} ->
+            error =
+              if quota.used >= quota.limit, do: quota_message(%{resets_at: quota.window_end})
 
-          {:error, :quota_exceeded, _details} ->
+            Signals.record_run(agent, count, error)
+            Logger.info("Agent #{agent.name} found #{count} lead(s)")
+            {:ok, count}
+
+          {:error, :quota_exceeded, details} ->
             Logger.info(
-              "@#{agent.x_account.handle} is over its daily lead quota; pausing #{agent.name}"
+              "@#{agent.x_account.handle} reached its daily lead quota while running #{agent.name}"
             )
 
-            Signals.update_agent(agent, %{enabled: false, last_error: "Daily lead quota reached"})
+            Signals.record_run(agent, count, quota_message(details))
+            {:error, :quota_exceeded, details}
         end
-
-        Signals.record_run(agent, count)
-        Logger.info("Agent #{agent.name} found #{count} lead(s)")
 
       {:error, :out_of_credits} ->
         Signals.record_run(agent, 0, "twitterapi.io is out of credits")
+        {:error, :out_of_credits}
 
       {:error, reason} ->
         Logger.warning("Agent #{agent.name} failed: #{inspect(reason)}")
         Signals.record_run(agent, 0, describe(reason))
+        {:error, reason}
     end
+  end
+
+  defp quota_message(%{resets_at: resets_at}) do
+    "Daily lead quota reached; resets #{DateTime.to_iso8601(resets_at)}"
   end
 
   defp describe({:http_error, status, _}), do: "X data provider returned #{status}"
