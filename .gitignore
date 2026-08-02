@@ -37,6 +37,7 @@ superx-*.tar
 # In case you use Node.js/npm, you want to ignore these.
 npm-debug.log
 /assets/node_modules/
+/xchat/node_modules/
 
 
 # Compiled Go read-worker; built by the Dockerfile in prod.

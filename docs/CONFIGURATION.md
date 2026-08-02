@@ -34,7 +34,7 @@ also requires `POSTGRES_PASSWORD` so it can construct `DATABASE_URL`.
 |---|---|---|---|
 | `DATABASE_URL` | Production | None | Ecto connection URL, for example `ecto://user:password@host/database`. A production release raises during startup if it is blank or absent. Compose constructs it from `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB`; setting `DATABASE_URL` in `.env` does not override that Compose expression. |
 | `SECRET_KEY_BASE` | Production | None | Signs cookies and other Phoenix secrets. A production release raises during startup if it is blank or absent. Generate it with `mix phx.gen.secret`, or use the Docker command in [Setup](SETUP.md). Changing it invalidates existing signed browser cookies. |
-| `SUPERX_VAULT_KEY` | Production | Derived key in development and test | Base64 encoding of exactly 32 bytes. It encrypts X access and refresh tokens with AES-256-GCM. Production startup raises if it is absent, malformed, or the decoded value is not 32 bytes. Losing or changing it leaves stored X tokens undecryptable; users must reconnect their accounts. Generate it with `mix superx.gen.vault_key` or `openssl rand -base64 32`. |
+| `SUPERX_VAULT_KEY` | Production | Derived key in development and test | Base64 encoding of exactly 32 bytes. It encrypts X access and refresh tokens and opaque XChat private-key blobs with AES-256-GCM. Production startup raises if it is absent, malformed, or the decoded value is not 32 bytes. Losing or changing it leaves stored X tokens and chat identities undecryptable; users must reconnect and encrypted chat history may become unreadable. Generate it with `mix superx.gen.vault_key` or `openssl rand -base64 32`. |
 
 X OAuth is operationally required for a useful production instance, but it is
 not a boot requirement. Without it, the server starts and shows a setup state.
@@ -63,6 +63,11 @@ plain HTTP behind the reverse proxy. `config/prod.exs` trusts
 | `X_CLIENT_SECRET` | No; needed with `X_CLIENT_ID` | None | OAuth client secret. It is also used for token exchange, refresh, and revocation. Missing has the same degraded behaviour as a missing client ID. |
 | `X_REDIRECT_URI` | No | `http://localhost:4000/auth/x/callback` in a direct release; `https://${PHX_HOST}/auth/x/callback` in Compose | Callback sent during OAuth. It must exactly match a callback registered in the X developer console. Missing uses the applicable default. A mismatch makes X refuse or fail the OAuth exchange. |
 | `SUPERX_ENABLE_DMS` | No | `false` | Only the exact values `1` and `true` add `dm.read` and `dm.write` to new OAuth requests. Missing or any other value leaves DM access off, makes no DM sync calls, and shows setup instructions in the DMs screen. Enable the X app’s Direct Message permission tier first, then reconnect every existing account. |
+
+Encrypted XChat support also needs Node 18+ and the pinned npm dependency in
+`xchat/node_modules`. The Docker image includes both. A source checkout without
+either logs at debug level, skips XChat, and keeps legacy DMs and the rest of
+the application working.
 
 The base OAuth scopes always include `tweet.read`, `tweet.write`, `users.read`,
 `offline.access`, `follows.read`, `like.read`, and `media.write`. They are set in

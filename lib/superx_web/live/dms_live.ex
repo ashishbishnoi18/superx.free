@@ -331,8 +331,8 @@ defmodule SuperXWeb.DMsLive do
     <section id="dm-sync-status" class="mb-9 border-y border-border py-4">
       <p class="font-medium">Incoming sync is configured.</p>
       <p class="mt-1 max-w-[68ch] text-[12px] text-muted-foreground">
-        SuperX checks X every five minutes with this account's OAuth grant.
-        X exposes events from the previous 30 days; once stored here, they remain in the inbox.
+        SuperX checks both legacy DMs and encrypted XChat every five minutes.
+        XChat messages are decrypted by X's official toolkit on this machine, then stored here.
       </p>
     </section>
     """
@@ -368,7 +368,7 @@ defmodule SuperXWeb.DMsLive do
   end
 
   defp empty_detail(:ready) do
-    "New conversations appear after the next scheduled sync. X exposes the previous 30 days."
+    "Legacy and encrypted XChat conversations appear after the next scheduled sync."
   end
 
   defp send_error(:disabled), do: "DM access is disabled on this installation."
@@ -376,6 +376,10 @@ defmodule SuperXWeb.DMsLive do
   defp send_error(:empty_message), do: "Write a message before sending."
   defp send_error(:not_found), do: "That conversation is not available for this account."
   defp send_error(:reauth_required), do: "Your X connection expired. Reconnect the account."
+
+  defp send_error(:xchat_unavailable),
+    do: "Encrypted messaging is not available on this installation."
+
   defp send_error({:rate_limited, _}), do: "X is rate limiting DMs. Try again later."
 
   defp send_error({:http_error, 403, _}) do

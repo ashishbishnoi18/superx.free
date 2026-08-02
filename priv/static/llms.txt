@@ -50,9 +50,9 @@ Licence: MIT
 - Never publishes without human approval. The API and MCP surfaces stop at
   queueing by design.
 - No bulk or automated DM outreach to strangers.
-- The DM inbox shows only legacy unencrypted conversations. Anything in XChat,
-  X's encrypted messaging, is invisible to X's API — verified against the live
-  API. Sending DMs works.
+- The DM inbox reads legacy and encrypted XChat one-to-one conversations.
+  XChat cryptography runs locally through X's official Chat XDK. Group DMs are
+  skipped because replies need one safe participant address.
 - The corpus starts empty and fills at roughly 800 posts a night.
 
 ## Requirements

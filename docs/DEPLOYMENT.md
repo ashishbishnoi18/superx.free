@@ -10,7 +10,7 @@ Internet
 ```
 
 The app container contains Phoenix, the Oban workers and scheduler, and the
-optional Go corpus worker. PostgreSQL is the only other service. The Compose
+optional Node XChat worker. PostgreSQL is the only other service. The Compose
 file does not publish PostgreSQL to the host.
 
 This guide assumes a Debian or Ubuntu server, a domain whose A/AAAA records
@@ -19,7 +19,7 @@ Package names differ on other distributions.
 
 Read [Configuration](CONFIGURATION.md) before starting. In particular, back
 up `SUPERX_VAULT_KEY`; a database backup without that key cannot recover the
-stored X OAuth tokens.
+stored X OAuth tokens or XChat identity keys.
 
 ## 1. Prepare the host
 
@@ -419,8 +419,10 @@ docker compose logs --tail=100 app
 ```
 
 Restore the matching `.env` before starting the app. In particular, use the
-same `SUPERX_VAULT_KEY` that encrypted the database’s OAuth tokens. The startup
-script applies any migrations newer than the restored dump.
+same `SUPERX_VAULT_KEY` that encrypted the database’s OAuth tokens and XChat
+identity keys. Without it, accounts must reconnect and encrypted chat history
+may become unreadable. The startup script applies any migrations newer than
+the restored dump.
 
 The media restore intentionally clears the target upload directory. Run it
 only during an explicit restore. If the backup itself contains an `uploads/`

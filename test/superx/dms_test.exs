@@ -1,15 +1,19 @@
 defmodule SuperX.DMsTest do
   use SuperX.DataCase, async: false
 
+  import ExUnit.CaptureLog
   import SuperX.Fixtures
 
   alias SuperX.{AI, DMs}
   alias SuperX.DMs.Message
   alias SuperX.Engage.Replier
   alias SuperX.X
+  alias SuperX.XChat.Identity
 
   setup do
     previous = Application.get_env(:superx, X, [])
+    previous_xchat_handler = Application.get_env(:superx, :xchat_stub_handler)
+    Application.delete_env(:superx, :xchat_stub_handler)
 
     Application.put_env(
       :superx,
@@ -20,7 +24,15 @@ defmodule SuperX.DMsTest do
       )
     )
 
-    on_exit(fn -> Application.put_env(:superx, X, previous) end)
+    on_exit(fn ->
+      Application.put_env(:superx, X, previous)
+
+      if previous_xchat_handler do
+        Application.put_env(:superx, :xchat_stub_handler, previous_xchat_handler)
+      else
+        Application.delete_env(:superx, :xchat_stub_handler)
+      end
+    end)
 
     user_fixture(x_user_id: "100", scopes: ~w(tweet.read tweet.write dm.read dm.write))
   end
@@ -116,6 +128,88 @@ defmodule SuperX.DMsTest do
       assert {:error, :reauthorize} = DMs.send_reply(account, conversation.id, "Still not yet")
       assert Repo.aggregate(Message, :count) == 0
     end
+
+    test "encrypts an XChat reply and never calls the legacy send endpoint", %{account: account} do
+      conversation =
+        dm_conversation_fixture(account, %{
+          participant_x_user_id: "200",
+          x_conversation_id: "100-200",
+          encrypted: true
+        })
+
+      identity =
+        account
+        |> Identity.create_changeset(
+          "stored-private-key",
+          "7",
+          %{"version" => "7", "public_key" => %{}}
+        )
+        |> Repo.insert!()
+        |> Identity.registered_changeset(~U[2026-08-02 08:00:00Z])
+        |> Repo.update!()
+
+      Application.put_env(:superx, :xchat_stub_handler, fn
+        :available, _params ->
+          true
+
+        :register_keys, _params ->
+          flunk("a stored identity must not be replaced")
+
+        :encrypt_message, params ->
+          assert params["private_key"] == identity.private_key
+          assert params["key_version"] == "7"
+          assert params["conversation_id"] == "100-200"
+          assert params["text"] == "Encrypted reply"
+          assert params["events"] == ["key-change", "ciphertext"]
+
+          {:ok,
+           %{
+             "message_id" => "xchat-message-id",
+             "encoded_message_create_event" => "encrypted-body",
+             "encoded_message_event_signature" => "signed-body"
+           }}
+      end)
+
+      Req.Test.stub(X, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+
+        case {conn.method, conn.request_path} do
+          {"GET", "/2/users/100/public_keys"} ->
+            json(conn, 200, %{"data" => [public_key()]})
+
+          {"GET", "/2/users/200/public_keys"} ->
+            json(conn, 200, %{"data" => [public_key()]})
+
+          {"GET", "/2/chat/conversations/100-200/events"} ->
+            json(conn, 200, %{
+              "data" => [%{"encoded_event" => "ciphertext"}],
+              "meta" => %{"conversation_key_events" => ["key-change"]}
+            })
+
+          {"POST", "/2/chat/conversations/100-200/messages"} ->
+            {:ok, raw, conn} = Plug.Conn.read_body(conn)
+            body = Jason.decode!(raw)
+
+            refute raw =~ "Encrypted reply"
+            assert body["message_id"] == "xchat-message-id"
+            assert body["encoded_message_create_event"] == "encrypted-body"
+            assert body["encoded_message_event_signature"] == "signed-body"
+
+            json(conn, 201, %{"data" => %{"encoded_message_event" => "accepted"}})
+
+          other ->
+            flunk("unexpected X request: #{inspect(other)}")
+        end
+      end)
+
+      assert {:ok, message} = DMs.send_reply(account, conversation.id, "Encrypted reply")
+      assert message.x_message_id == "xchat-message-id"
+      assert message.direction == "outbound"
+
+      stored = DMs.get_conversation(account, conversation.id)
+      assert stored.encrypted
+      assert stored.last_message_text == "Encrypted reply"
+    end
   end
 
   describe "sync/1" do
@@ -202,6 +296,154 @@ defmodule SuperX.DMsTest do
 
       assert {:ok, %{conversations: 1, messages: 2, skipped: 0}} = DMs.sync(account)
       assert Repo.aggregate(Message, :count) == 2
+    end
+
+    test "decrypts XChat history idempotently without exposing its private identity", %{
+      account: account
+    } do
+      secret = "xchat-private-key-that-must-never-appear"
+      calls = start_supervised!({Agent, fn -> %{generations: 0, registrations: 0} end})
+
+      Application.put_env(:superx, :xchat_stub_handler, fn
+        :available, _params ->
+          true
+
+        :register_keys, _params ->
+          Agent.update(calls, &Map.update!(&1, :generations, fn count -> count + 1 end))
+
+          {:ok,
+           %{
+             "private_key" => secret,
+             "key_version" => "7",
+             "registration" => %{
+               "version" => "7",
+               "generate_version" => false,
+               "public_key" => %{"public_key" => "identity-public"}
+             }
+           }}
+
+        :decrypt_events, params ->
+          assert params["private_key"] == secret
+          assert params["key_version"] == "7"
+          assert params["user_id"] == "100"
+          assert params["events"] == ["key-change", "cipher-inbound", "cipher-outbound"]
+          assert length(params["signing_keys"]) == 2
+
+          {:ok,
+           %{
+             "events" => [
+               %{
+                 "type" => "message",
+                 "id" => "xchat-outbound",
+                 "senderId" => "100",
+                 "createdAtMsec" => 1_775_205_000_000,
+                 "content" => %{"text" => "The older encrypted reply"}
+               },
+               %{
+                 "type" => "message",
+                 "id" => "xchat-inbound",
+                 "senderId" => "200",
+                 "createdAtMsec" => 1_775_205_300_000,
+                 "content" => %{"text" => "The newer encrypted message"}
+               }
+             ],
+             "errors" => %{}
+           }}
+      end)
+
+      Req.Test.stub(X, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+
+        case {conn.method, conn.request_path} do
+          {"GET", "/2/dm_events"} ->
+            json(conn, 200, %{"meta" => %{"result_count" => 0}})
+
+          {"POST", "/2/users/100/public_keys"} ->
+            Agent.update(calls, &Map.update!(&1, :registrations, fn count -> count + 1 end))
+            {:ok, raw, conn} = Plug.Conn.read_body(conn)
+            refute raw =~ secret
+            assert Jason.decode!(raw)["version"] == "7"
+            json(conn, 200, %{"data" => public_key()})
+
+          {"GET", "/2/chat/conversations"} ->
+            assert conn.query_params["chat_conversation.fields"] ==
+                     "id,participant_ids,type"
+
+            json(conn, 200, %{
+              "data" => [
+                %{
+                  "id" => "100-200",
+                  "type" => "direct",
+                  "participant_ids" => ["100", "200"]
+                }
+              ],
+              "includes" => %{
+                "users" => [
+                  %{
+                    "id" => "200",
+                    "username" => "encrypted_friend",
+                    "name" => "Encrypted Friend",
+                    "profile_image_url" => "https://img.test/encrypted.jpg"
+                  }
+                ]
+              },
+              "meta" => %{"result_count" => 1}
+            })
+
+          {"GET", "/2/users/100/public_keys"} ->
+            json(conn, 200, %{"data" => [public_key()]})
+
+          {"GET", "/2/users/200/public_keys"} ->
+            json(conn, 200, %{"data" => [public_key()]})
+
+          {"GET", "/2/chat/conversations/100-200/events"} ->
+            assert conn.query_params["chat_message_event.fields"] ==
+                     "conversation_id,created_at_msec,encoded_event,id,sender_id"
+
+            json(conn, 200, %{
+              "data" => [
+                %{"encoded_event" => "cipher-inbound"},
+                %{"encoded_event" => "cipher-outbound"}
+              ],
+              "meta" => %{"conversation_key_events" => ["key-change"]}
+            })
+
+          other ->
+            flunk("unexpected X request: #{inspect(other)}")
+        end
+      end)
+
+      log =
+        capture_log([level: :debug], fn ->
+          assert {:ok, %{conversations: 1, messages: 2, skipped: 0}} = DMs.sync(account)
+          assert {:ok, %{conversations: 1, messages: 2, skipped: 0}} = DMs.sync(account)
+        end)
+
+      refute log =~ secret
+      assert Agent.get(calls, & &1) == %{generations: 1, registrations: 1}
+      assert Repo.aggregate(Message, :count) == 2
+
+      assert [conversation] = DMs.list_conversations(account)
+      assert conversation.encrypted
+      assert conversation.participant_x_user_id == "200"
+      assert conversation.participant_handle == "encrypted_friend"
+      assert conversation.last_message_text == "The newer encrypted message"
+
+      assert [
+               %{x_message_id: "xchat-outbound", direction: "outbound"},
+               %{x_message_id: "xchat-inbound", direction: "inbound"}
+             ] = DMs.get_conversation(account, conversation.id).messages
+
+      identity = Repo.get_by!(Identity, x_account_id: account.id)
+      assert identity.private_key == secret
+      refute inspect(identity) =~ secret
+
+      %{rows: [[ciphertext]]} =
+        Repo.query!("SELECT private_key FROM xchat_identities WHERE id = $1", [
+          Ecto.UUID.dump!(identity.id)
+        ])
+
+      refute ciphertext == secret
     end
 
     test "marks an older OAuth grant for reconnection without calling X", %{account: account} do
@@ -304,5 +546,14 @@ defmodule SuperX.DMsTest do
     conn
     |> Plug.Conn.put_resp_content_type("application/json")
     |> Plug.Conn.send_resp(status, Jason.encode!(body))
+  end
+
+  defp public_key do
+    %{
+      "public_key_version" => "7",
+      "public_key" => "identity-public",
+      "signing_public_key" => "signing-public",
+      "identity_public_key_signature" => "binding-signature"
+    }
   end
 end

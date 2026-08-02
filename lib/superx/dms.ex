@@ -7,26 +7,14 @@ defmodule SuperX.DMs do
   grant. Unlike the public-data workloads routed through twitterapi.io, DM
   history is small and cannot be read without the user's authorisation.
 
-  `sync/1` reads the account-wide `/2/dm_events` feed.
+  `sync/1` reads both the legacy `/2/dm_events` feed and the encrypted Chat
+  API. Both converge on the same account-scoped conversation and message
+  rows, with X's event id as the deduplication key.
 
-  ## Why your inbox may sync as empty
-
-  X's DM API only sees *legacy, unencrypted* conversations. Anything that
-  lives in XChat — the encrypted messaging X now defaults to, served at
-  `/i/chat` — is invisible to it. Not filtered, absent: `/2/dm_events`
-  returns `result_count: 0`, and asking for the conversation by id returns
-  "Could not find dm_conversation" for a thread that is plainly on screen
-  in the web client.
-
-  Measured on this account rather than assumed. A DM *created through the
-  API* was readable back through the API moments later; two messages sent
-  from the X app to the same account were invisible to all three lookup
-  endpoints. Same token, same scopes, same minute.
-
-  So an empty sync is very often correct, and this code is not the thing
-  to debug. The path forward if X's own inbox matters more than the API's
-  is the Activity API's chat webhooks, which do deliver these events —
-  a push integration, not a fix to this polling one.
+  XChat private keys are acceptable here only because each operator runs
+  their own instance. Hosting SuperX for other people would put their chat
+  identities on somebody else's server, which X explicitly warns against and
+  which this design does not make safe.
   """
 
   import Ecto.Query
@@ -37,6 +25,7 @@ defmodule SuperX.DMs do
   alias SuperX.DMs.{Conversation, Message}
   alias SuperX.Repo
   alias SuperX.X
+  alias SuperX.XChat.Identity
 
   @required_scopes ~w(dm.read dm.write)
 
@@ -93,8 +82,9 @@ defmodule SuperX.DMs do
     with :ok <- ensure_sync_ready(account),
          {:ok, token, account} <- X.Tokens.fresh_token(account),
          {:ok, response} <- X.get_dm_events(token, event_types: ["MessageCreate"]),
-         {:ok, result} <- store_sync(account, response) do
-      {:ok, result}
+         {:ok, legacy_result} <- store_sync(account, response),
+         {:ok, xchat_result} <- sync_xchat(account, token) do
+      {:ok, merge_counts(legacy_result, xchat_result)}
     else
       {:error, {:http_error, 403, body}} ->
         {:error, {:dm_permission_tier_required, body}}
@@ -110,7 +100,7 @@ defmodule SuperX.DMs do
          :ok <- ensure_ready(account),
          %Conversation{} = conversation <- get_conversation(account, conversation_id),
          {:ok, token, account} <- SuperX.X.Tokens.fresh_token(account),
-         {:ok, result} <- SuperX.X.create_dm(token, conversation.participant_x_user_id, text),
+         {:ok, result} <- send_message(account, conversation, token, text),
          {:ok, message} <- store_sent(account, conversation, result, text) do
       {:ok, message}
     else
@@ -169,12 +159,12 @@ defmodule SuperX.DMs do
     Repo.transaction(fn ->
       Enum.reduce(conversations, %{conversations: 0, messages: 0, skipped: 0}, fn
         {conversation_id, messages}, counts ->
-          sync_conversation(account, conversation_id, messages, users, now, counts)
+          sync_conversation(account, conversation_id, messages, users, now, false, counts)
       end)
     end)
   end
 
-  defp sync_conversation(account, conversation_id, messages, users, now, counts) do
+  defp sync_conversation(account, conversation_id, messages, users, now, encrypted, counts) do
     case one_to_one_participant(conversation_id, account.x_user_id) do
       nil ->
         # A group id has no single safe send address. Filing it under the
@@ -183,13 +173,14 @@ defmodule SuperX.DMs do
 
       participant_id ->
         profile = Map.get(users, participant_id, %{})
-        latest = Enum.max_by(messages, &DateTime.to_unix(&1.sent_at, :microsecond))
+        latest = latest_message(messages)
 
         attrs =
           %{
             x_conversation_id: conversation_id,
             participant_x_user_id: participant_id
           }
+          |> maybe_mark_encrypted(encrypted)
           |> put_present(:participant_handle, profile["username"])
           |> put_present(:participant_name, profile["name"])
           |> put_present(:participant_avatar_url, profile["profile_image_url"])
@@ -206,6 +197,18 @@ defmodule SuperX.DMs do
           {:error, reason} -> Repo.rollback(reason)
         end
     end
+  end
+
+  defp latest_message([]), do: nil
+
+  defp latest_message(messages) do
+    Enum.max_by(messages, &DateTime.to_unix(&1.sent_at, :microsecond))
+  end
+
+  defp refresh_synced_conversation(conversation, nil, now) do
+    conversation
+    |> Conversation.changeset(%{last_synced_at: now})
+    |> Repo.update()
   end
 
   defp refresh_synced_conversation(conversation, latest, now) do
@@ -281,7 +284,7 @@ defmodule SuperX.DMs do
   defp normalise_message_event(_event), do: nil
 
   defp one_to_one_participant(conversation_id, own_x_user_id) do
-    case String.split(conversation_id, "-") do
+    case String.split(conversation_id, ~r/[:-]/) do
       [^own_x_user_id, participant_id] -> participant_id
       [participant_id, ^own_x_user_id] -> participant_id
       _group_or_unknown -> nil
@@ -293,6 +296,9 @@ defmodule SuperX.DMs do
 
   defp put_present(attrs, _key, nil), do: attrs
   defp put_present(attrs, key, value), do: Map.put(attrs, key, value)
+
+  defp maybe_mark_encrypted(attrs, true), do: Map.put(attrs, :encrypted, true)
+  defp maybe_mark_encrypted(attrs, false), do: attrs
 
   defp store_sent(account, conversation, result, text) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -322,5 +328,339 @@ defmodule SuperX.DMs do
       {:ok, %{message: message}} -> {:ok, message}
       {:error, _step, reason, _changes} -> {:error, {:store_failed, reason}}
     end
+  end
+
+  # --- XChat ---------------------------------------------------------------
+
+  defp sync_xchat(account, token) do
+    client = xchat_client()
+
+    if client.available?() do
+      with {:ok, identity} <- ensure_xchat_identity(account, token, client),
+           {:ok, response} <- X.get_chat_conversations(token),
+           conversations <- direct_chat_conversations(response.conversations, account.x_user_id),
+           {:ok, signing_keys} <- chat_signing_keys(token, conversations, account.x_user_id),
+           {:ok, batches} <-
+             decrypt_chat_conversations(
+               account,
+               identity,
+               conversations,
+               signing_keys,
+               token,
+               client
+             ),
+           {:ok, result} <- store_xchat_sync(account, batches, response.users) do
+        {:ok, result}
+      end
+    else
+      {:ok, empty_counts()}
+    end
+  end
+
+  defp send_message(account, %{encrypted: true} = conversation, token, text) do
+    client = xchat_client()
+
+    with true <- client.available?(),
+         {:ok, identity} <- ensure_xchat_identity(account, token, client),
+         {:ok, signing_keys} <-
+           fetch_signing_keys(token, [account.x_user_id, conversation.participant_x_user_id]),
+         {:ok, history} <- X.get_chat_conversation_events(token, conversation.x_conversation_id),
+         {:ok, encrypted} <-
+           client.encrypt_message(
+             crypto_params(account, identity, history, signing_keys)
+             |> Map.merge(%{
+               "conversation_id" => conversation.x_conversation_id,
+               "text" => text
+             })
+           ),
+         {:ok, result} <-
+           X.send_chat_message(token, conversation.x_conversation_id, encrypted) do
+      {:ok, result}
+    else
+      false -> {:error, :xchat_unavailable}
+      error -> error
+    end
+  end
+
+  defp send_message(_account, conversation, token, text) do
+    X.create_dm(token, conversation.participant_x_user_id, text)
+  end
+
+  defp ensure_xchat_identity(account, token, client) do
+    with {:ok, identity} <- get_or_create_xchat_identity(account, client),
+         {:ok, identity} <- register_xchat_identity(identity, account, token) do
+      {:ok, identity}
+    end
+  end
+
+  # The account row serialises first-time generation. Registering two identities
+  # would spend the endpoint's strict daily write allowance and strand whichever
+  # private half lost the race.
+  defp get_or_create_xchat_identity(account, client) do
+    Repo.transaction(fn ->
+      XAccount
+      |> where(id: ^account.id)
+      |> lock("FOR UPDATE")
+      |> Repo.one!()
+
+      case Repo.get_by(Identity, x_account_id: account.id) do
+        %Identity{} = identity ->
+          {:ok, identity}
+
+        nil ->
+          with {:ok, generated} <- client.register_keys(),
+               {:ok, private_key, key_version, registration} <- identity_parts(generated) do
+            account
+            |> Identity.create_changeset(private_key, key_version, registration)
+            |> Repo.insert()
+          end
+      end
+    end)
+    |> case do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp identity_parts(%{
+         "private_key" => private_key,
+         "key_version" => key_version,
+         "registration" => registration
+       })
+       when is_binary(private_key) and private_key != "" and is_binary(key_version) and
+              key_version != "" and is_map(registration) do
+    {:ok, private_key, key_version, registration}
+  end
+
+  defp identity_parts(_generated), do: {:error, :invalid_xchat_identity}
+
+  defp register_xchat_identity(
+         %Identity{registered_at: registered_at} = identity,
+         _account,
+         _token
+       )
+       when not is_nil(registered_at),
+       do: {:ok, identity}
+
+  defp register_xchat_identity(identity, account, token) do
+    Repo.transaction(fn ->
+      identity =
+        Identity
+        |> where(id: ^identity.id)
+        |> lock("FOR UPDATE")
+        |> Repo.one!()
+
+      if identity.registered_at do
+        identity
+      else
+        with {:ok, _public_key} <-
+               X.register_chat_public_key(token, account.x_user_id, identity.registration),
+             {:ok, identity} <-
+               identity
+               |> Identity.registered_changeset(DateTime.utc_now() |> DateTime.truncate(:second))
+               |> Repo.update() do
+          identity
+        else
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end
+    end)
+  end
+
+  defp direct_chat_conversations(conversations, own_x_user_id) do
+    Enum.flat_map(conversations, fn conversation ->
+      participant_id = chat_participant(conversation, own_x_user_id)
+
+      if conversation["type"] == "direct" and participant_id do
+        [{conversation, participant_id}]
+      else
+        []
+      end
+    end)
+  end
+
+  defp chat_participant(conversation, own_x_user_id) do
+    participant_ids = conversation["participant_ids"] || []
+
+    Enum.find(participant_ids, &(&1 != own_x_user_id)) ||
+      one_to_one_participant(conversation["id"] || "", own_x_user_id)
+  end
+
+  defp chat_signing_keys(token, conversations, own_x_user_id) do
+    user_ids =
+      conversations
+      |> Enum.flat_map(fn {_conversation, participant_id} -> [own_x_user_id, participant_id] end)
+      |> Enum.uniq()
+
+    fetch_signing_keys(token, user_ids)
+  end
+
+  defp fetch_signing_keys(token, user_ids) do
+    Enum.reduce_while(user_ids, {:ok, []}, fn user_id, {:ok, entries} ->
+      case X.get_chat_user_public_keys(token, user_id) do
+        {:ok, keys} ->
+          new_entries = Enum.flat_map(keys, &signing_key_entry(user_id, &1))
+          {:cont, {:ok, entries ++ new_entries}}
+
+        error ->
+          {:halt, error}
+      end
+    end)
+  end
+
+  defp signing_key_entry(user_id, key) do
+    with public_key_version when is_binary(public_key_version) <- key["public_key_version"],
+         public_key when is_binary(public_key) <- key["signing_public_key"],
+         identity_public_key when is_binary(identity_public_key) <- key["public_key"],
+         signature when is_binary(signature) <- key["identity_public_key_signature"] do
+      [
+        %{
+          "userId" => user_id,
+          "publicKeyVersion" => public_key_version,
+          "publicKey" => public_key,
+          "identityPublicKey" => identity_public_key,
+          "identityPublicKeySignature" => signature
+        }
+      ]
+    else
+      _missing_field -> []
+    end
+  end
+
+  defp decrypt_chat_conversations(
+         account,
+         identity,
+         conversations,
+         signing_keys,
+         token,
+         client
+       ) do
+    Enum.reduce_while(conversations, {:ok, []}, fn {conversation, participant_id},
+                                                   {:ok, batches} ->
+      conversation_id = conversation["id"]
+
+      with {:ok, history} <- X.get_chat_conversation_events(token, conversation_id),
+           {:ok, decrypted} <-
+             client.decrypt_events(crypto_params(account, identity, history, signing_keys)),
+           {:ok, events, skipped} <- normalise_decrypted_events(decrypted, conversation_id) do
+        batch = %{
+          conversation_id: conversation_id,
+          participant_id: participant_id,
+          messages: events,
+          skipped: skipped
+        }
+
+        {:cont, {:ok, [batch | batches]}}
+      else
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, batches} -> {:ok, Enum.reverse(batches)}
+      error -> error
+    end
+  end
+
+  defp crypto_params(account, identity, history, signing_keys) do
+    events =
+      (history.key_events ++ Enum.map(history.events, & &1["encoded_event"]))
+      |> Enum.filter(&(is_binary(&1) and &1 != ""))
+      |> Enum.uniq()
+
+    %{
+      "private_key" => identity.private_key,
+      "key_version" => identity.key_version,
+      "user_id" => account.x_user_id,
+      "events" => events,
+      "signing_keys" => signing_keys
+    }
+  end
+
+  defp normalise_decrypted_events(%{"events" => events} = result, conversation_id)
+       when is_list(events) do
+    messages =
+      events
+      |> Enum.map(&normalise_xchat_event(&1, conversation_id))
+      |> Enum.reject(&is_nil/1)
+
+    rejected = length(events) - length(messages)
+    errors = if is_map(result["errors"]), do: map_size(result["errors"]), else: 0
+    {:ok, messages, rejected + errors}
+  end
+
+  defp normalise_decrypted_events(_result, _conversation_id),
+    do: {:error, :invalid_xchat_decryption}
+
+  defp normalise_xchat_event(
+         %{
+           "type" => "message",
+           "id" => id,
+           "senderId" => sender_id,
+           "createdAtMsec" => created_at,
+           "content" => %{"text" => text}
+         },
+         conversation_id
+       )
+       when is_binary(id) and id != "" and is_binary(sender_id) and sender_id != "" and
+              is_binary(text) and text != "" do
+    with {:ok, milliseconds} <- milliseconds(created_at),
+         {:ok, sent_at} <- DateTime.from_unix(milliseconds, :millisecond) do
+      %{
+        x_message_id: id,
+        x_conversation_id: conversation_id,
+        sender_x_user_id: sender_id,
+        text: text,
+        sent_at: DateTime.truncate(sent_at, :second)
+      }
+    else
+      _invalid_time -> nil
+    end
+  end
+
+  defp normalise_xchat_event(_event, _conversation_id), do: nil
+
+  defp milliseconds(value) when is_integer(value), do: {:ok, value}
+
+  defp milliseconds(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {milliseconds, ""} -> {:ok, milliseconds}
+      _invalid -> :error
+    end
+  end
+
+  defp milliseconds(_value), do: :error
+
+  defp store_xchat_sync(account, batches, users) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    Repo.transaction(fn ->
+      Enum.reduce(batches, empty_counts(), fn batch, counts ->
+        counts = %{counts | skipped: counts.skipped + batch.skipped}
+
+        sync_conversation(
+          account,
+          batch.conversation_id,
+          batch.messages,
+          users,
+          now,
+          true,
+          counts
+        )
+      end)
+    end)
+  end
+
+  defp merge_counts(left, right) do
+    %{
+      conversations: left.conversations + right.conversations,
+      messages: left.messages + right.messages,
+      skipped: left.skipped + right.skipped
+    }
+  end
+
+  defp empty_counts, do: %{conversations: 0, messages: 0, skipped: 0}
+
+  defp xchat_client do
+    Application.get_env(:superx, :xchat_client, SuperX.XChat)
   end
 end

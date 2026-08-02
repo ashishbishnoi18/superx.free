@@ -30,7 +30,7 @@ These are yours and never leave the machine.
 docker run --rm hexpm/elixir:1.19.5-erlang-26.2.5.20-debian-trixie-20260610-slim \
   sh -c 'mix local.hex --force >/dev/null && mix phx.gen.secret'
 
-# SUPERX_VAULT_KEY — encrypts stored OAuth tokens at rest
+# SUPERX_VAULT_KEY — encrypts stored OAuth tokens and XChat identity keys
 openssl rand -base64 32
 ```
 
@@ -42,9 +42,10 @@ SUPERX_VAULT_KEY=<second value>
 POSTGRES_PASSWORD=<anything you like>
 ```
 
-> **Back up `SUPERX_VAULT_KEY`.** It encrypts every stored X token. Lose it
-> and every connected account has to reconnect. Rotating it is not
-> supported — the old tokens simply stop decrypting.
+> **Back up `SUPERX_VAULT_KEY`.** It encrypts every stored X token and XChat
+> identity. Lose it and every connected account has to reconnect; encrypted
+> chat history may also become unreadable. Rotating it is not supported — the
+> old secrets simply stop decrypting.
 
 ## 3. Create an X developer app
 
