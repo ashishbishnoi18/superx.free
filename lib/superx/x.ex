@@ -116,6 +116,46 @@ defmodule SuperX.X do
     end
   end
 
+  @doc "Creates an Article draft and returns its X article id."
+  def create_article_draft(access_token, title, body) do
+    article = %{
+      "title" => title,
+      "content_state" => article_content_state(body)
+    }
+
+    case request(:post, "/articles/draft", json: article, token: access_token) do
+      {:ok, %{"data" => %{"id" => id}}} -> {:ok, id}
+      {:ok, other} -> {:error, {:unexpected_response, other}}
+      error -> error
+    end
+  end
+
+  @doc "Publishes an Article draft and returns the seed post id."
+  def publish_article(access_token, article_id) do
+    case request(:post, "/articles/#{URI.encode_www_form(article_id)}/publish",
+           json: %{},
+           token: access_token
+         ) do
+      {:ok, %{"data" => %{"post_id" => post_id}}} -> {:ok, post_id}
+      {:ok, other} -> {:error, {:unexpected_response, other}}
+      error -> error
+    end
+  end
+
+  # X accepts Article prose as DraftJS rather than plain text. Blank-line
+  # paragraphs therefore become unstyled blocks, while entities stay empty
+  # because SuperX's editor stores no rich-text annotations.
+  @doc false
+  def article_content_state(body) do
+    blocks =
+      body
+      |> String.trim()
+      |> String.split(~r/\r?\n[\t ]*\r?\n+/u, trim: true)
+      |> Enum.map(&%{"text" => String.trim(&1), "type" => "unstyled"})
+
+    %{"blocks" => blocks, "entities" => []}
+  end
+
   @doc """
   Publishes an ordered list of segments as a thread, chaining each post
   as a reply to the previous one.

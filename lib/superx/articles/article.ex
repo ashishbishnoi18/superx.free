@@ -1,11 +1,10 @@
 defmodule SuperX.Articles.Article do
   @moduledoc """
-  A long-form draft and, eventually, the record of where it was published.
+  A long-form draft and the record of where X published it.
 
   Composition and publication deliberately meet at one narrow changeset:
-  the editor can move work as far as `ready`, while an X integration can
-  later record a publication outcome without teaching the editor how to
-  publish.
+  the editor owns prose and review state, while the publisher alone can
+  attach X identifiers and make the article immutable.
   """
 
   use SuperX.Schema
@@ -14,7 +13,8 @@ defmodule SuperX.Articles.Article do
 
   alias SuperX.Accounts.{User, XAccount}
 
-  @statuses ~w(draft ready published)
+  @statuses ~w(draft ready publishing published)
+  @visible_statuses ~w(draft ready published)
 
   schema "articles" do
     belongs_to :user, User
@@ -26,14 +26,16 @@ defmodule SuperX.Articles.Article do
 
     field :published_at, :utc_datetime
     field :x_article_id, :string
+    field :x_post_id, :string
     field :permalink, :string
+    field :publish_error, :string
 
     field :word_count, :integer, default: 0
 
     timestamps(type: :utc_datetime)
   end
 
-  def statuses, do: @statuses
+  def statuses, do: @visible_statuses
 
   @doc false
   def changeset(article, attrs) do
@@ -49,13 +51,15 @@ defmodule SuperX.Articles.Article do
   @doc false
   def publication_changeset(article, attrs) do
     article
-    |> cast(attrs, [:x_article_id, :permalink, :published_at])
+    |> cast(attrs, [:x_article_id, :x_post_id, :permalink, :published_at])
     |> put_change(:status, "published")
+    |> put_change(:publish_error, nil)
     |> put_default_published_at()
     |> put_word_count()
     |> validate_ready_content()
     |> validate_published_destination()
     |> unique_constraint(:x_article_id)
+    |> unique_constraint(:x_post_id)
   end
 
   @doc "Counts words using the same whitespace boundary shown in the editor."
@@ -72,7 +76,7 @@ defmodule SuperX.Articles.Article do
   end
 
   defp validate_ready_content(changeset) do
-    if get_field(changeset, :status) in ["ready", "published"] do
+    if get_field(changeset, :status) in ["ready", "publishing", "published"] do
       validate_required(changeset, [:title, :body])
     else
       changeset
@@ -82,18 +86,9 @@ defmodule SuperX.Articles.Article do
   defp validate_published_destination(changeset) do
     if get_field(changeset, :status) == "published" do
       changeset
-      |> validate_required([:published_at])
-      |> require_publication_reference()
+      |> validate_required([:published_at, :x_article_id, :x_post_id, :permalink])
     else
       changeset
-    end
-  end
-
-  defp require_publication_reference(changeset) do
-    if present?(get_field(changeset, :x_article_id)) or present?(get_field(changeset, :permalink)) do
-      changeset
-    else
-      add_error(changeset, :permalink, "or an X article id is required")
     end
   end
 
@@ -104,6 +99,4 @@ defmodule SuperX.Articles.Article do
       changeset
     end
   end
-
-  defp present?(value), do: is_binary(value) and String.trim(value) != ""
 end

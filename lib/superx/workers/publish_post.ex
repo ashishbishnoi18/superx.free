@@ -19,6 +19,7 @@ defmodule SuperX.Workers.PublishPost do
 
   alias SuperX.{Accounts, Content, Media, Repo}
   alias SuperX.Content.Post
+  alias SuperX.X.Error, as: XError
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"post_id" => post_id}, attempt: attempt}) do
@@ -60,12 +61,12 @@ defmodule SuperX.Workers.PublishPost do
 
         fail(
           post,
-          "Published #{length(published_ids)} of #{length(post.segments)} posts, then failed: #{describe(reason)}"
+          "Published #{length(published_ids)} of #{length(post.segments)} posts, then failed: #{XError.describe(reason)}"
         )
 
       {:error, reason} ->
-        if permanent_failure?(reason) or attempt >= 5 do
-          fail(post, describe(reason))
+        if XError.permanent?(reason) or attempt >= 5 do
+          fail(post, XError.describe(reason))
         else
           # Let Oban retry with backoff; the post goes back to scheduled so
           # the queue still shows it as pending.
@@ -140,41 +141,4 @@ defmodule SuperX.Workers.PublishPost do
     # act on, and repeated attempts would only re-fail.
     :ok
   end
-
-  defp describe({:http_error, status, body}), do: "X returned #{status}: #{summarise(body)}"
-  defp describe({:unauthorized, _}), do: "X rejected the request. Reconnect the account."
-  defp describe({:transport_error, _}), do: "Could not reach X."
-  defp describe({:media_missing, _key}), do: "An attached file is missing from local storage."
-
-  defp describe({:media_processing_failed, _error}),
-    do: "X could not process an attached image or GIF."
-
-  defp describe(:media_processing_timeout), do: "X did not finish processing an attachment."
-  defp describe(other) when is_binary(other), do: other
-  defp describe(other), do: inspect(other)
-
-  # X documents 4xx responses as request/auth problems and recommends
-  # retries for 429 and 5xx responses. Keeping a rejected post labelled as
-  # scheduled for five attempts hides a fixable error from the person who
-  # can edit it, so permanent client failures become visible immediately.
-  defp permanent_failure?({:http_error, status, _body}) when status in 400..499,
-    do: status not in [408, 429]
-
-  defp permanent_failure?({:unauthorized, _body}), do: true
-  defp permanent_failure?({:media_missing, _key}), do: true
-  defp permanent_failure?({:media_processing_failed, _error}), do: true
-  defp permanent_failure?(_reason), do: false
-
-  defp summarise(%{"detail" => detail}), do: detail
-  defp summarise(%{"errors" => [%{"detail" => detail} | _]}), do: detail
-  defp summarise(%{"errors" => [%{"message" => message} | _]}), do: message
-
-  defp summarise(body) when is_binary(body) do
-    case Jason.decode(body) do
-      {:ok, decoded} when is_map(decoded) or is_list(decoded) -> summarise(decoded)
-      _ -> String.slice(body, 0, 200)
-    end
-  end
-
-  defp summarise(other), do: inspect(other) |> String.slice(0, 200)
 end
