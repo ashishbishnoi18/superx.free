@@ -158,7 +158,9 @@ defmodule SuperXWeb.SettingsLive do
             <input type="time" id="time" name="time" value="09:00" class="input w-auto" required />
           </div>
 
-          <button type="submit" class="act-key pb-2 text-xs">Add time</button>
+          <button type="submit" class="act-key pb-2 text-xs" phx-disable-with="Adding…">
+            Add time
+          </button>
         </form>
       </div>
     </div>

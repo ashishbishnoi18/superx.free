@@ -365,6 +365,7 @@ defmodule SuperXWeb.AnalyticsLive do
             type="submit"
             class="act-key"
             disabled={!history_upload_ready?(@uploads.history)}
+            phx-disable-with="Importing…"
           >
             Import
           </button>

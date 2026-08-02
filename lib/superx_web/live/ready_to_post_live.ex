@@ -212,6 +212,8 @@ defmodule SuperXWeb.ReadyToPostLive do
     </div>
 
     <div :if={@shelf == []} id="shelf-empty" class="py-16 text-center">
+      <.icon name="hero-inbox-stack" class="size-6 text-faint" />
+      <p class="nb-eyebrow mb-2 mt-3">Ready to Post</p>
       <%= cond do %>
         <% @generating -> %>
           <p id="shelf-writing-empty" class="text-muted-foreground">
@@ -268,6 +270,7 @@ defmodule SuperXWeb.ReadyToPostLive do
         <.post
           author={author(@current_x_account)}
           segments={segments(generation)}
+          class="post-interactive"
           media_uploads={shelf_uploads(@uploads, generation)}
           media_owner_id={generation.id}
           media_remove_event="remove_shelf_media"

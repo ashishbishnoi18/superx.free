@@ -218,20 +218,14 @@ defmodule SuperXWeb.InspirationLive do
       description={"#{format_count(@corpus_size)} posts that outperformed their author's baseline. Search for structure worth borrowing, not subjects worth copying."}
     />
 
-    <div id="inspiration-tabs" class="mb-9 flex gap-6 border-b border-border text-sm">
+    <div id="inspiration-tabs" class="mb-9 flex gap-6 border-b border-border">
       <button
         :for={{value, label} <- [{"posts", "Posts"}, {"media", "Media"}]}
         id={"tab-#{value}"}
         phx-click="set_tab"
         phx-value-tab={value}
-        class={[
-          "border-b pb-2.5 transition-colors",
-          if(@tab == value,
-            do: "act-key border-primary text-primary",
-            else: "act border-transparent"
-          )
-        ]}
-        aria-pressed={to_string(@tab == value)}
+        class="tab"
+        aria-selected={to_string(@tab == value)}
       >
         {label}
       </button>
@@ -414,6 +408,8 @@ defmodule SuperXWeb.InspirationLive do
     </div>
 
     <div :if={@corpus_size == 0} class="py-16 text-center">
+      <.icon name="hero-book-open" class="size-6 text-faint" />
+      <p class="nb-eyebrow mb-2 mt-3">Library</p>
       <p class="text-muted-foreground">
         The library is empty. It fills overnight from your voice profile's
         topics — see the first-run steps in
@@ -427,6 +423,8 @@ defmodule SuperXWeb.InspirationLive do
       id="inspiration-filter-empty"
       class="py-16 text-center"
     >
+      <.icon name="hero-magnifying-glass" class="size-6 text-faint" />
+      <p class="nb-eyebrow mb-2 mt-3">Search</p>
       <p :if={@invalid_date_range} class="text-muted-foreground">
         The custom date range ends before it starts. Move either date to search it.
       </p>
@@ -445,7 +443,7 @@ defmodule SuperXWeb.InspirationLive do
         id={"inspiration-post-#{post.id}"}
         author={corpus_author(post)}
         segments={segments(post)}
-        class="break-inside-avoid"
+        class="post-interactive break-inside-avoid"
       >
         <%!-- Likes and reposts only. Replies measure argument, not reach,
               and at masonry widths a third figure pushes the actions onto

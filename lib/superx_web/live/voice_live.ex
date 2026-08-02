@@ -307,7 +307,7 @@ defmodule SuperXWeb.VoiceLive do
       </.field>
 
       <div class="flex items-center gap-6 border-t border-border pt-6">
-        <button type="submit" class="btn-primary">
+        <button type="submit" class="btn-primary" phx-disable-with="Saving…">
           <.icon name="hero-check" class="size-4" /> Save voice
         </button>
       </div>

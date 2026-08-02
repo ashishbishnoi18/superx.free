@@ -312,7 +312,9 @@ defmodule SuperXWeb.SignalsLive do
             options={Enum.map(@contact_lists, &{&1.name, &1.id})}
             class="select w-auto pr-6"
           />
-          <button type="submit" class="btn-primary">Create agent</button>
+          <button type="submit" class="btn-primary" phx-disable-with="Creating…">
+            Create agent
+          </button>
         </div>
       </.form>
     </section>

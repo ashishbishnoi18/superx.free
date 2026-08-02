@@ -335,7 +335,9 @@ defmodule SuperXWeb.WorkersLive do
         </div>
 
         <div class="mt-6 flex items-center gap-5 text-xs">
-          <button id="save-worker" type="submit" class="act-key">Save worker</button>
+          <button id="save-worker" type="submit" class="act-key" phx-disable-with="Saving…">
+            Save worker
+          </button>
           <button type="button" phx-click="cancel" class="act">Cancel</button>
         </div>
       </.form>

@@ -518,6 +518,7 @@ defmodule SuperXWeb.ArticlesLive do
             value="save_draft"
             class="act"
             disabled={not is_nil(@generating)}
+            phx-disable-with="Saving…"
           >
             Save draft
           </button>
@@ -529,6 +530,7 @@ defmodule SuperXWeb.ArticlesLive do
             value="mark_ready"
             class="act-key"
             disabled={not is_nil(@generating)}
+            phx-disable-with="Saving…"
           >
             {if @article.status == "ready", do: "Save ready", else: "Mark ready"}
           </button>
@@ -581,6 +583,7 @@ defmodule SuperXWeb.ArticlesLive do
               value={ai_intent(@form[:body].value)}
               class="act-key mt-3"
               disabled={not is_nil(@generating)}
+              phx-disable-with="Writing…"
             >
               {ai_button_label(@form[:body].value)}
             </button>

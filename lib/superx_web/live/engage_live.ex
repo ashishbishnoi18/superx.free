@@ -353,6 +353,8 @@ defmodule SuperXWeb.EngageLive do
     />
 
     <div :if={@engagements == []} class="py-16 text-center">
+      <.icon name="hero-chat-bubble-left-right" class="size-6 text-faint" />
+      <p class="nb-eyebrow mb-2 mt-3">Engage</p>
       <p class="text-muted-foreground">
         <span :if={@kind == "feed" and @feeds == []}>
           No feeds yet. Add one above and SuperX will start surfacing conversations.
@@ -397,6 +399,7 @@ defmodule SuperXWeb.EngageLive do
           segments={[%{"text" => engagement.text}]}
           clamp={8}
           timestamp={ago(engagement.posted_at)}
+          class="post-interactive"
         >
           <:meta>
             <span class="score" data-tier={score_tier(engagement.priority)}>
@@ -446,6 +449,7 @@ defmodule SuperXWeb.EngageLive do
               id={"send-reply-#{draft.id}"}
               phx-click="send"
               phx-value-draft_id={draft.id}
+              phx-disable-with="Sending…"
               class="act-key"
             >
               Send reply
@@ -629,7 +633,7 @@ defmodule SuperXWeb.EngageLive do
             required
           />
         </div>
-        <button type="submit" class="act-key pb-2 text-xs">Add</button>
+        <button type="submit" class="act-key pb-2 text-xs" phx-disable-with="Adding…">Add</button>
       </.form>
     </section>
     """

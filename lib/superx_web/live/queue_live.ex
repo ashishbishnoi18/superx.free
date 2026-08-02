@@ -597,6 +597,8 @@ defmodule SuperXWeb.QueueLive do
       class="flex flex-col"
     >
       <div :if={@upcoming_slot_groups == []} id="queue-no-schedule" class="py-16 text-center">
+        <.icon name="hero-calendar-days" class="size-6 text-faint" />
+        <p class="nb-eyebrow mb-2 mt-3">Schedule</p>
         <p class="text-muted-foreground">No posting times yet.</p>
         <.link navigate={~p"/settings"} class="act-key mt-4 inline-block">
           Pick some under Schedule
@@ -716,6 +718,8 @@ defmodule SuperXWeb.QueueLive do
       id={"queue-#{@tab}-empty"}
       class="py-16 text-center"
     >
+      <.icon name="hero-queue-list" class="size-6 text-faint" />
+      <p class="nb-eyebrow mb-2 mt-3">{tab_label(@tab)}</p>
       <p class="text-muted-foreground">{empty_message(@tab)}</p>
     </div>
 
@@ -946,6 +950,8 @@ defmodule SuperXWeb.QueueLive do
   defp calendar(assigns) do
     ~H"""
     <div :if={@week.rows == []} class="border-y border-border py-14 text-center">
+      <.icon name="hero-calendar-days" class="size-6 text-faint" />
+      <p class="nb-eyebrow mb-2 mt-3">Calendar</p>
       <p class="text-muted-foreground">
         No posting times yet. <.link navigate={~p"/settings"} class="act-key">Pick some</.link>
         and the week fills in.
@@ -1100,6 +1106,7 @@ defmodule SuperXWeb.QueueLive do
           id="add-post-to-queue"
           type="button"
           phx-click="add_to_queue"
+          phx-disable-with="Queueing…"
           class="act-key"
           disabled={@over or @uploading}
         >
@@ -1109,6 +1116,7 @@ defmodule SuperXWeb.QueueLive do
           id="save-post-draft"
           type="button"
           phx-click="save_draft"
+          phx-disable-with="Saving…"
           class="act"
           disabled={@uploading}
         >

@@ -205,7 +205,7 @@ defmodule SuperXWeb.AskLive do
           disabled={@thinking}
         >{@draft}</textarea>
         <div class="mt-3">
-          <button type="submit" class="btn-primary" disabled={@thinking}>
+          <button type="submit" class="btn-primary" disabled={@thinking} phx-disable-with="Sending…">
             {if @thinking, do: "Working…", else: "Send"}
           </button>
         </div>
