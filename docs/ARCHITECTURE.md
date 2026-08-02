@@ -12,7 +12,7 @@ nginx
 Phoenix endpoint
   |-- contexts and LiveViews
   |-- Oban queues and cron
-  |-- supervised Go corpus worker
+  |-- supervised XChat sidecar (Node)
   |-- X, twitterapi.io, LLM, Voyage, and Stripe clients
   |
 PostgreSQL

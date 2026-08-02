@@ -111,36 +111,13 @@ the built-in free limits.
 |---|---|---|---|
 | `SUPERX_DEFAULT_TIER` | No | `free` | Tier used when a user has no entitled paid subscription. Supported useful values are `free`, `pro`, `advanced`, and `ultra`. Unknown values fall back to free limits in plan lookups, although the instance still labels itself open because the string is not `free`; use only a supported value. |
 | `STRIPE_SECRET_KEY` | No | None | Authenticates Stripe Checkout and billing-portal calls. Checkout is enabled only when this is present and at least one base price ID is configured. Missing leaves billing disabled; accounts use `SUPERX_DEFAULT_TIER`. |
-| `STRIPE_WEBHOOK_SECRET` | No | None | Verifies `Stripe-Signature` on `/webhooks/stripe`. Missing makes that endpoint return `503 billing not configured`. It does not stop the application. |
-| `STRIPE_PRICE_PRO_MONTH` | No | None | Stripe recurring base price for Pro monthly checkout. Missing removes this tier/interval from checkout. |
-| `STRIPE_PRICE_PRO_YEAR` | No | None | Stripe recurring base price for Pro yearly checkout. Missing removes this tier/interval from checkout. |
-| `STRIPE_PRICE_ADVANCED_MONTH` | No | None | Stripe recurring base price for Advanced monthly checkout. Missing removes this tier/interval from checkout. |
-| `STRIPE_PRICE_ADVANCED_YEAR` | No | None | Stripe recurring base price for Advanced yearly checkout. Missing removes this tier/interval from checkout. |
-| `STRIPE_PRICE_ULTRA_MONTH` | No | None | Stripe recurring base price for Ultra monthly checkout. Missing removes this tier/interval from checkout. |
-| `STRIPE_PRICE_ULTRA_YEAR` | No | None | Stripe recurring base price for Ultra yearly checkout. Missing removes this tier/interval from checkout. |
-| `STRIPE_SEAT_PRICE_PRO_MONTH` | No | None | Per-member recurring price paired with Pro monthly checkout. Missing prevents a Pro monthly checkout when the owner has team members; zero-seat checkout still works if the base price exists. |
-| `STRIPE_SEAT_PRICE_PRO_YEAR` | No | None | Per-member price for Pro yearly checkout. Missing affects only checkout with team members. |
-| `STRIPE_SEAT_PRICE_ADVANCED_MONTH` | No | None | Per-member price for Advanced monthly checkout. Missing affects only checkout with team members. |
-| `STRIPE_SEAT_PRICE_ADVANCED_YEAR` | No | None | Per-member price for Advanced yearly checkout. Missing affects only checkout with team members. |
-| `STRIPE_SEAT_PRICE_ULTRA_MONTH` | No | None | Per-member price for Ultra monthly checkout. Missing affects only checkout with team members. |
-| `STRIPE_SEAT_PRICE_ULTRA_YEAR` | No | None | Per-member price for Ultra yearly checkout. Missing affects only checkout with team members. |
+| `STRIPE_WEBHOOK_SECRET` | No | None | Verifies `Stripe-Signature` on `/webhooks/stripe`. Missing makes that endpoint reject every request with `400`, because nothing can be verified without it. It does not stop the application. |
+| `STRIPE_PRICE_KEYS_INCLUDED` | No | None | Recurring price for the plan where the operator supplies the API keys. Missing removes that option from the billing page. |
+| `STRIPE_PRICE_BYO` | No | None | Recurring price for the plan where the subscriber supplies their own keys. Missing removes that option from the billing page. |
+| `STRIPE_PUBLISHABLE_KEY` | No | None | Published alongside checkout. Not secret. |
 
 The application does not create Stripe products, prices, or webhook endpoints.
 The configured prices must match the tier and interval encoded by each variable.
-
-## Optional Go corpus worker
-
-The Docker image contains a supervised Go process that can populate the
-corpus from X’s public web GraphQL endpoint. twitterapi.io takes priority when
-both sources are configured. This worker is off unless both credentials below
-
-
-| Variable | Required | Default | Purpose and missing behaviour |
-|---|---|---|---|
-| `HTTPS_PROXY` | No | None | Proxy for HTTPS egress. Compose passes this variable. Missing sends requests directly. |
-
-Lower-case Go proxy variants are also understood by Go’s standard library,
-but the supplied Compose file passes only upper-case `HTTPS_PROXY`.
 
 ## Docker Compose variables
 

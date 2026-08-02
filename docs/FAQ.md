@@ -12,13 +12,29 @@ rows and paid-read cache rows are not routinely purged. Start with a small
 general-purpose VM, watch memory, CPU, and volume use, and size from actual
 workload. Do not omit off-host backups from the budget.
 
-API charges are usage based. SuperX’s own “AI credits” and plan limits are
-application quotas; they are not dollars and do not predict a provider bill.
-Set `SUPERX_DEFAULT_TIER=ultra` on a private instance if those product quotas
-should not throttle the operator’s own use.
+API charges are usage based and are billed by the providers directly. SuperX’s
+own credits are a separate thing entirely; see the next question.
 
 See [Deployment](DEPLOYMENT.md) for the one-box layout and backup set, and
 [Configuration](CONFIGURATION.md) for ways to reduce corpus volume.
+
+## What are “AI credits”, and do they cost money?
+
+They are not money and they are not bought. A credit is an internal rate
+limit, so one person on a shared instance cannot spend the operator’s LLM
+budget in an afternoon. Nothing is charged when one is used, and having
+credits left does not mean the provider bill is paid.
+
+Four quotas exist: `credits_month` and `posts_month` roll every 30 days,
+`replies_day` and `leads_day` every 24 hours. A credit is claimed *before*
+the expensive call, not after, because charging on success lets a user start
+unlimited work concurrently before any of it settles. Work that then fails
+refunds the credit — though the provider may still bill for tokens it
+processed on the way to failing.
+
+**On a single-operator instance they are pure overhead.** Set
+`SUPERX_DEFAULT_TIER=ultra` and every limit lifts, which is the right setting
+when the person using the software is the person paying its API bills.
 
 ## Which keys are actually needed?
 
