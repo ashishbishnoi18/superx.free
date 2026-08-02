@@ -8,6 +8,7 @@ defmodule SuperXWeb.ReadyToPostLive do
 
   alias SuperX.Content
   alias SuperX.Content.{Generation, Writer}
+  alias SuperX.Workers
   alias SuperXWeb.MediaUploads
 
   @impl true
@@ -42,6 +43,7 @@ defmodule SuperXWeb.ReadyToPostLive do
     |> assign(:shelf, shelf)
     |> assign(:counts, Content.shelf_counts(account))
     |> assign(:voice, Content.get_voice_profile(account))
+    |> assign(:refill_state, refill_state(account))
     |> allow_shelf_uploads(shelf)
   end
 
@@ -178,7 +180,8 @@ defmodule SuperXWeb.ReadyToPostLive do
     >
       <:action>
         <button
-          :if={@ai_configured}
+          :if={@ai_configured and @kind in [nil, "for_you"]}
+          id="write-another"
           phx-click="generate"
           disabled={@generating}
           class="act-key whitespace-nowrap"
@@ -198,7 +201,7 @@ defmodule SuperXWeb.ReadyToPostLive do
         All <span class="nb-mono ml-1 text-[11px] text-faint">{Map.get(@counts, "all", 0)}</span>
       </.link>
       <.link
-        :for={kind <- ["for_you", "trending", "viral"]}
+        :for={kind <- ["for_you", "products", "trending", "viral"]}
         patch={~p"/ready-to-post?kind=#{kind}"}
         class="tab"
         aria-selected={@kind == kind}
@@ -208,18 +211,48 @@ defmodule SuperXWeb.ReadyToPostLive do
       </.link>
     </div>
 
-    <div :if={@shelf == []} class="py-16 text-center">
-      <p class="text-muted-foreground">
-        <span :if={!@voice || !@voice.about}>
-          Nothing here yet. Teach SuperX how you write and it starts drafting overnight.
-        </span>
-        <span :if={@voice && @voice.about}>
-          Nothing waiting. SuperX refills this overnight.
-        </span>
-      </p>
-      <.link :if={!@voice || !@voice.about} navigate={~p"/voice"} class="act-key mt-4 inline-block">
-        Set up your voice
-      </.link>
+    <div :if={@shelf == []} id="shelf-empty" class="py-16 text-center">
+      <%= cond do %>
+        <% @generating -> %>
+          <p id="shelf-writing-empty" class="text-muted-foreground">
+            Writing your draft now…
+          </p>
+        <% Map.get(@counts, "all", 0) > 0 -> %>
+          <p id="shelf-filter-empty" class="text-muted-foreground">
+            No {label_for(@kind)} drafts are waiting.
+          </p>
+          <.link patch={~p"/ready-to-post"} class="act mt-4 inline-block">View all drafts</.link>
+        <% @refill_state == :manual_workers -> %>
+          <p id="shelf-manual-workers-empty" class="text-muted-foreground">
+            No drafts waiting. Your workers only run when you press Run now.
+          </p>
+          <.link id="run-a-worker" navigate={~p"/workers"} class="act-key mt-4 inline-block">
+            Run a worker
+          </.link>
+        <% (!@voice || !@voice.about) and @refill_state == :scheduled_workers -> %>
+          <p id="shelf-scheduled-voice-empty" class="text-muted-foreground">
+            Nothing here yet. Set up your voice before your scheduled workers run.
+          </p>
+          <.link navigate={~p"/voice"} class="act-key mt-4 inline-block">
+            Set up your voice
+          </.link>
+        <% !@voice || !@voice.about -> %>
+          <p id="shelf-voice-empty" class="text-muted-foreground">
+            Nothing here yet. Teach SuperX how you write and it starts drafting overnight.
+          </p>
+          <.link navigate={~p"/voice"} class="act-key mt-4 inline-block">
+            Set up your voice
+          </.link>
+        <% @refill_state == :scheduled_workers -> %>
+          <p id="shelf-scheduled-workers-empty" class="text-muted-foreground">
+            No drafts waiting. Your workers will add their next scheduled batches here.
+          </p>
+          <.link navigate={~p"/workers"} class="act mt-4 inline-block">View workers</.link>
+        <% true -> %>
+          <p id="shelf-overnight-empty" class="text-muted-foreground">
+            Nothing waiting. SuperX refills this overnight.
+          </p>
+      <% end %>
     </div>
 
     <%!-- Drafts are shown as the post they'd become, under the account
@@ -290,6 +323,7 @@ defmodule SuperXWeb.ReadyToPostLive do
   end
 
   defp label_for("for_you"), do: "For you"
+  defp label_for("products"), do: "Products"
   defp label_for("trending"), do: "Trending"
   defp label_for("viral"), do: "Viral"
   defp label_for(other), do: String.capitalize(other)
@@ -300,6 +334,23 @@ defmodule SuperXWeb.ReadyToPostLive do
     case DateTime.shift_zone(datetime, timezone, Tz.TimeZoneDatabase) do
       {:ok, local} -> Calendar.strftime(local, "%a %-d %b, %-I:%M %p")
       _ -> Calendar.strftime(datetime, "%a %-d %b, %-I:%M %p UTC")
+    end
+  end
+
+  defp refill_state(account) do
+    case Workers.list_content_workers(account) do
+      [] ->
+        :overnight
+
+      workers ->
+        if Enum.any?(workers, &(&1.enabled and &1.cadence in ["daily", "weekly"])) do
+          :scheduled_workers
+        else
+          # Any configured worker disables the legacy nightly top-up. When
+          # none has a live schedule, promising an overnight refill makes an
+          # intentionally on-demand shelf look broken the following morning.
+          :manual_workers
+        end
     end
   end
 

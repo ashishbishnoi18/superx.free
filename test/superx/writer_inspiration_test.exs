@@ -40,7 +40,9 @@ defmodule SuperX.Content.WriterInspirationTest do
   } do
     counter = start_supervised!({Agent, fn -> %{ai: 0, twitter: 0} end})
     handle = "ideas#{System.unique_integer([:positive])}"
-    creator_post = "Durable systems start with boring defaults and clear ownership."
+    # A complete short sentence has no six-word run and no five-word
+    # opening. It still cannot be published verbatim under another name.
+    creator_post = "Boring defaults build trust."
 
     {:ok, profile} = Content.get_or_create_voice_profile(account)
 

@@ -81,8 +81,11 @@ defmodule SuperX.Content.Voice do
 
           {:error, reason} ->
             Logger.warning("Could not fetch posts for @#{account.handle}: #{inspect(reason)}")
-            # A voice can still be inferred from the bio alone.
-            {:ok, []}
+            # An account that genuinely has no posts is represented by a
+            # successful empty response above. Converting a failed read into
+            # that same value makes the UI claim it analysed posts it never
+            # saw, and can overwrite a good profile with a bio-only guess.
+            {:error, {:post_fetch_failed, reason}}
         end
 
       {:error, :reauth_required} ->

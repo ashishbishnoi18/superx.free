@@ -99,7 +99,7 @@ defmodule SuperX.Content.Writer do
         post -> Prompts.rewrite_from_corpus(post, topic, voice_examples, inspiration)
       end
 
-    reference_texts = reference_texts(source, inspiration)
+    references = references(source, inspiration)
 
     case AI.structured(prompt, Prompts.post_schema(),
            system: Prompts.writer_system(voice, account),
@@ -129,7 +129,7 @@ defmodule SuperX.Content.Writer do
               :blank
             )
 
-          derivative_from_any?(text, reference_texts) ->
+          derivative_from_any?(text, references) ->
             # Named creators make phrase lifting more likely, so their posts
             # go through the same guard as corpus references. The clean retry
             # removes both kinds of material before the model sees them again.
@@ -197,15 +197,43 @@ defmodule SuperX.Content.Writer do
     end
   end
 
-  defp reference_texts(source, inspiration) do
-    corpus = if source, do: [source.text], else: []
-    creator_posts = Enum.flat_map(inspiration, & &1.posts)
+  defp references(source, inspiration) do
+    corpus = if source, do: [{:corpus, source.text}], else: []
+
+    creator_posts =
+      Enum.flat_map(inspiration, fn creator ->
+        Enum.map(creator.posts, &{:creator, &1})
+      end)
 
     corpus ++ creator_posts
   end
 
   defp derivative_from_any?(text, references) do
-    Enum.any?(references, &derivative?(text, &1))
+    Enum.any?(references, fn
+      {:corpus, reference} -> derivative?(text, reference)
+      {:creator, reference} -> creator_derivative?(text, reference)
+    end)
+  end
+
+  # Creator posts are explicitly quoted in the prompt, so even a short
+  # lifted phrase is attributable to somebody the user named. The broader
+  # corpus guard stays at six words because three-word idiom overlaps are
+  # common across unrelated posts; here we can enforce the prompt's stricter
+  # three-word rule while ignoring phrases made entirely of common words.
+  @creator_ngram 3
+
+  defp creator_derivative?(text, reference) do
+    derivative?(text, reference) or distinctive_phrase_lifted?(text, reference)
+  end
+
+  defp distinctive_phrase_lifted?(text, reference) do
+    theirs = ngrams(reference, @creator_ngram)
+
+    text
+    |> ngrams(@creator_ngram)
+    |> Enum.any?(fn phrase ->
+      MapSet.member?(theirs, phrase) and Enum.any?(phrase, &(not common_word?(&1)))
+    end)
   end
 
   defp retry_without_references(user, account, voice, topic, kind, attempt) do
@@ -312,6 +340,8 @@ defmodule SuperX.Content.Writer do
     thing things people way ways time times day days year years life
   )
 
+  defp common_word?(word), do: word in @common
+
   defp opening_lifted?(text, source_text) do
     mine = text |> words() |> Enum.take(@opening_words)
     theirs = source_text |> words() |> Enum.take(@opening_words)
@@ -327,10 +357,10 @@ defmodule SuperX.Content.Writer do
       Enum.any?(shared, &(&1 not in @common))
   end
 
-  defp ngrams(text) do
+  defp ngrams(text, size \\ @ngram) do
     text
     |> words()
-    |> Enum.chunk_every(@ngram, 1, :discard)
+    |> Enum.chunk_every(size, 1, :discard)
     |> MapSet.new()
   end
 

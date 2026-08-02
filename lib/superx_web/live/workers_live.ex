@@ -7,7 +7,7 @@ defmodule SuperXWeb.WorkersLive do
   use SuperXWeb, :live_view
 
   alias SuperX.Workers
-  alias SuperX.Workers.ContentWorker
+  alias SuperX.Workers.{ContentWorker, RunContentWorker}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -23,6 +23,7 @@ defmodule SuperXWeb.WorkersLive do
      |> assign(page_title: "Workers")
      |> assign(:editing, nil)
      |> assign(:form, nil)
+     |> assign(:running, MapSet.new())
      |> assign(:ai_configured, SuperX.AI.configured?())
      |> stream_configure(:workers, dom_id: &"worker-#{&1.id}")
      |> load()}
@@ -34,9 +35,17 @@ defmodule SuperXWeb.WorkersLive do
   end
 
   @impl true
-  def handle_info({:worker_finished, _id, _count}, socket) do
+  def handle_info({:worker_finished, id, summary}, socket) do
     send(self(), :refresh_quota)
-    {:noreply, load(socket)}
+
+    {kind, message} = completion_message(summary)
+
+    {:noreply,
+     socket
+     |> update(:running, &MapSet.delete(&1, id))
+     |> clear_flash()
+     |> put_flash(kind, message)
+     |> load()}
   end
 
   @impl true
@@ -115,8 +124,17 @@ defmodule SuperXWeb.WorkersLive do
   def handle_event("run", %{"id" => id}, socket) do
     with true <- socket.assigns.ai_configured,
          %ContentWorker{} = worker <- find_worker(socket, id),
-         {:ok, _job} <- Workers.enqueue(worker) do
-      {:noreply, put_flash(socket, :info, "Batch queued. Drafts will appear in Ready to Post.")}
+         {:ok, _pid} <-
+           Task.Supervisor.start_child(SuperX.TaskSupervisor, fn ->
+             RunContentWorker.run(worker)
+           end) do
+      {:noreply,
+       socket
+       |> update(:running, &MapSet.put(&1, worker.id))
+       |> clear_flash()
+       # Streamed children only repaint when they are re-streamed; the
+       # button reads @running, so reload the rows as the job starts.
+       |> load()}
     else
       false ->
         {:noreply, put_flash(socket, :error, "Configure an LLM before running a worker.")}
@@ -219,10 +237,10 @@ defmodule SuperXWeb.WorkersLive do
             id={"run-worker-#{worker.id}"}
             phx-click="run"
             phx-value-id={worker.id}
-            disabled={!@ai_configured}
+            disabled={!@ai_configured or MapSet.member?(@running, worker.id)}
             class="act-key whitespace-nowrap"
           >
-            Run now
+            {if MapSet.member?(@running, worker.id), do: "Writing…", else: "Run now"}
           </button>
           <button phx-click="edit" phx-value-id={worker.id} class="act">Edit</button>
           <button phx-click="toggle" phx-value-id={worker.id} class="act">
@@ -351,4 +369,50 @@ defmodule SuperXWeb.WorkersLive do
   end
 
   defp format_time(%Time{} = time), do: Calendar.strftime(time, "%-I:%M %p")
+
+  defp completion_message(%{status: :ok, generated: 1}) do
+    {:info, "Wrote 1 draft. It's ready to review."}
+  end
+
+  defp completion_message(%{status: :ok, generated: generated}) do
+    {:info, "Wrote #{generated} drafts. They're ready to review."}
+  end
+
+  defp completion_message(%{reason: :no_topics}) do
+    {:error, "No drafts were written. Add topics or published posts in Voice, then run again."}
+  end
+
+  defp completion_message(%{reason: :no_corpus_posts}) do
+    {:error, "No drafts were written because the inspiration library is empty."}
+  end
+
+  defp completion_message(%{reason: :quota_exceeded, generated: 0}) do
+    {:error, "No drafts were written because you're out of AI credits for this window."}
+  end
+
+  defp completion_message(%{
+         reason: :quota_exceeded,
+         generated: generated,
+         requested: requested
+       }) do
+    {:error, "Wrote #{generated} of #{requested} drafts, then ran out of AI credits."}
+  end
+
+  defp completion_message(%{
+         reason: {:generation_failed, _count},
+         generated: generated,
+         failed: failed,
+         requested: requested
+       }) do
+    {:error,
+     "Wrote #{generated} of #{requested} drafts. #{failed} failed, and their credits were returned."}
+  end
+
+  defp completion_message(%{generated: 0}) do
+    {:error, "No drafts were written. Check this worker's brief and try again."}
+  end
+
+  defp completion_message(%{generated: generated, requested: requested}) do
+    {:error, "Wrote #{generated} of #{requested} drafts. The rest could not be written."}
+  end
 end
