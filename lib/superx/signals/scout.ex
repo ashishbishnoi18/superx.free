@@ -18,16 +18,23 @@ defmodule SuperX.Signals.Scout do
   @candidates_per_run 40
 
   @doc "Runs an agent and returns how many leads it kept."
-  @spec run(Agent.t()) :: {:ok, non_neg_integer()} | {:error, term()}
-  def run(%Agent{} = agent) do
+  @spec run(Agent.t(), keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def run(%Agent{} = agent, opts \\ []) do
     account = agent.x_account
+    max_new_leads = Keyword.get(opts, :max_new_leads, @candidates_per_run)
 
     with {:ok, candidates} <- fetch(agent),
-         candidates <- reject_known(candidates, account, agent),
+         candidates <- prepare_candidates(candidates),
+         {known, candidates} <- split_known(candidates, account),
+         _filed <- Signals.file_known_leads(agent, known),
          {:ok, scored} <- score(agent, candidates) do
       kept =
         scored
         |> Enum.filter(&((&1[:score] || 0) >= agent.min_score))
+        # When today's quota has only a few slots left, a person expects the
+        # strongest matches to consume them rather than provider response order.
+        |> Enum.sort_by(&(&1[:score] || 0), :desc)
+        |> Enum.take(max_new_leads)
         |> Enum.map(&Map.merge(&1, %{x_account_id: account.id, signal_agent_id: agent.id}))
 
       {count, _} = Signals.upsert_leads(kept)
@@ -49,16 +56,21 @@ defmodule SuperX.Signals.Scout do
     # stronger signal than following it.
     case TwitterAPI.user_tweets(handle, max: 5) do
       {:ok, tweets} ->
-        tweets
-        |> Enum.take(3)
-        |> Enum.flat_map(fn tweet ->
-          case TwitterAPI.replies(tweet["id"], max: 15) do
-            {:ok, replies} -> replies
-            _ -> []
-          end
-        end)
-        |> Enum.map(&from_tweet/1)
-        |> then(&{:ok, &1})
+        results =
+          tweets
+          |> Enum.take(3)
+          |> Enum.map(&TwitterAPI.replies(&1["id"], max: 15))
+
+        case Enum.split_with(results, &match?({:ok, _replies}, &1)) do
+          {[], [error | _]} ->
+            error
+
+          {successful, _errors} ->
+            successful
+            |> Enum.flat_map(fn {:ok, replies} -> replies end)
+            |> Enum.map(&from_tweet/1)
+            |> then(&{:ok, &1})
+        end
 
       error ->
         error
@@ -111,16 +123,20 @@ defmodule SuperX.Signals.Scout do
     }
   end
 
-  # Re-scoring people already in the CRM wastes the model call and would
-  # overwrite whatever the user has since done with them.
-  defp reject_known(candidates, account, _agent) do
+  defp prepare_candidates(candidates) do
+    candidates
+    |> Enum.reject(&is_nil(&1[:handle]))
+    |> Enum.uniq_by(&String.downcase(&1[:handle]))
+  end
+
+  # Existing people still need filing in this agent's destination, but they
+  # do not need another model call and their qualification should not change.
+  defp split_known(candidates, account) do
     known = Signals.known_handles(account)
 
-    candidates
-    |> Enum.reject(fn c ->
-      is_nil(c[:handle]) or MapSet.member?(known, String.downcase(c[:handle] || ""))
+    Enum.split_with(candidates, fn candidate ->
+      MapSet.member?(known, String.downcase(candidate[:handle]))
     end)
-    |> Enum.uniq_by(&String.downcase(&1[:handle]))
   end
 
   # --- Scoring -------------------------------------------------------------
@@ -132,15 +148,19 @@ defmodule SuperX.Signals.Scout do
     if AI.configured?() do
       do_score(agent, candidates)
     else
-      # Without a model there's no way to judge fit, and inventing a number
-      # would be worse than admitting it. Everything passes at the floor so
-      # the user still sees who was found.
-      {:ok, Enum.map(candidates, &Map.merge(&1, %{score: agent.min_score, reason: nil}))}
+      # Keep discoveries useful without pretending a placeholder is a model
+      # judgement. The floor lets them pass the agent's filter; the persisted
+      # reason keeps that compromise visible in Contacts and exports.
+      fallback_score(agent, candidates, "Not AI-scored: no LLM is configured.")
     end
   end
 
   defp score(agent, candidates) do
-    {:ok, Enum.map(candidates, &Map.merge(&1, %{score: agent.min_score, reason: nil}))}
+    fallback_score(agent, candidates, "Not AI-scored: this agent has no match description.")
+  end
+
+  defp fallback_score(agent, candidates, reason) do
+    {:ok, Enum.map(candidates, &Map.merge(&1, %{score: agent.min_score, reason: reason}))}
   end
 
   defp do_score(agent, candidates) do

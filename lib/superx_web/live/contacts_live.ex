@@ -16,6 +16,7 @@ defmodule SuperXWeb.ContactsLive do
     {:ok,
      socket
      |> assign(page_title: "Contacts")
+     |> assign(:ai_configured, SuperX.AI.configured?())
      |> assign(:status, nil)
      |> assign(:statuses, @statuses)
      |> assign(:selected_list, nil)
@@ -188,6 +189,15 @@ defmodule SuperXWeb.ContactsLive do
         </div>
       </:action>
     </Layouts.page_header>
+
+    <p
+      :if={!@ai_configured}
+      id="contacts-unscored-notice"
+      class="mb-8 max-w-[64ch] text-[13px] text-muted-foreground"
+    >
+      No LLM is configured. New contacts are kept with the agent's minimum score as a
+      placeholder and are explicitly marked as not AI-scored.
+    </p>
 
     <section id="contact-lists" class="mb-7 border-y border-border py-4">
       <div class="flex flex-wrap items-center gap-x-6 gap-y-3">

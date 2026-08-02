@@ -93,12 +93,12 @@ defmodule SuperX.Signals.Agent do
 
   defp default_name("follower", target), do: "Followers of @#{target}"
   defp default_name("profile", target), do: "Activity of @#{target}"
-  defp default_name("list", target), do: "List #{target}"
+  defp default_name("list", target), do: "Activity in list #{target}"
   defp default_name(_keyword, target), do: target
 
   @doc "One-line description of what this watch does, for the agent list."
   def describes(%__MODULE__{kind: "follower", target: t}), do: "new followers of @#{t}"
   def describes(%__MODULE__{kind: "profile", target: t}), do: "people engaging with @#{t}"
-  def describes(%__MODULE__{kind: "list", target: t}), do: "members of list #{t}"
+  def describes(%__MODULE__{kind: "list", target: t}), do: "people posting in list #{t}"
   def describes(%__MODULE__{kind: "keyword", target: t}), do: "posts matching #{t}"
 end
