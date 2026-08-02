@@ -1,14 +1,20 @@
 defmodule SuperXWeb.ErrorHTMLTest do
   use SuperXWeb.ConnCase, async: true
 
-  # Bring render_to_string/4 for testing custom views
   import Phoenix.Template, only: [render_to_string: 4]
 
   test "renders 404.html" do
-    assert render_to_string(SuperXWeb.ErrorHTML, "404", "html", []) == "Not Found"
+    html = render_to_string(SuperXWeb.ErrorHTML, "404", "html", [])
+
+    assert html =~ "Page not found"
+    # An error page must never be indexed as though it were content.
+    assert html =~ ~s(<meta name="robots" content="noindex">)
   end
 
   test "renders 500.html" do
-    assert render_to_string(SuperXWeb.ErrorHTML, "500", "html", []) == "Internal Server Error"
+    html = render_to_string(SuperXWeb.ErrorHTML, "500", "html", [])
+
+    assert html =~ "Something went wrong"
+    assert html =~ ~s(<meta name="robots" content="noindex">)
   end
 end

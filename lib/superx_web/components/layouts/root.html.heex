@@ -27,6 +27,9 @@
     <.live_title default={default_page_title()} suffix=" · SuperX" phx-no-format>
       {assigns[:page_title]}
     </.live_title>
+    <link rel="icon" type="image/svg+xml" href={~p"/images/logo.svg"} />
+    <link rel="icon" type="image/x-icon" href={~p"/favicon.ico"} sizes="48x48" />
+    <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>

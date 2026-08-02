@@ -61,7 +61,7 @@ defmodule SuperXWeb.PageController do
     "name" => "SuperX",
     "description" => @page_description,
     "url" => "https://superx.free/",
-    "codeRepository" => "https://github.com/ashishbishnoi18/superx",
+    "codeRepository" => "https://github.com/ashishbishnoi18/superx.free",
     "applicationCategory" => "BusinessApplication",
     "operatingSystem" => "Linux with Docker",
     "isAccessibleForFree" => true,

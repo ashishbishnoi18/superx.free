@@ -168,6 +168,9 @@
   --shadow-strong: light-dark(oklch(0.25 0.02 67 / 0.16), oklch(0 0 0 / 0.6));
   --shadow-soft: light-dark(oklch(0.25 0.02 67 / 0.08), oklch(0 0 0 / 0.4));
   --shadow-lg: 0 12px 32px -8px var(--shadow-strong), 0 6px 14px -6px var(--shadow-soft);
+  /* One breath of hover elevation for interactive surfaces. Named `lift`,
+     not `sm`, so it can never collide with Tailwind's `shadow-sm` utility. */
+  --shadow-lift: 0 1px 2px var(--shadow-soft), 0 4px 14px -4px var(--shadow-strong);
 }
 
 :root[data-theme="light"] { color-scheme: light; }
@@ -186,7 +189,17 @@
    Premium-small: small sizes, generous leading, optical sizing on, real
    tabular figures for data. */
 @layer base {
-  html { -webkit-text-size-adjust: 100%; }
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* Anchor jumps glide. The global reduced-motion guard at the end of
+       this file can't cover this — it kills transitions and animations,
+       not `scroll-behavior` — so the opt-out sits right beside it. */
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+  }
 
   body {
     font-family: var(--font-sans);
@@ -369,11 +382,36 @@
     white-space: nowrap;
     background: var(--muted);
     color: var(--muted-foreground);
+    transition: background-color 0.12s ease, color 0.12s ease;
   }
   .badge-success { background: var(--success-soft); color: var(--success); }
   .badge-warning { background: var(--warning-soft); color: var(--warning); }
   .badge-danger { background: var(--destructive-soft); color: var(--destructive); }
   .badge-ember { background: var(--accent-soft); color: var(--primary); }
+
+  /* A badge that is also a link joins the hover ritual: the wash deepens
+     a notch. Semantic variants keep their hue — colour is meaning here —
+     so each restates its own ink rather than inheriting `--foreground`. */
+  a.badge:hover, .badge[href]:hover {
+    background: var(--line-strong);
+    color: var(--foreground);
+  }
+  a.badge-success:hover, .badge-success[href]:hover {
+    background: color-mix(in oklab, var(--success) 18%, var(--success-soft));
+    color: var(--success);
+  }
+  a.badge-warning:hover, .badge-warning[href]:hover {
+    background: color-mix(in oklab, var(--warning) 18%, var(--warning-soft));
+    color: var(--warning);
+  }
+  a.badge-danger:hover, .badge-danger[href]:hover {
+    background: color-mix(in oklab, var(--destructive) 18%, var(--destructive-soft));
+    color: var(--destructive);
+  }
+  a.badge-ember:hover, .badge-ember[href]:hover {
+    background: color-mix(in oklab, var(--primary) 18%, var(--accent-soft));
+    color: var(--primary);
+  }
 
   /* A live status reads faster with a dot than with a word colour alone. */
   .badge::before {
@@ -599,6 +637,25 @@
   .meter { height: 2px; background: var(--border); border-radius: 9999px; overflow: hidden; }
   .meter > i { display: block; height: 100%; background: var(--primary); }
 
+  /* Loading placeholder. A pulse, not a spinner — the shape of the
+     incoming content holds the layout while data arrives. Sizing is a
+     utility at the call site; this class is only the material. */
+  .skeleton {
+    display: block;
+    background: var(--muted);
+    border-radius: var(--radius-sm);
+    animation: skeleton-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes skeleton-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+  }
+  /* The end-of-file guard already strips animations globally; stated here
+     too, so the component stays honest if that guard ever moves. */
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton { animation: none; }
+  }
+
   /* Popovers / drawers that genuinely float. */
   [data-popover] {
     background: var(--popover);
@@ -642,6 +699,15 @@
   /* A denser variant for sidebars and inline previews, where the card is
      supporting evidence rather than the subject. */
   .post-compact { --post-avatar: 1.75rem; --post-gutter: 0.625rem; padding: 0.75rem 0.875rem; }
+
+  /* A post that is itself actionable (the whole card opens something) gets
+     one cue beyond the stronger hairline: a breath of lift on hover.
+     Depth is spent on interaction only, never at rest. */
+  .post-interactive { transition: border-color 0.12s ease, box-shadow 0.12s ease; }
+  .post-interactive:hover {
+    border-color: var(--line-strong);
+    box-shadow: var(--shadow-lift);
+  }
 
   .post-avatar {
     width: var(--post-avatar);

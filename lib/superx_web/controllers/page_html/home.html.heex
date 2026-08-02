@@ -2,7 +2,16 @@
   <%= Phoenix.HTML.raw(Jason.encode!(@structured_data)) %>
 </script>
 
-<div class="min-h-full">
+<div class="relative min-h-full">
+  <%!-- Barely-there depth at the top of the page: an ember wash and a faint
+       hairline grid, both drawn from theme tokens so they adapt to light and
+       dark, and both fading to transparent well above their lower edge. --%>
+  <div aria-hidden="true" class="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[46rem]">
+    <div class="absolute inset-0 [background:radial-gradient(70%_50%_at_50%_0%,color-mix(in_oklab,var(--primary)_7%,transparent),transparent_72%)]">
+    </div>
+    <div class="absolute inset-0 [background-image:linear-gradient(to_right,color-mix(in_oklab,var(--foreground)_4%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--foreground)_4%,transparent)_1px,transparent_1px)] [background-size:4.5rem_4.5rem] [mask-image:radial-gradient(62%_50%_at_50%_0%,black,transparent_76%)]">
+    </div>
+  </div>
   <header class="measure flex items-center justify-between gap-6 px-6 py-5">
     <Layouts.logo class="text-[15px]" />
     <div class="flex flex-wrap items-center justify-end gap-x-6 gap-y-2 text-xs">
@@ -15,7 +24,7 @@
         <a href="#run-it-yourself" class="act">Run it yourself</a>
         <a href="#comparison" class="act">Compare</a>
         <a href="#faq" class="act">FAQ</a>
-        <a href="https://github.com/ashishbishnoi18/superx" class="act">GitHub</a>
+        <a href="https://github.com/ashishbishnoi18/superx.free" class="act">GitHub</a>
       </nav>
       <div class="flex items-center gap-6">
         <Layouts.theme_toggle />
@@ -45,7 +54,7 @@
 
       <p class="mt-4 max-w-[58ch] leading-[1.6] text-muted-foreground">
         It is an open-source alternative to superx.so. The <a
-          href="https://github.com/ashishbishnoi18/superx"
+          href="https://github.com/ashishbishnoi18/superx.free"
           class="act underline underline-offset-4"
         >
           source is published on GitHub</a>, while the application and Postgres database run on
@@ -76,7 +85,11 @@
       </div>
     </section>
 
-    <section id="what-it-does" class="flex flex-col pb-24" aria-labelledby="what-it-does-title">
+    <section
+      id="what-it-does"
+      class="flex scroll-mt-20 flex-col pb-20"
+      aria-labelledby="what-it-does-title"
+    >
       <header class="pb-8">
         <p class="nb-eyebrow mb-3">What it does</p>
         <h2
@@ -89,9 +102,9 @@
 
       <div
         :for={{feature, index} <- Enum.with_index(@features, 1)}
-        class="grid grid-cols-1 gap-7 border-t border-border py-7 last:border-b sm:grid-cols-[7.5rem_minmax(0,1fr)]"
+        class="group grid grid-cols-1 gap-7 border-t border-border py-7 transition-colors last:border-b hover:bg-accent sm:grid-cols-[7.5rem_minmax(0,1fr)]"
       >
-        <span class="nb-mono text-[11px] text-faint">
+        <span class="nb-mono text-[11px] text-faint transition-colors group-hover:text-primary">
           {String.pad_leading(to_string(index), 2, "0")}
         </span>
         <div>
@@ -103,7 +116,7 @@
 
     <section
       id="run-it-yourself"
-      class="border-t border-border py-20"
+      class="scroll-mt-20 border-t border-border py-20"
       aria-labelledby="run-it-yourself-title"
     >
       <p class="nb-eyebrow mb-3">Run it yourself</p>
@@ -120,8 +133,8 @@
       </p>
       <pre
         id="self-host-commands"
-        class="nb-mono mt-7 overflow-x-auto border-y border-border py-5 text-[12px] leading-[1.8] text-foreground"
-      ><code phx-no-curly-interpolation>git clone https://github.com/ashishbishnoi18/superx.git
+        class="nb-mono mt-7 overflow-x-auto rounded-lg border border-border bg-card p-5 text-[12px] leading-[1.8] text-foreground"
+      ><code phx-no-curly-interpolation>git clone https://github.com/ashishbishnoi18/superx.free.git superx
 cd superx
 cp .env.example .env
 docker compose up -d --build
@@ -134,7 +147,7 @@ docker compose exec app /app/bin/migrate</code></pre>
 
     <section
       id="comparison"
-      class="border-t border-border py-20"
+      class="scroll-mt-20 border-t border-border py-20"
       aria-labelledby="comparison-title"
     >
       <p class="nb-eyebrow mb-3">Honest comparison</p>
@@ -169,7 +182,7 @@ docker compose exec app /app/bin/migrate</code></pre>
             </tr>
           </thead>
           <tbody>
-            <tr class="border-b border-border align-top">
+            <tr class="border-b border-border align-top transition-colors hover:bg-accent">
               <th scope="row" class="py-5 pr-6 text-[13px] font-semibold">Cost</th>
               <td class="max-w-[30ch] py-5 pr-6 leading-[1.6] text-muted-foreground">
                 No SuperX subscription; you pay for your server and provider usage.
@@ -178,7 +191,7 @@ docker compose exec app /app/bin/migrate</code></pre>
                 A recurring plan usually bundles the application and its operation.
               </td>
             </tr>
-            <tr class="border-b border-border align-top">
+            <tr class="border-b border-border align-top transition-colors hover:bg-accent">
               <th scope="row" class="py-5 pr-6 text-[13px] font-semibold">Data</th>
               <td class="max-w-[30ch] py-5 pr-6 leading-[1.6] text-muted-foreground">
                 Records live in your Postgres database; configured integrations receive data when called.
@@ -187,7 +200,7 @@ docker compose exec app /app/bin/migrate</code></pre>
                 The vendor hosts application data and chooses its integration boundaries.
               </td>
             </tr>
-            <tr class="border-b border-border align-top">
+            <tr class="border-b border-border align-top transition-colors hover:bg-accent">
               <th scope="row" class="py-5 pr-6 text-[13px] font-semibold">Operations</th>
               <td class="max-w-[30ch] py-5 pr-6 leading-[1.6] text-muted-foreground">
                 You deploy, upgrade, monitor, rotate secrets, and restore backups.
@@ -196,7 +209,7 @@ docker compose exec app /app/bin/migrate</code></pre>
                 The vendor handles uptime, updates, backups, and support.
               </td>
             </tr>
-            <tr class="border-b border-border align-top">
+            <tr class="border-b border-border align-top transition-colors hover:bg-accent">
               <th scope="row" class="py-5 pr-6 text-[13px] font-semibold">Public X data</th>
               <td class="max-w-[30ch] py-5 pr-6 leading-[1.6] text-muted-foreground">
                 Discovery, feeds, mentions, and Signals need a data source you configure and fund.
@@ -205,7 +218,7 @@ docker compose exec app /app/bin/migrate</code></pre>
                 A hosted product may include an established corpus and managed data access.
               </td>
             </tr>
-            <tr class="border-b border-border align-top">
+            <tr class="border-b border-border align-top transition-colors hover:bg-accent">
               <th scope="row" class="py-5 pr-6 text-[13px] font-semibold">Control</th>
               <td class="max-w-[30ch] py-5 pr-6 leading-[1.6] text-muted-foreground">
                 Inspect and change the source, database, limits, and deployment.
@@ -219,14 +232,21 @@ docker compose exec app /app/bin/migrate</code></pre>
       </div>
     </section>
 
-    <section id="faq" class="border-t border-border py-20" aria-labelledby="faq-title">
+    <section
+      id="faq"
+      class="scroll-mt-20 border-t border-border py-20"
+      aria-labelledby="faq-title"
+    >
       <p class="nb-eyebrow mb-3">FAQ</p>
       <h2 id="faq-title" class="text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.03em]">
         What self-hosting actually involves
       </h2>
 
       <div id="faq-list" class="mt-8">
-        <article :for={faq <- @faqs} class="border-t border-border py-7 last:border-b">
+        <article
+          :for={faq <- @faqs}
+          class="border-t border-border py-7 transition-colors last:border-b hover:bg-accent"
+        >
           <h3 class="text-[15px] font-semibold">{faq.question}</h3>
           <p class="mt-2 max-w-[72ch] leading-[1.7] text-muted-foreground">{faq.answer}</p>
         </article>

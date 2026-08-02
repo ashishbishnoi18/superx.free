@@ -428,7 +428,11 @@ defmodule SuperXWeb.Layouts do
 
   def flash_group(assigns) do
     ~H"""
-    <div id={@id} aria-live="polite">
+    <div
+      id={@id}
+      aria-live="polite"
+      class="pointer-events-none fixed top-4 right-4 z-50 flex w-80 flex-col gap-2 sm:w-96"
+    >
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:error} flash={@flash} />
 

@@ -65,7 +65,7 @@ defmodule SuperXWeb.PageControllerTest do
     faq_page = Enum.find(schema["@graph"], &(&1["@type"] == "FAQPage"))
 
     assert software["name"] == "SuperX"
-    assert software["codeRepository"] == "https://github.com/ashishbishnoi18/superx"
+    assert software["codeRepository"] == "https://github.com/ashishbishnoi18/superx.free"
     assert software["applicationCategory"] == "BusinessApplication"
     assert software["operatingSystem"] == "Linux with Docker"
     assert software["isAccessibleForFree"]
@@ -94,7 +94,7 @@ defmodule SuperXWeb.PageControllerTest do
     commands = document |> LazyHTML.query("#self-host-commands code") |> LazyHTML.text()
 
     assert commands ==
-             "git clone https://github.com/ashishbishnoi18/superx.git\ncd superx\ncp .env.example .env\ndocker compose up -d --build\ndocker compose exec app /app/bin/migrate"
+             "git clone https://github.com/ashishbishnoi18/superx.free.git superx\ncd superx\ncp .env.example .env\ndocker compose up -d --build\ndocker compose exec app /app/bin/migrate"
   end
 
   describe "where a signed-in user lands" do
