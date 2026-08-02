@@ -140,6 +140,12 @@
   --warning-soft: light-dark(oklch(0.52 0.11 75 / 0.11), oklch(0.78 0.13 80 / 0.16));
   --accent-soft: light-dark(oklch(0.555 0.165 47 / 0.08), oklch(0.72 0.145 58 / 0.14));
 
+  /* Deliberately louder than `--line-strong`: see the scrollbar note in
+     the base layer. A scrollbar nobody can see reads as "this list ends
+     here", which is a correctness problem, not a taste one. */
+  --scrollbar-thumb: light-dark(oklch(0.68 0.01 70), oklch(1 0 0 / 0.3));
+  --scrollbar-thumb-hover: light-dark(oklch(0.555 0.011 67), oklch(1 0 0 / 0.45));
+
   /* A score is data, not chrome, so it earns a ramp. Three steps only —
      enough to sort "worth your time" from "probably not" at a glance,
      and it reuses the semantic hues rather than inventing new ones. */
@@ -214,16 +220,21 @@
 
   table { font-variant-numeric: tabular-nums; }
 
-  /* Quiet, premium scrollbars. */
-  * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+  /* Quiet scrollbars — but a scrollbar is the only thing telling a reader
+     that content continues, so "quiet" has a floor. The thumb was
+     `--line-strong`: rgb(212,208,203) on rgb(251,250,247), a ratio of
+     1.46:1, which is invisible in practice. The sidebar then looked like
+     a nav that simply ended early rather than one you could scroll.
+     ~2.7:1 stays understated and is actually perceivable. */
+  * { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
   *::-webkit-scrollbar { width: 9px; height: 9px; }
   *::-webkit-scrollbar-thumb {
-    background: var(--line-strong);
+    background: var(--scrollbar-thumb);
     border-radius: 9999px;
     border: 2px solid transparent;
     background-clip: content-box;
   }
-  *::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+  *::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 }
 
 @layer components {
@@ -502,6 +513,26 @@
   }
   .nav-link:hover > .hero { color: var(--muted-foreground); }
   .nav-link[aria-current="page"] > .hero { color: var(--primary); }
+
+  /* The nav's own spacing lives here rather than as a `gap-*` utility, so
+     a media query can tighten it — utilities outrank this layer and would
+     win no matter how specific the override.
+
+     On a short window the nav needs ~690px for 17 destinations and five
+     section labels, so it scrolls. It should still scroll, but the less
+     it has to, the more of the product stays reachable at a glance. */
+  .nav-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  .nav-stack .nb-eyebrow { padding-bottom: 0.375rem; }
+
+  @media (height < 46rem) {
+    .nav-stack { gap: 0.75rem; }
+    .nav-stack .nav-link { padding-block: 0.1875rem; }
+    .nav-stack .nb-eyebrow { padding-bottom: 0.1875rem; }
+  }
 
   /* A count rides the right edge so the eye can find work without reading. */
   .nav-count {

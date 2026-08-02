@@ -400,12 +400,13 @@ defmodule SuperXWeb.ContactsLive do
                 </form>
               </div>
 
+              <%!-- pre-wrap prints the template's own whitespace; see the
+                    note in PostComponents.post/1. --%>
               <p
                 :if={@editing != lead.id and lead.notes}
                 class="mt-2 max-w-[62ch] whitespace-pre-wrap border-l border-border pl-3 text-[13px] text-muted-foreground"
-              >
-                {lead.notes}
-              </p>
+                phx-no-format
+              >{lead.notes}</p>
             </div>
           </div>
         </div>

@@ -148,7 +148,7 @@ defmodule SuperXWeb.Layouts do
         <%!-- Tapping a destination must dismiss the drawer: LiveView patches
               the page underneath without unmounting this element. --%>
         <nav
-          class="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-1"
+          class="nav-stack min-h-0 flex-1 overflow-y-auto px-3 py-1"
           phx-click={close_mobile_nav()}
         >
           <.nav_items active={@active} />
@@ -179,7 +179,7 @@ defmodule SuperXWeb.Layouts do
         <.logo class="text-[15px]" />
       </div>
 
-      <nav class="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-1">
+      <nav class="nav-stack min-h-0 flex-1 overflow-y-auto px-3 py-1">
         <.nav_items active={@active} />
       </nav>
 
@@ -270,7 +270,7 @@ defmodule SuperXWeb.Layouts do
   defp nav_section(assigns) do
     ~H"""
     <div>
-      <div class="nb-eyebrow px-2.5 pb-1.5 text-[10px]">{@label}</div>
+      <div class="nb-eyebrow px-2.5 text-[10px]">{@label}</div>
       <div class="flex flex-col gap-px">{render_slot(@inner_block)}</div>
     </div>
     """

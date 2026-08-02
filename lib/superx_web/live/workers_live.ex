@@ -202,12 +202,13 @@ defmodule SuperXWeb.WorkersLive do
           <p class="mt-1 text-[12px] text-muted-foreground">
             {ContentWorker.topic_source_label(worker.topic_source)}
           </p>
+          <%!-- pre-wrap prints the template's own whitespace; see the note
+                in PostComponents.post/1. --%>
           <p
             :if={worker.topic_source == "products"}
             class="mt-2 max-w-[58ch] whitespace-pre-wrap text-[12px] leading-[1.6] text-faint"
-          >
-            {worker.product_context}
-          </p>
+            phx-no-format
+          >{worker.product_context}</p>
         </div>
 
         <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px] sm:grid-cols-1">

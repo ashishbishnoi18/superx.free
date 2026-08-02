@@ -192,9 +192,10 @@ defmodule SuperXWeb.HomeLive do
             <span class="nb-mono text-[11px] text-muted-foreground">
               {short_when(post.scheduled_at, @current_user.timezone)}
             </span>
-            <p class="max-w-[58ch] whitespace-pre-wrap leading-[1.55]">
-              {truncate(SuperX.Content.Post.preview_text(post), 220)}
-            </p>
+            <%!-- pre-wrap prints the template's own whitespace, so the tag
+                  closes onto the value and the formatter is told to leave
+                  it alone. See the note in PostComponents.post/1. --%>
+            <p class="max-w-[58ch] whitespace-pre-wrap leading-[1.55]" phx-no-format>{truncate(SuperX.Content.Post.preview_text(post), 220)}</p>
           </div>
         </div>
       </section>
