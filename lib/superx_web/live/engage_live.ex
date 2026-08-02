@@ -239,7 +239,12 @@ defmodule SuperXWeb.EngageLive do
     ~H"""
     <Layouts.page_header
       title="Engage"
-      description="Who's talking to you, and which conversations are worth joining. Ordered by what's worth answering, not by what arrived last."
+      description={
+        if @kind == "feed",
+          do: "Conversations worth joining, newest first.",
+          else:
+            "Who's talking to you, and which conversations are worth joining. Mentions lead with what's worth answering; feeds read newest first."
+      }
     />
 
     <p :if={!@api_configured} class="mb-8 max-w-[60ch] text-muted-foreground">
