@@ -257,6 +257,14 @@ defmodule SuperXWeb.Layouts do
       <.nav_link navigate={~p"/accounts"} icon="hero-user-circle" active={@active == :accounts}>
         Accounts
       </.nav_link>
+      <.nav_link
+        :if={SuperX.Billing.Stripe.configured?()}
+        navigate={~p"/billing"}
+        icon="hero-credit-card"
+        active={@active == :billing}
+      >
+        Billing
+      </.nav_link>
     </.nav_section>
     """
   end
