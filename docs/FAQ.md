@@ -218,6 +218,12 @@ The practical difference is responsibility:
 Choose self-hosting for control and auditability, not because running a social
 publishing system becomes maintenance-free.
 
+There is a third option in the middle. [superx.free](https://superx.free) is
+this same code, hosted by its author, at US$5 per month bringing your own keys
+or US$9 per month using the operator’s. It is priced near what it costs to run
+rather than at what the market bears, paying unlocks no features, and leaving
+means cloning the repository rather than filing an export request.
+
 ## What does it deliberately not do?
 
 The current boundaries are intentional or explicit limitations in the code:

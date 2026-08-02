@@ -13,6 +13,12 @@ own, with no telemetry, no account, and no vendor. You supply your own API
 keys and pay the underlying providers directly — typically $5–15 a month
 for one person.
 
+A hosted instance of this same code runs at https://superx.free for anyone
+who would rather not keep a server alive: US$5 per month bringing your own
+X and model keys, or US$9 per month using the operator's. Paying unlocks no
+features — the software is identical and the source is public. Self-hosting
+is free and always will be.
+
 Source: https://github.com/ashishbishnoi18/superx.free
 Site: https://superx.free
 Licence: MIT

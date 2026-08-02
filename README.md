@@ -24,6 +24,21 @@ Then open `http://localhost:4000` and sign in with X.
 - **When something breaks** → [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - **Costs and common questions** → [docs/FAQ.md](docs/FAQ.md)
 
+## Or let someone else run it
+
+Self-hosting is the point of this project and is free forever. If you would
+rather not keep a server alive, [superx.free](https://superx.free) runs this
+same codebase, at this commit:
+
+| | |
+|---|---|
+| **$5/month** | You bring your own X and model keys. |
+| **$9/month** | Runs on ours. Nothing else to sign up for. |
+
+Paying unlocks nothing. The software is identical either way and the source
+is right here — it pays for the machine and, on the second price, the API
+bills it runs up. Cancel from inside the app whenever you like.
+
 ---
 
 ## Why this exists
@@ -32,11 +47,15 @@ Posting consistently on X is mostly a scheduling and memory problem, and
 the tools that solve it charge $49–199 a month to hold your OAuth token,
 your drafts, and your audience data on their servers.
 
-Everything here runs on one box you control. There is no telemetry, no
-analytics pixel, no account to create, and no vendor who can change the
+Self-hosted, everything runs on one box you control. There is no telemetry,
+no analytics pixel, no account to create, and no vendor who can change the
 price or read your drafts. You bring your own API keys — the same ones the
 hosted tools use on your behalf — and pay the underlying providers
 directly, which is a few dollars a month rather than a few hundred.
+
+The hosted instance above is a convenience, not the product. It is the same
+code, it is priced at roughly what it costs to run, and the escape hatch is
+a `git clone` rather than an export request.
 
 ## What it does
 
