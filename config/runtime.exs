@@ -124,8 +124,9 @@ vault_key =
 
             mix superx.gen.vault_key
 
-        Losing this key makes every stored X token undecryptable and
-        forces all users to reconnect their accounts.
+        Losing this key makes every stored X token and XChat identity
+        undecryptable. It forces all users to reconnect their accounts and
+        can make encrypted chat history unreadable.
         """
       else
         salt = Application.get_env(:superx, SuperXWeb.Endpoint)[:secret_key_base] || "dev"

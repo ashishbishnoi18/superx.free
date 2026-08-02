@@ -123,21 +123,23 @@ does not accept DMs from the account.
 **Symptom:** The DMs page says incoming sync is configured, the five-minute
 job runs without an error, but conversations visible in X do not appear.
 
-This is usually an upstream limitation, not a local sync bug. The official X
-DM API used by SuperX sees legacy, unencrypted conversations. XChat, the
-encrypted inbox served by X at `/i/chat`, is invisible to the polling
-endpoints. In this case `/2/dm_events` can correctly return no events even
-while the conversation is open in X.
+SuperX reads both the legacy DM feed and X's encrypted Chat API. It decrypts
+XChat events locally with the official Chat XDK and deduplicates both paths by
+X's message id.
 
-The distinction can be tested without exposing message text: send a message
-through the API-backed SuperX thread. Messages created through the API and
-legacy threads can be read back; XChat messages may remain absent. SuperX
-stores the event IDs it can see and deduplicates overlapping polls. It reads
-the previous 30 days.
+On Docker, Node and the pinned XDK are included. For a source checkout, check
+Node 18 or newer and install the optional worker dependency:
 
-There is no configuration fix for XChat. Supporting it would require the X
-Account Activity chat webhook surface, which this repository does not
-implement. Sending and legacy conversation sync can still work.
+```bash
+node --version
+cd xchat && npm ci
+```
+
+A missing Node binary or npm dependency disables only XChat and is logged at
+debug level. Legacy DMs and the rest of the app keep working. Group
+conversations are deliberately skipped because the inbox stores one safe reply
+participant per thread. If a one-to-one XChat thread still fails, inspect the
+worker and X API errors without logging event bodies or the private-key blob.
 
 ## The read API is out of credits
 

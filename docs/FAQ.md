@@ -169,7 +169,7 @@ is offline.
 
 | Destination | Data sent |
 |---|---|
-| Official X API | OAuth codes and tokens, published text and media, DM text, account identifiers, and requests for profile, own-post, and DM data. |
+| Official X API | OAuth codes and tokens, published text and media, legacy DM text, XChat ciphertext and public keys, account identifiers, and requests for profile, own-post, and DM data. XChat plaintext is encrypted and decrypted locally. |
 | twitterapi.io | Public search terms, handles, list/post IDs, cursors, and the API key. It returns public X data that SuperX stores locally. |
 | Anthropic or DeepSeek | Prompts can include the user’s profile and voice notes, their own post examples, public corpus posts, article text, reply or DM conversation text, Ask chat history, and tool results drawn from the user’s SuperX data. OAuth tokens are not placed in prompts. |
 | Voyage | Corpus post text with author handle, and corpus search query text. |
@@ -186,9 +186,10 @@ Team invitation email is also not sent by the shipped production configuration:
 the mailer remains the local adapter unless an operator changes application
 configuration. The invitation link is always available to copy manually.
 
-PostgreSQL contains sensitive material even though X tokens are encrypted and
-browser/API token secrets are hashed. Backups should be treated as sensitive,
-and the matching `SUPERX_VAULT_KEY` must be protected separately.
+PostgreSQL contains sensitive material even though X tokens and XChat identity
+blobs are encrypted and browser/API token secrets are hashed. Backups should be
+treated as sensitive, and the matching `SUPERX_VAULT_KEY` must be protected
+separately.
 
 ## How does this compare with hosted alternatives?
 
@@ -222,9 +223,9 @@ The current boundaries are intentional or explicit limitations in the code:
 - The LiveView upload flow accepts JPEG, PNG, WebP, and GIF files up to 5 MB,
   with four per post segment. It does not accept video; the code explicitly
   avoids pretending to support X’s separate asynchronous video path.
-- It does not reconstruct XChat. The official polling API cannot see those
-  encrypted conversations. Group DM events are skipped because the code has no
-  safe single participant to address when replying.
+- It does not ingest group DMs. Legacy and encrypted XChat one-to-one threads
+  are supported; groups are skipped because the existing conversation model
+  has no safe single participant to address when replying.
 - It does not provide full per-post X analytics. Daily totals come from the
   authenticated profile and locally published rows; users can import an X
   analytics CSV for history.

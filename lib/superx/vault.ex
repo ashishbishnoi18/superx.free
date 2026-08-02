@@ -1,7 +1,7 @@
 defmodule SuperX.Vault do
   @moduledoc """
-  Symmetric encryption for secrets held at rest — currently X OAuth
-  access and refresh tokens.
+  Symmetric encryption for X OAuth tokens and opaque XChat private-key blobs
+  held at rest.
 
   AES-256-GCM via `:crypto`, so there is no extra dependency. The stored
   binary is `<<version, iv::96, tag::128, ciphertext::binary>>`; the

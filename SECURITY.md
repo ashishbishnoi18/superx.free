@@ -22,6 +22,12 @@ Anyone running an instance is holding real secrets. Worth knowing what:
 - **X OAuth access and refresh tokens**, encrypted at rest with AES-256-GCM
   using `SUPERX_VAULT_KEY`. These grant the ability to post as the connected
   account.
+- **XChat identity and signing keys**, held as an opaque Chat XDK blob and
+  encrypted with the same vault. The blob is decrypted only across the local
+  Node Port boundary and is excluded from inspected structs.
+- **Private message text**, including locally decrypted XChat messages, stored
+  in PostgreSQL so the inbox and drafting tools can use it. Protect database
+  backups accordingly.
 - **API keys** for twitterapi.io and your LLM provider, in the environment.
 - **API tokens** for the read-write HTTP API, stored as a lookup prefix plus
   a SHA-256 hash of a separately generated secret. A database leak does not
@@ -37,8 +43,13 @@ Anyone running an instance is holding real secrets. Worth knowing what:
 ## Running it safely
 
 - **Back up `SUPERX_VAULT_KEY`,** and keep it out of version control. Losing
-  it makes every stored token undecryptable and forces all accounts to
-  reconnect. It cannot be rotated in place.
+  it makes every stored token and XChat identity undecryptable. Accounts must
+  reconnect, and their encrypted chat history may no longer be readable. It
+  cannot be rotated in place.
+- **Do not offer SuperX as a hosted service without redesigning XChat key
+  custody.** This storage model is acceptable only because each operator runs
+  their own instance. A host serving other people would hold their private
+  keys, which X explicitly warns against.
 - **Do not expose the app directly.** Bind it to localhost and put a reverse
   proxy with TLS in front. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 - **Keep `.env` at mode 600.** It contains every credential.
